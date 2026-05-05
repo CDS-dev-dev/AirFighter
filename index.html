@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AirFighter</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #000; overflow: hidden; }
+      canvas { display: block; }
+      #ui {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        color: #fff;
+        font-family: monospace;
+        font-size: 16px;
+        text-shadow: 1px 1px 2px #000;
+        pointer-events: none;
+      }
+      #controls {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #aaa;
+        font-family: monospace;
+        font-size: 13px;
+        text-align: center;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <div>SPEED: <span id="speed">0</span></div>
+      <div>ALT: <span id="altitude">0</span>m</div>
+    </div>
+    <div id="controls">
+      WASD / Arrow Keys: Move &nbsp;|&nbsp; Space: Boost &nbsp;|&nbsp; Mouse: Look
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
