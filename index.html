@@ -144,6 +144,40 @@
         box-shadow: 0 0 6px #4cf;
       }
 
+      /* ── レーダー ── */
+      #radar-wrap {
+        position: fixed; top: 150px; right: 24px;
+        pointer-events: none;
+      }
+      #radar { border-radius: 50%; opacity: 0.88; }
+
+      /* ── HP バー ── */
+      .hp-bar {
+        width: 100%; height: 5px;
+        background: rgba(255,255,255,0.12);
+        border-radius: 3px; margin-top: 6px; overflow: hidden;
+      }
+      .hp-fill {
+        height: 100%; background: linear-gradient(90deg, #f44, #f80);
+        border-radius: 3px; transition: width 0.25s;
+      }
+
+      /* ── リスポーン演出 ── */
+      #respawn-overlay {
+        position: fixed; inset: 0; pointer-events: none; opacity: 0;
+        background: radial-gradient(ellipse at center, rgba(100,200,255,0.15) 0%, rgba(0,100,255,0.4) 100%);
+      }
+
+      /* ── 補給インジケーター ── */
+      #supply-indicator {
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+        pointer-events: none; display: none; text-align: center;
+        color: rgba(0,255,136,0.9); font-size: 13px; font-weight: 700;
+        letter-spacing: 4px; text-shadow: 0 0 16px rgba(0,255,100,0.7);
+        padding: 8px 24px; border: 1px solid rgba(0,255,100,0.4);
+        border-radius: 4px; background: rgba(0,30,15,0.6); backdrop-filter: blur(4px);
+      }
+
       /* ── タッチコントロール（横画面専用） ── */
       #touch-controls {
         position: fixed; inset: 0;
@@ -276,7 +310,8 @@
     <div class="hud-panel" id="hud-score">
       <div class="score-lbl">SCORE</div>
       <div class="score-val" id="score">0</div>
-      <div class="lives" id="lives">&#10084;&#10084;&#10084;</div>
+      <div class="hp-bar"><div class="hp-fill" id="hp-fill" style="width:100%"></div></div>
+      <div style="font-size:9px;letter-spacing:2px;color:rgba(255,150,100,0.6);margin-top:3px" id="hp-text">HP 3/3</div>
     </div>
 
     <!-- ブーストバー (下中央) -->
@@ -305,6 +340,15 @@
       <div class="ri-icon">&#8635;</div>
       <div class="ri-text">横画面にしてください</div>
     </div>
+
+    <!-- レーダー -->
+    <div id="radar-wrap">
+      <canvas id="radar" width="160" height="160"></canvas>
+    </div>
+    <!-- 補給インジケーター -->
+    <div id="supply-indicator">RESUPPLY</div>
+    <!-- リスポーン演出 -->
+    <div id="respawn-overlay"></div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

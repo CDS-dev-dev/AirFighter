@@ -196,6 +196,37 @@ for (let i = 0; i < TREE_COUNT; i++) {
 trunkIM.instanceMatrix.needsUpdate = true; foliIM.instanceMatrix.needsUpdate = true
 scene.add(trunkIM); scene.add(foliIM)
 
+// ===== SUPPLY POINTS =====
+const SUPPLY_POSITIONS: THREE.Vector3[] = [
+  new THREE.Vector3( 420,  0,  180),
+  new THREE.Vector3(-360,  0, -310),
+  new THREE.Vector3( 100,  0, -520),
+  new THREE.Vector3(-150,  0,  450),
+]
+SUPPLY_POSITIONS.forEach(p => { p.y = terrainH(p.x, p.z) + 18 })
+
+const supplyCooldowns = new Array(SUPPLY_POSITIONS.length).fill(0)
+const supplyMeshes: THREE.Mesh[] = []
+
+const supplyMat = new THREE.MeshStandardMaterial({
+  color: 0x00ffaa, emissive: 0x00bb66, emissiveIntensity: 2.5, roughness: 0.3, metalness: 0.2
+})
+SUPPLY_POSITIONS.forEach(pos => {
+  const mesh = new THREE.Mesh(new THREE.OctahedronGeometry(7), supplyMat.clone())
+  mesh.position.copy(pos)
+  scene.add(mesh)
+  supplyMeshes.push(mesh)
+
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(14, 0.6, 8, 32),
+    new THREE.MeshStandardMaterial({ color: 0x00ffaa, emissive: 0x00bb66, emissiveIntensity: 1.5, roughness: 0.5 })
+  )
+  ring.position.copy(pos); ring.rotation.x = Math.PI / 2; scene.add(ring)
+
+  const light = new THREE.PointLight(0x00ffaa, 3, 60)
+  light.position.copy(pos); scene.add(light)
+})
+
 // ===== FACTORIES =====
 function createAircraft(bodyColor: number, darkColor: number): THREE.Group {
   const g = new THREE.Group()
@@ -309,7 +340,8 @@ scene.add(new THREE.Points(trailGeo, new THREE.PointsMaterial({
 const player = createAircraft(0x2255cc, 0x112244)
 player.position.set(0, 60, 0)
 scene.add(player)
-const cameraOffset = new THREE.Vector3(0, 3.5, 14)
+const cameraOffset = new THREE.Vector3(0, 5, 20)
+const camQuat = new THREE.Quaternion()
 let speed = 30
 
 // ===== INPUT =====
@@ -477,7 +509,7 @@ function playExplosionSound(scale = 1.0) {
 // ===== GAME OBJECTS =====
 interface Projectile { mesh: THREE.Object3D; vel: THREE.Vector3; life: number }
 interface HomingMissile extends Projectile { mesh: THREE.Group; target: THREE.Object3D | null; diverted: boolean; spd: number }
-interface Enemy { group: THREE.Group; health: number; orbitAngle: number; fireCooldown: number }
+interface Enemy { group: THREE.Group; health: number; orbitAngle: number; fireCooldown: number; missileAmmo: number; seekingSupply: boolean }
 interface Explosion { particles: Array<{ mesh: THREE.Mesh; vel: THREE.Vector3 }>; life: number }
 
 const bullets: Projectile[] = []
@@ -487,10 +519,12 @@ const flares: Projectile[] = []
 const enemies: Enemy[] = []
 const explosions: Explosion[] = []
 
-let missileAmmo = 6, flareAmmo = 8, lives = 3, score = 0
+let missileAmmo = 6, flareAmmo = 8, score = 0
 let gunCooldown = 0, pMissileCooldown = 0, flareCooldown = 0
 let hitFlashTimer = 0, gunSoundCooldown = 0, trailFrame = 0
 let lockedEnemy: Enemy | null = null
+let playerHP = 3, invincibleTimer = 0, respawnFlash = 0
+const MAX_HP = 3
 
 const bulletMat = new THREE.MeshStandardMaterial({ color: 0xffee00, emissive: 0xffaa00, emissiveIntensity: 5.0, roughness: 0.2, metalness: 0 })
 const playerMissileMat = new THREE.MeshStandardMaterial({ color: 0xccccdd, roughness: 0.35, metalness: 0.9 })
@@ -515,7 +549,7 @@ function spawnEnemy() {
   const group = createAircraft(0xcc2222, 0x661111)
   group.position.set(Math.cos(angle) * (160 + Math.random() * 80), 45 + Math.random() * 45, Math.sin(angle) * (160 + Math.random() * 80))
   scene.add(group)
-  enemies.push({ group, health: 2, orbitAngle: angle, fireCooldown: 5 + Math.random() * 5 })
+  enemies.push({ group, health: 2, orbitAngle: angle, fireCooldown: 5 + Math.random() * 5, missileAmmo: 4, seekingSupply: false })
 }
 
 function killEnemy(ei: number) {
@@ -575,6 +609,8 @@ function firePlayerMissile() {
 }
 
 function fireEnemyMissile(enemy: Enemy) {
+  if (enemy.missileAmmo <= 0) return
+  enemy.missileAmmo--
   const mesh = createMissileModel(enemyMissileMat)
   mesh.position.copy(enemy.group.position)
   const toPlayer = player.position.clone().sub(enemy.group.position).normalize()
@@ -666,11 +702,40 @@ function updateFlares(dt: number) {
 function updateEnemies(dt: number) {
   for (let i = 0; i < enemies.length; i++) {
     const enemy = enemies[i]
-    enemy.orbitAngle += dt * 0.22
-    const r = 110 + i * 25
-    const tx = player.position.x + Math.cos(enemy.orbitAngle) * r
-    const tz = player.position.z + Math.sin(enemy.orbitAngle) * r
-    const ty = player.position.y + 8 + Math.sin(enemy.orbitAngle * 0.6) * 20
+    let tx: number, tz: number, ty: number
+
+    if (enemy.seekingSupply) {
+      // 最寄りの補給ポイントへ向かう
+      let nearestIdx = 0, nearestDist = Infinity
+      for (let si = 0; si < SUPPLY_POSITIONS.length; si++) {
+        const d = enemy.group.position.distanceTo(SUPPLY_POSITIONS[si])
+        if (d < nearestDist) { nearestDist = d; nearestIdx = si }
+      }
+      const sp = SUPPLY_POSITIONS[nearestIdx]
+      tx = sp.x; tz = sp.z; ty = sp.y + 15
+      if (nearestDist < 40) {
+        enemy.missileAmmo = 4
+        enemy.seekingSupply = false
+      }
+    } else {
+      enemy.orbitAngle += dt * 0.22
+      const r = 110 + i * 25
+      tx = player.position.x + Math.cos(enemy.orbitAngle) * r
+      tz = player.position.z + Math.sin(enemy.orbitAngle) * r
+      ty = player.position.y + 8 + Math.sin(enemy.orbitAngle * 0.6) * 20
+
+      enemy.fireCooldown -= dt
+      if (enemy.fireCooldown <= 0) {
+        if (enemy.missileAmmo > 0) {
+          enemy.fireCooldown = 5 + Math.random() * 4
+          fireEnemyMissile(enemy)
+        } else {
+          enemy.seekingSupply = true
+          enemy.fireCooldown = 3
+        }
+      }
+    }
+
     const dir = new THREE.Vector3(tx - enemy.group.position.x, ty - enemy.group.position.y, tz - enemy.group.position.z)
     if (dir.length() > 0.5) {
       dir.normalize()
@@ -680,8 +745,6 @@ function updateEnemies(dt: number) {
         new THREE.Quaternion().setFromUnitVectors(_fwd, flat.normalize()), 0.12
       )
     }
-    enemy.fireCooldown -= dt
-    if (enemy.fireCooldown <= 0) { enemy.fireCooldown = 5 + Math.random() * 4; fireEnemyMissile(enemy) }
   }
 }
 
@@ -738,8 +801,13 @@ function checkCollisions() {
     if (m.mesh.position.distanceTo(player.position) < 4) {
       createExplosion(m.mesh.position.clone(), 1.0); playExplosionSound(0.8)
       scene.remove(m.mesh); enemyMissiles.splice(mi, 1)
-      lives = Math.max(0, lives - 1); hitFlashTimer = 0.5
-      livesEl.textContent = lives > 0 ? '♥'.repeat(lives) : 'GAME OVER'; continue
+      if (invincibleTimer <= 0) {
+        playerHP = Math.max(0, playerHP - 1)
+        hitFlashTimer = 0.5
+        updateHPDisplay()
+        if (playerHP <= 0) respawnPlayer()
+      }
+      continue
     }
     if (m.diverted) {
       for (let fi = flares.length - 1; fi >= 0; fi--) {
@@ -759,13 +827,18 @@ const altEl      = document.getElementById('altitude')!
 const missileEl  = document.getElementById('missiles')!
 const flareEl    = document.getElementById('flares')!
 const scoreEl    = document.getElementById('score')!
-const livesEl    = document.getElementById('lives')!
 const hitOverlay = document.getElementById('hit-overlay') as HTMLDivElement
+const respawnOverlay = document.getElementById('respawn-overlay') as HTMLDivElement
+const supplyIndicator = document.getElementById('supply-indicator') as HTMLDivElement
 const warningEl  = document.getElementById('warning') as HTMLDivElement
 const reticleEl  = document.getElementById('reticle') as HTMLDivElement
 const boostFill  = document.getElementById('boost-fill') as HTMLDivElement
 const missilePips = document.getElementById('missile-pips')!
 const flarePips   = document.getElementById('flare-pips')!
+const hpFill  = document.getElementById('hp-fill') as HTMLDivElement
+const hpText  = document.getElementById('hp-text')!
+const radarCanvas = document.getElementById('radar') as HTMLCanvasElement
+const radarCtx = radarCanvas.getContext('2d')!
 
 // ピップ初期化
 function initPips(el: HTMLElement, count: number, cls: string) {
@@ -812,6 +885,131 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight)
   composer?.setSize(window.innerWidth, window.innerHeight)
 })
+
+// ===== HP / RESPAWN =====
+function updateHPDisplay() {
+  hpFill.style.width = `${(playerHP / MAX_HP) * 100}%`
+  hpFill.style.background = playerHP > 1
+    ? 'linear-gradient(90deg,#f44,#f80)'
+    : 'linear-gradient(90deg,#f00,#f44)'
+  hpText.textContent = `HP ${playerHP}/${MAX_HP}`
+}
+
+function respawnPlayer() {
+  playerHP = MAX_HP
+  player.position.set(0, 80, 0)
+  player.quaternion.identity()
+  camQuat.identity()
+  speed = 30
+  invincibleTimer = 3.0
+  respawnFlash = 0.8
+  // 近くの敵ミサイルを除去
+  for (let i = enemyMissiles.length - 1; i >= 0; i--) {
+    scene.remove(enemyMissiles[i].mesh); enemyMissiles.splice(i, 1)
+  }
+  updateHPDisplay()
+}
+
+// ===== SUPPLY POINTS =====
+let supplyIndicatorTimer = 0
+
+function updateSupplyPoints(dt: number) {
+  for (let i = 0; i < supplyMeshes.length; i++) {
+    supplyMeshes[i].rotation.y += dt * 1.2
+    supplyCooldowns[i] = Math.max(0, supplyCooldowns[i] - dt)
+
+    const dist = player.position.distanceTo(SUPPLY_POSITIONS[i])
+    if (dist < 38 && supplyCooldowns[i] <= 0) {
+      const prevMsl = missileAmmo, prevFlr = flareAmmo
+      missileAmmo = Math.min(6, missileAmmo + 3)
+      flareAmmo   = Math.min(8, flareAmmo   + 4)
+      if (missileAmmo !== prevMsl || flareAmmo !== prevFlr) {
+        missileEl.textContent = missileAmmo.toString()
+        flareEl.textContent   = flareAmmo.toString()
+        updatePips(missilePips, missileAmmo, 'on')
+        updatePips(flarePips,   flareAmmo,   'flare-on')
+        supplyCooldowns[i] = 20
+        supplyIndicatorTimer = 1.8
+      }
+    }
+  }
+  supplyIndicatorTimer = Math.max(0, supplyIndicatorTimer - dt)
+  supplyIndicator.style.display = supplyIndicatorTimer > 0 ? 'block' : 'none'
+}
+
+// ===== RADAR =====
+const RADAR_RANGE = 900
+const RADAR_R = 70
+
+function drawRadar() {
+  const ctx = radarCtx
+  const cx = 80, cy = 80
+
+  ctx.clearRect(0, 0, 160, 160)
+
+  // 背景円
+  ctx.fillStyle = 'rgba(0,15,8,0.75)'
+  ctx.beginPath(); ctx.arc(cx, cy, RADAR_R, 0, Math.PI * 2); ctx.fill()
+
+  // グリッド
+  ctx.strokeStyle = 'rgba(0,200,80,0.18)'
+  ctx.lineWidth = 0.5
+  for (const r of [0.35, 0.67, 1.0]) {
+    ctx.beginPath(); ctx.arc(cx, cy, RADAR_R * r, 0, Math.PI * 2); ctx.stroke()
+  }
+
+  // 十字線
+  ctx.strokeStyle = 'rgba(0,200,80,0.12)'
+  ctx.lineWidth = 0.5
+  ctx.beginPath(); ctx.moveTo(cx - RADAR_R, cy); ctx.lineTo(cx + RADAR_R, cy); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(cx, cy - RADAR_R); ctx.lineTo(cx, cy + RADAR_R); ctx.stroke()
+
+  // プレイヤーの向きに基づく回転角（XZ平面）
+  const fwd = _fwd.clone().applyQuaternion(player.quaternion)
+  const heading = Math.atan2(fwd.x, fwd.z)
+
+  function worldToRadar(pos: THREE.Vector3): [number, number] {
+    const rel = pos.clone().sub(player.position)
+    const rx = rel.x * Math.cos(-heading) - rel.z * Math.sin(-heading)
+    const rz = rel.x * Math.sin(-heading) + rel.z * Math.cos(-heading)
+    const scale = Math.min(1, Math.hypot(rx, rz) / RADAR_RANGE)
+    const norm = Math.hypot(rx, rz) > 0.01 ? Math.hypot(rx, rz) : 1
+    return [cx + (rx / norm) * scale * RADAR_R, cy - (rz / norm) * scale * RADAR_R]
+  }
+
+  // 補給ポイント（緑菱形）
+  for (const sp of SUPPLY_POSITIONS) {
+    if (sp.distanceTo(player.position) > RADAR_RANGE * 1.2) continue
+    const [px, py] = worldToRadar(sp)
+    ctx.fillStyle = '#0fa'
+    ctx.beginPath(); ctx.moveTo(px, py-4); ctx.lineTo(px+3, py); ctx.lineTo(px, py+4); ctx.lineTo(px-3, py); ctx.closePath(); ctx.fill()
+  }
+
+  // 敵（赤丸、ロック中は黄色）
+  for (const e of enemies) {
+    if (e.group.position.distanceTo(player.position) > RADAR_RANGE * 1.2) continue
+    const [px, py] = worldToRadar(e.group.position)
+    ctx.fillStyle = e === lockedEnemy ? '#ff0' : (e.seekingSupply ? '#f80' : '#f44')
+    ctx.beginPath(); ctx.arc(px, py, 3.5, 0, Math.PI * 2); ctx.fill()
+  }
+
+  // 敵ミサイル（オレンジ三角）
+  for (const m of enemyMissiles) {
+    if (m.mesh.position.distanceTo(player.position) > RADAR_RANGE) continue
+    const [px, py] = worldToRadar(m.mesh.position)
+    ctx.fillStyle = '#f80'
+    ctx.beginPath(); ctx.moveTo(px, py-3); ctx.lineTo(px+2.5, py+2); ctx.lineTo(px-2.5, py+2); ctx.closePath(); ctx.fill()
+  }
+
+  // 自機（水色矢印）
+  ctx.fillStyle = '#4cf'
+  ctx.beginPath(); ctx.moveTo(cx, cy-6); ctx.lineTo(cx+4, cy+4); ctx.lineTo(cx, cy+1); ctx.lineTo(cx-4, cy+4); ctx.closePath(); ctx.fill()
+
+  // 境界円
+  ctx.strokeStyle = 'rgba(0,200,80,0.45)'
+  ctx.lineWidth = 1.5
+  ctx.beginPath(); ctx.arc(cx, cy, RADAR_R, 0, Math.PI * 2); ctx.stroke()
+}
 
 // ===== GAME LOOP =====
 let last = performance.now()
@@ -879,11 +1077,35 @@ function loop() {
   checkCollisions()
   updateExplosions(dt)
   updateContrails()
+  updateSupplyPoints(dt)
 
-  // Camera
-  const desiredCam = cameraOffset.clone().applyQuaternion(player.quaternion).add(player.position)
-  camera.position.lerp(desiredCam, 0.1)
-  camera.lookAt(player.position)
+  // 無敵タイマー
+  if (invincibleTimer > 0) {
+    invincibleTimer -= dt
+    // 無敵中は点滅
+    player.visible = Math.floor(invincibleTimer * 8) % 2 === 0
+  } else {
+    player.visible = true
+  }
+
+  // リスポーン演出フラッシュ
+  respawnFlash = Math.max(0, respawnFlash - dt * 1.5)
+  respawnOverlay.style.opacity = respawnFlash.toString()
+
+  // Camera – quaternion slerp でジンバルロック解消
+  const desiredCamPos = cameraOffset.clone().applyQuaternion(player.quaternion).add(player.position)
+  camera.position.lerp(desiredCamPos, 0.12)
+  const playerUp = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion)
+  const lookM = new THREE.Matrix4().lookAt(camera.position, player.position, playerUp)
+  const tQ = new THREE.Quaternion().setFromRotationMatrix(lookM)
+  if (camQuat.dot(tQ) < 0) { tQ.x = -tQ.x; tQ.y = -tQ.y; tQ.z = -tQ.z; tQ.w = -tQ.w }
+  camQuat.slerp(tQ, 0.12)
+  camera.quaternion.copy(camQuat)
+
+  // 速度によるFOV拡大
+  const targetFOV = 65 + (speed / 58) * 20 + (boost ? 6 : 0)
+  camera.fov += (targetFOV - camera.fov) * dt * 4
+  camera.updateProjectionMatrix()
 
   if (audioReady) updateEngineSound(speed, boost)
 
@@ -895,6 +1117,7 @@ function loop() {
   boostFill.style.width = `${Math.min(100, (speed / 58) * 100)}%`
   updateReticle()
   updateWarning()
+  drawRadar()
 
   waterUniforms.time.value += dt
 
