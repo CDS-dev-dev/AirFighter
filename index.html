@@ -6,39 +6,282 @@
     <title>AirFighter</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { background: #000; overflow: hidden; }
-      canvas { display: block; }
-      #ui {
+      body { background: #000; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+      canvas { display: block; touch-action: none; }
+
+      /* ── ガラスパネル共通 ── */
+      .hud-panel {
         position: fixed;
-        top: 20px;
-        left: 20px;
-        color: #fff;
-        font-family: monospace;
-        font-size: 16px;
-        text-shadow: 1px 1px 2px #000;
+        background: rgba(10, 20, 35, 0.55);
+        border: 1px solid rgba(160, 220, 255, 0.18);
+        border-radius: 10px;
+        backdrop-filter: blur(6px);
         pointer-events: none;
+        color: #e8f4ff;
       }
-      #controls {
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
+
+      /* ── 左下：飛行データ ── */
+      #hud-flight {
+        bottom: 28px; left: 24px;
+        padding: 12px 18px;
+        min-width: 160px;
+      }
+      #hud-flight .row { display: flex; align-items: baseline; gap: 6px; line-height: 2.1; }
+      #hud-flight .label { font-size: 10px; letter-spacing: 2px; color: rgba(160,220,255,0.6); width: 34px; }
+      #hud-flight .val   { font-size: 22px; font-weight: 300; letter-spacing: 1px; color: #fff; }
+      #hud-flight .unit  { font-size: 10px; color: rgba(200,235,255,0.5); }
+
+      /* ── 右下：兵装 ── */
+      #hud-weapons {
+        bottom: 28px; right: 24px;
+        padding: 12px 18px;
+        min-width: 140px;
+        text-align: right;
+      }
+      #hud-weapons .row  { display: flex; align-items: center; justify-content: flex-end; gap: 8px; line-height: 2.1; }
+      #hud-weapons .label { font-size: 10px; letter-spacing: 2px; color: rgba(160,220,255,0.6); }
+      #hud-weapons .pips  { display: flex; gap: 3px; }
+      #hud-weapons .pip   { width: 8px; height: 8px; border-radius: 2px; background: rgba(255,255,255,0.2); transition: background 0.15s; }
+      #hud-weapons .pip.on { background: #4cf; box-shadow: 0 0 5px #4cf; }
+      #hud-weapons .pip.flare-on { background: #fa0; box-shadow: 0 0 5px #fa0; }
+
+      /* ── 右上：スコア ── */
+      #hud-score {
+        top: 20px; right: 24px;
+        padding: 10px 16px;
+        text-align: right;
+      }
+      #hud-score .score-val { font-size: 28px; font-weight: 200; letter-spacing: 3px; color: #fff; }
+      #hud-score .score-lbl { font-size: 9px; letter-spacing: 3px; color: rgba(160,220,255,0.5); margin-bottom: 2px; }
+      #hud-score .lives     { font-size: 14px; margin-top: 4px; letter-spacing: 2px; }
+
+      /* ── ミサイル警告 ── */
+      #warning {
+        position: fixed; top: 18%; left: 50%;
         transform: translateX(-50%);
-        color: #aaa;
-        font-family: monospace;
-        font-size: 13px;
+        pointer-events: none; display: none;
         text-align: center;
-        pointer-events: none;
       }
+      #warning .warn-text {
+        font-size: 13px; font-weight: 700; letter-spacing: 5px;
+        color: #ff4400; text-shadow: 0 0 16px #ff2200;
+        padding: 6px 20px;
+        border: 1px solid rgba(255,60,0,0.5);
+        border-radius: 4px;
+        background: rgba(255,30,0,0.08);
+        backdrop-filter: blur(2px);
+      }
+
+      /* ── ヒットフラッシュ ── */
+      #hit-overlay {
+        position: fixed; inset: 0;
+        background: radial-gradient(ellipse at center, transparent 40%, rgba(255,0,0,0.5) 100%);
+        pointer-events: none; opacity: 0;
+      }
+
+      /* ── ロックオン照準 ── */
+      #reticle {
+        position: fixed; width: 56px; height: 56px;
+        pointer-events: none; display: none;
+        transform: translate(-50%, -50%);
+      }
+      #reticle .arc {
+        position: absolute; inset: 0;
+        border: 1.5px solid #0f0;
+        border-radius: 50%;
+        border-top-color: transparent;
+        border-bottom-color: transparent;
+        animation: reticle-spin 1.8s linear infinite;
+      }
+      #reticle .arc2 {
+        position: absolute; inset: 8px;
+        border: 1.5px solid rgba(0,255,60,0.45);
+        border-radius: 50%;
+        border-left-color: transparent;
+        border-right-color: transparent;
+        animation: reticle-spin 1.2s linear infinite reverse;
+      }
+      #reticle .dot {
+        position: absolute; top: 50%; left: 50%;
+        width: 4px; height: 4px; border-radius: 50%;
+        background: #0f0; transform: translate(-50%, -50%);
+        box-shadow: 0 0 6px #0f0;
+      }
+      #reticle span {
+        position: absolute; bottom: -20px; left: 50%;
+        transform: translateX(-50%); color: #0f0;
+        font-size: 9px; font-family: monospace; letter-spacing: 2px; white-space: nowrap;
+      }
+      @keyframes reticle-spin { to { transform: rotate(360deg); } }
+
+      /* ── 操作ガイド ── */
+      #controls {
+        position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+        color: rgba(200,230,255,0.3); font-size: 10px; letter-spacing: 1px;
+        text-align: center; pointer-events: none; white-space: nowrap;
+      }
+
+      /* ── ブースト表示 ── */
+      #boost-bar {
+        position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+        width: 120px; height: 3px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 2px; pointer-events: none;
+        overflow: hidden;
+      }
+      #boost-fill {
+        height: 100%; width: 100%;
+        background: linear-gradient(90deg, #4cf, #0af);
+        border-radius: 2px;
+        transition: width 0.1s;
+        box-shadow: 0 0 6px #4cf;
+      }
+
+      /* ── タッチコントロール ── */
+      #touch-controls {
+        position: fixed; inset: 0;
+        pointer-events: none;
+        display: none;
+        z-index: 100;
+      }
+      @media (pointer: coarse) { #touch-controls { display: block; } }
+
+      #joystick-zone {
+        position: absolute;
+        left: 0; bottom: 0;
+        width: 50%; height: 62%;
+        pointer-events: all;
+        touch-action: none;
+      }
+
+      #joystick-base {
+        position: absolute;
+        width: 110px; height: 110px;
+        margin-left: -55px; margin-top: -55px;
+        border-radius: 50%;
+        border: 2px solid rgba(160,220,255,0.38);
+        background: rgba(10,20,40,0.22);
+        pointer-events: none; opacity: 0;
+        transition: opacity 0.1s;
+      }
+
+      #joystick-knob {
+        position: absolute;
+        width: 44px; height: 44px;
+        margin-left: -22px; margin-top: -22px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 38% 32%, rgba(210,240,255,0.92), rgba(70,150,235,0.65));
+        border: 1.5px solid rgba(160,220,255,0.72);
+        box-shadow: 0 0 14px rgba(100,200,255,0.48);
+        pointer-events: none; opacity: 0;
+        transition: opacity 0.1s;
+      }
+
+      #touch-btns {
+        position: absolute;
+        right: 16px; bottom: 130px;
+        display: grid;
+        grid-template-columns: 60px 60px;
+        gap: 8px;
+        pointer-events: all;
+      }
+
+      .tbtn {
+        height: 60px; border-radius: 12px;
+        background: rgba(10,20,35,0.58);
+        border: 1.5px solid rgba(160,220,255,0.22);
+        color: rgba(200,235,255,0.85);
+        font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        display: flex; align-items: center; justify-content: center;
+        backdrop-filter: blur(6px);
+        touch-action: none; user-select: none; -webkit-user-select: none;
+        transition: background 0.08s, box-shadow 0.08s;
+      }
+
+      #btn-boost { grid-column: 1 / -1; border-color: rgba(100,200,255,0.35); color: rgba(100,220,255,0.92); }
+      #btn-boost.pressed { background: rgba(20,80,140,0.72); box-shadow: 0 0 18px rgba(60,180,255,0.55); }
+      #btn-gun   { border-color: rgba(255,200,60,0.35);  color: rgba(255,205,65,0.95); }
+      #btn-gun.pressed   { background: rgba(80,50,8,0.72);   box-shadow: 0 0 12px rgba(255,185,0,0.48); }
+      #btn-msl   { border-color: rgba(255,80,40,0.35);   color: rgba(255,100,62,0.95); }
+      #btn-msl.pressed   { background: rgba(80,20,8,0.72);   box-shadow: 0 0 12px rgba(255,80,0,0.48); }
+      #btn-flr   { border-color: rgba(255,160,30,0.35);  color: rgba(255,168,52,0.95); }
+      #btn-flr.pressed   { background: rgba(80,46,5,0.72);   box-shadow: 0 0 12px rgba(255,142,0,0.42); }
+      #btn-lock  { border-color: rgba(50,230,80,0.35);   color: rgba(62,255,92,0.95); }
+      #btn-lock.pressed  { background: rgba(10,62,20,0.72);  box-shadow: 0 0 12px rgba(0,230,62,0.48); }
+
+      @media (pointer: coarse) { #controls { display: none; } }
     </style>
   </head>
   <body>
-    <div id="ui">
-      <div>SPEED: <span id="speed">0</span></div>
-      <div>ALT: <span id="altitude">0</span>m</div>
+    <div id="hit-overlay"></div>
+
+    <div id="warning">
+      <div class="warn-text">&#9651; MISSILE INCOMING &#9651;</div>
     </div>
-    <div id="controls">
-      WASD / Arrow Keys: Move &nbsp;|&nbsp; Space: Boost &nbsp;|&nbsp; Mouse: Look
+
+    <div id="reticle">
+      <div class="arc"></div>
+      <div class="arc2"></div>
+      <div class="dot"></div>
+      <span>LOCK</span>
     </div>
+
+    <!-- 飛行データ (左下) -->
+    <div class="hud-panel" id="hud-flight">
+      <div class="row">
+        <span class="label">SPD</span>
+        <span class="val" id="speed">0</span>
+        <span class="unit">km/h</span>
+      </div>
+      <div class="row">
+        <span class="label">ALT</span>
+        <span class="val" id="altitude">0</span>
+        <span class="unit">m</span>
+      </div>
+    </div>
+
+    <!-- 兵装 (右下) -->
+    <div class="hud-panel" id="hud-weapons">
+      <div class="row">
+        <span class="label">MSL</span>
+        <div class="pips" id="missile-pips"></div>
+      </div>
+      <div class="row">
+        <span class="label">FLR</span>
+        <div class="pips" id="flare-pips"></div>
+      </div>
+      <!-- JS参照用 (非表示) -->
+      <span id="missiles" style="display:none">6</span>
+      <span id="flares"   style="display:none">8</span>
+    </div>
+
+    <!-- スコア (右上) -->
+    <div class="hud-panel" id="hud-score">
+      <div class="score-lbl">SCORE</div>
+      <div class="score-val" id="score">0</div>
+      <div class="lives" id="lives">&#10084;&#10084;&#10084;</div>
+    </div>
+
+    <!-- ブーストバー (下中央) -->
+    <div id="boost-bar"><div id="boost-fill"></div></div>
+
+    <div id="controls">W/S · A/D · SPACE boost · Z gun · X missile · C flare · TAB lock</div>
+
+    <!-- タッチコントロール -->
+    <div id="touch-controls">
+      <div id="joystick-zone"></div>
+      <div id="joystick-base"></div>
+      <div id="joystick-knob"></div>
+      <div id="touch-btns">
+        <div class="tbtn" id="btn-lock">LOCK</div>
+        <div class="tbtn" id="btn-flr">FLR</div>
+        <div class="tbtn" id="btn-gun">GUN</div>
+        <div class="tbtn" id="btn-msl">MSL</div>
+        <div class="tbtn" id="btn-boost">BOOST</div>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
