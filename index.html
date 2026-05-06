@@ -144,80 +144,89 @@
         box-shadow: 0 0 6px #4cf;
       }
 
-      /* ── タッチコントロール ── */
+      /* ── タッチコントロール（横画面専用） ── */
       #touch-controls {
         position: fixed; inset: 0;
-        pointer-events: none;
-        display: none;
-        z-index: 100;
+        pointer-events: none; display: none; z-index: 100;
       }
       @media (pointer: coarse) { #touch-controls { display: block; } }
 
+      /* 左半分全体がジョイスティックゾーン */
       #joystick-zone {
-        position: absolute;
-        left: 0; bottom: 0;
-        width: 50%; height: 62%;
-        pointer-events: all;
-        touch-action: none;
+        position: absolute; left: 0; top: 0; width: 50%; height: 100%;
+        pointer-events: all; touch-action: none; z-index: 101;
       }
-
       #joystick-base {
-        position: absolute;
-        width: 110px; height: 110px;
-        margin-left: -55px; margin-top: -55px;
-        border-radius: 50%;
-        border: 2px solid rgba(160,220,255,0.38);
-        background: rgba(10,20,40,0.22);
-        pointer-events: none; opacity: 0;
-        transition: opacity 0.1s;
+        position: absolute; width: 110px; height: 110px;
+        margin-left: -55px; margin-top: -55px; border-radius: 50%;
+        border: 2px solid rgba(160,220,255,0.38); background: rgba(10,20,40,0.22);
+        pointer-events: none; opacity: 0; transition: opacity 0.1s; z-index: 102;
       }
-
       #joystick-knob {
-        position: absolute;
-        width: 44px; height: 44px;
-        margin-left: -22px; margin-top: -22px;
-        border-radius: 50%;
+        position: absolute; width: 44px; height: 44px;
+        margin-left: -22px; margin-top: -22px; border-radius: 50%;
         background: radial-gradient(circle at 38% 32%, rgba(210,240,255,0.92), rgba(70,150,235,0.65));
         border: 1.5px solid rgba(160,220,255,0.72);
         box-shadow: 0 0 14px rgba(100,200,255,0.48);
-        pointer-events: none; opacity: 0;
-        transition: opacity 0.1s;
+        pointer-events: none; opacity: 0; transition: opacity 0.1s; z-index: 102;
       }
 
-      #touch-btns {
-        position: absolute;
-        right: 16px; bottom: 130px;
-        display: grid;
-        grid-template-columns: 60px 60px;
-        gap: 8px;
-        pointer-events: all;
-      }
-
+      /* ボタン共通 */
       .tbtn {
-        height: 60px; border-radius: 12px;
-        background: rgba(10,20,35,0.58);
-        border: 1.5px solid rgba(160,220,255,0.22);
-        color: rgba(200,235,255,0.85);
+        border-radius: 12px; background: rgba(10,20,35,0.60);
+        border: 1.5px solid rgba(160,220,255,0.22); color: rgba(200,235,255,0.85);
         font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
         font-family: 'Segoe UI', system-ui, sans-serif;
         display: flex; align-items: center; justify-content: center;
         backdrop-filter: blur(6px);
         touch-action: none; user-select: none; -webkit-user-select: none;
         transition: background 0.08s, box-shadow 0.08s;
+        pointer-events: all; z-index: 103;
       }
 
-      #btn-boost { grid-column: 1 / -1; border-color: rgba(100,200,255,0.35); color: rgba(100,220,255,0.92); }
+      /* 左上：BOOST（左手人差し指） */
+      #btn-boost {
+        position: absolute; top: 14px; left: 14px; width: 82px; height: 52px;
+        border-color: rgba(100,200,255,0.40); color: rgba(100,220,255,0.92);
+      }
       #btn-boost.pressed { background: rgba(20,80,140,0.72); box-shadow: 0 0 18px rgba(60,180,255,0.55); }
-      #btn-gun   { border-color: rgba(255,200,60,0.35);  color: rgba(255,205,65,0.95); }
-      #btn-gun.pressed   { background: rgba(80,50,8,0.72);   box-shadow: 0 0 12px rgba(255,185,0,0.48); }
-      #btn-msl   { border-color: rgba(255,80,40,0.35);   color: rgba(255,100,62,0.95); }
-      #btn-msl.pressed   { background: rgba(80,20,8,0.72);   box-shadow: 0 0 12px rgba(255,80,0,0.48); }
-      #btn-flr   { border-color: rgba(255,160,30,0.35);  color: rgba(255,168,52,0.95); }
-      #btn-flr.pressed   { background: rgba(80,46,5,0.72);   box-shadow: 0 0 12px rgba(255,142,0,0.42); }
-      #btn-lock  { border-color: rgba(50,230,80,0.35);   color: rgba(62,255,92,0.95); }
-      #btn-lock.pressed  { background: rgba(10,62,20,0.72);  box-shadow: 0 0 12px rgba(0,230,62,0.48); }
+
+      /* 右上：LOCK */
+      #btn-lock {
+        position: absolute; top: 14px; right: 14px; width: 82px; height: 52px;
+        border-color: rgba(50,230,80,0.38); color: rgba(62,255,92,0.95);
+      }
+      #btn-lock.pressed { background: rgba(10,62,20,0.72); box-shadow: 0 0 14px rgba(0,230,62,0.50); }
+
+      /* 左下：GUN FLR MSL 横並び */
+      #touch-combat {
+        position: absolute; bottom: 14px; left: 14px;
+        display: flex; gap: 8px; z-index: 103;
+      }
+      #touch-combat .tbtn { width: 70px; height: 58px; }
+
+      #btn-gun { border-color: rgba(255,200,60,0.38); color: rgba(255,205,65,0.95); }
+      #btn-gun.pressed { background: rgba(80,50,8,0.72);  box-shadow: 0 0 12px rgba(255,185,0,0.50); }
+      #btn-flr { border-color: rgba(255,160,30,0.38); color: rgba(255,168,52,0.95); }
+      #btn-flr.pressed { background: rgba(80,46,5,0.72);  box-shadow: 0 0 12px rgba(255,142,0,0.45); }
+      #btn-msl { border-color: rgba(255,80,40,0.38);  color: rgba(255,100,62,0.95); }
+      #btn-msl.pressed { background: rgba(80,20,8,0.72);  box-shadow: 0 0 12px rgba(255,80,0,0.50); }
 
       @media (pointer: coarse) { #controls { display: none; } }
+
+      /* 縦画面：回転促進オーバーレイ */
+      #rotate-hint {
+        display: none; position: fixed; inset: 0;
+        background: rgba(3,8,15,0.96); z-index: 999;
+        flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+        color: rgba(160,220,255,0.85); font-family: 'Segoe UI', system-ui, sans-serif;
+      }
+      #rotate-hint .ri-icon { font-size: 54px; animation: ri-spin 2.2s ease-in-out infinite; }
+      #rotate-hint .ri-text { font-size: 13px; letter-spacing: 3px; }
+      @keyframes ri-spin {
+        0%, 35% { transform: rotate(0deg); } 65%, 100% { transform: rotate(90deg); }
+      }
+      @media (pointer: coarse) and (orientation: portrait) { #rotate-hint { display: flex; } }
     </style>
   </head>
   <body>
@@ -280,13 +289,21 @@
       <div id="joystick-zone"></div>
       <div id="joystick-base"></div>
       <div id="joystick-knob"></div>
-      <div id="touch-btns">
-        <div class="tbtn" id="btn-lock">LOCK</div>
-        <div class="tbtn" id="btn-flr">FLR</div>
+      <!-- 左上：BOOST（左手人差し指） -->
+      <div class="tbtn" id="btn-boost">BOOST</div>
+      <!-- 右上：LOCK -->
+      <div class="tbtn" id="btn-lock">LOCK</div>
+      <!-- 左下：戦闘ボタン -->
+      <div id="touch-combat">
         <div class="tbtn" id="btn-gun">GUN</div>
+        <div class="tbtn" id="btn-flr">FLR</div>
         <div class="tbtn" id="btn-msl">MSL</div>
-        <div class="tbtn" id="btn-boost">BOOST</div>
       </div>
+    </div>
+    <!-- 縦画面メッセージ -->
+    <div id="rotate-hint">
+      <div class="ri-icon">&#8635;</div>
+      <div class="ri-text">横画面にしてください</div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

@@ -354,8 +354,8 @@ function setupTouchControls() {
       let dx = t.clientX - ox, dy = t.clientY - oy
       const d = Math.hypot(dx, dy)
       if (d > MAX_R) { dx = dx / d * MAX_R; dy = dy / d * MAX_R }
-      touchState.yaw   = dx / MAX_R
-      touchState.pitch = dy / MAX_R
+      touchState.yaw   =  dx / MAX_R
+      touchState.pitch = -dy / MAX_R  // 上スワイプ→上昇
       knob.style.left = (ox + dx) + 'px'
       knob.style.top  = (oy + dy) + 'px'
     }
@@ -395,6 +395,11 @@ function setupTouchControls() {
   tapBtn('btn-lock', () => { touchState.lockPressed    = true })
 }
 setupTouchControls()
+
+// 横画面ロック（対応デバイスのみ）
+if (screen.orientation && typeof (screen.orientation as any).lock === 'function') {
+  ;(screen.orientation as any).lock('landscape').catch(() => {})
+}
 
 // ===== AUDIO =====
 let audioCtx: AudioContext | null = null
