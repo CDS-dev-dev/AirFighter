@@ -508,7 +508,7 @@ function playExplosionSound(scale = 1.0) {
 
 // ===== GAME OBJECTS =====
 interface Projectile { mesh: THREE.Object3D; vel: THREE.Vector3; life: number }
-interface HomingMissile extends Projectile { mesh: THREE.Group; target: THREE.Object3D | null; diverted: boolean; spd: number }
+interface HomingMissile extends Projectile { mesh: THREE.Group; target: THREE.Object3D | null; diverted: boolean; spd: number; turnRate: number }
 interface Enemy { group: THREE.Group; health: number; orbitAngle: number; fireCooldown: number; missileAmmo: number; seekingSupply: boolean }
 interface Explosion { particles: Array<{ mesh: THREE.Mesh; vel: THREE.Vector3 }>; life: number }
 
@@ -604,7 +604,7 @@ function firePlayerMissile() {
   mesh.position.copy(player.position).add(new THREE.Vector3(0, -0.5, 2).applyQuaternion(player.quaternion))
   mesh.quaternion.copy(player.quaternion)
   scene.add(mesh)
-  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(80), life: 12, target, diverted: false, spd: 95 })
+  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(80), life: 12, target, diverted: false, spd: 95, turnRate: 1.8 })
   playMissileSound()
 }
 
@@ -616,7 +616,7 @@ function fireEnemyMissile(enemy: Enemy) {
   const toPlayer = player.position.clone().sub(enemy.group.position).normalize()
   mesh.quaternion.setFromUnitVectors(_fwd, toPlayer)
   scene.add(mesh)
-  enemyMissiles.push({ mesh, vel: toPlayer.clone().multiplyScalar(70), life: 15, target: player, diverted: false, spd: 75 })
+  enemyMissiles.push({ mesh, vel: toPlayer.clone().multiplyScalar(70), life: 15, target: player, diverted: false, spd: 75, turnRate: 1.4 })
 }
 
 function dropFlare() {
@@ -643,8 +643,21 @@ function updateHoming(m: HomingMissile, dt: number) {
     if (bestFlare) { m.target = bestFlare.mesh; m.diverted = true }
   }
   if (m.target) {
-    const dir = m.vel.clone().normalize().lerp(m.target.position.clone().sub(m.mesh.position).normalize(), 2.5 * dt).normalize()
-    m.vel.copy(dir).multiplyScalar(m.spd)
+    const currentDir = m.vel.clone().normalize()
+    const toTarget = m.target.position.clone().sub(m.mesh.position)
+    const targetDir = toTarget.normalize()
+    const angle = currentDir.angleTo(targetDir)
+
+    // 目標が後方120°超 → 追尾ロスト（Uターン不可）
+    if (angle > Math.PI * 0.67) {
+      m.target = null
+    } else {
+      // 最大旋回角を dt ごとに制限（Uターン防止）
+      const maxTurn = m.turnRate * dt
+      const lerpFactor = angle > 0.001 ? Math.min(maxTurn, angle) / angle : 0
+      const newDir = currentDir.lerp(targetDir, lerpFactor).normalize()
+      m.vel.copy(newDir).multiplyScalar(m.spd)
+    }
   }
   m.life -= dt
   m.mesh.position.addScaledVector(m.vel, dt)

@@ -146,10 +146,13 @@
 
       /* ── レーダー ── */
       #radar-wrap {
-        position: fixed; top: 150px; right: 24px;
+        position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
         pointer-events: none;
       }
       #radar { border-radius: 50%; opacity: 0.88; }
+      @media (pointer: coarse) {
+        #radar { width: 110px; height: 110px; }
+      }
 
       /* ── HP バー ── */
       .hp-bar {
@@ -232,9 +235,9 @@
       }
       #btn-lock.pressed { background: rgba(10,62,20,0.72); box-shadow: 0 0 14px rgba(0,230,62,0.50); }
 
-      /* 左下：GUN FLR MSL 横並び */
+      /* 右下：GUN FLR MSL 横並び */
       #touch-combat {
-        position: absolute; bottom: 14px; left: 14px;
+        position: absolute; bottom: 14px; right: 14px;
         display: flex; gap: 8px; z-index: 103;
       }
       #touch-combat .tbtn { width: 70px; height: 58px; }
