@@ -78,10 +78,24 @@ scene.add(engineLight)
 
 // ===== TERRAIN =====
 function terrainH(x: number, z: number): number {
-  return Math.sin(x * 0.003) * Math.cos(z * 0.002) * 38
-       + Math.sin(x * 0.008 + z * 0.006) * 16
-       + Math.sin(x * 0.02 + 1.3) * Math.cos(z * 0.017) * 7
-       + Math.max(0, Math.sin(x * 0.0015 + z * 0.001) * 90 - 50)
+  let h = Math.sin(x * 0.003) * Math.cos(z * 0.002) * 50
+         + Math.sin(x * 0.008 + z * 0.006) * 22
+         + Math.sin(x * 0.02 + 1.3) * Math.cos(z * 0.017) * 10
+         + Math.max(0, Math.sin(x * 0.0015 + z * 0.001) * 130 - 65)
+
+  // 渓谷1: x≈400 に沿ってN-S方向（ミサイル回避の主要ルート）
+  const d1 = Math.abs(x - 400)
+  if (d1 < 140) h -= Math.pow(Math.max(0, 1 - d1/140), 1.8) * 110
+
+  // 渓谷2: 斜め（北西〜南東）
+  const d2 = Math.abs(x * 0.8 + z * 0.6 + 300)
+  if (d2 < 110) h -= Math.pow(Math.max(0, 1 - d2/110), 1.8) * 85
+
+  // 西部高台（安全地帯）
+  const pd = Math.hypot(x + 400, z - 650)
+  if (pd < 380) h += Math.pow(Math.max(0, 1 - pd/380), 1.5) * 62
+
+  return h
 }
 
 function mkGroundTex(): THREE.CanvasTexture {
@@ -101,7 +115,7 @@ function mkGroundTex(): THREE.CanvasTexture {
   return t
 }
 
-const terrainGeo = new THREE.PlaneGeometry(8000, 8000, 128, 128)
+const terrainGeo = new THREE.PlaneGeometry(8000, 8000, 192, 192)
 terrainGeo.rotateX(-Math.PI / 2)
 const tPos = terrainGeo.attributes.position as THREE.BufferAttribute
 const tCol = new Float32Array(tPos.count * 3)
@@ -112,12 +126,14 @@ for (let i = 0; i < tPos.count; i++) {
   // 横方向の色ノイズで単調さを回避
   const v = Math.sin(x * 0.042 + z * 0.063) * 0.06 + Math.sin(x * 0.11 - z * 0.09) * 0.04
   let r: number, g: number, b: number
-  if (y < 0)        { r=0.18+v; g=0.52+v; b=0.62 }   // 水際・湿地（青緑）
-  else if (y < 6)   { r=0.28+v; g=0.76+v; b=0.22 }   // 低地・明るい草原
-  else if (y < 18)  { r=0.24+v; g=0.65+v; b=0.17 }   // 中腹・濃い草
-  else if (y < 35)  { r=0.26+v; g=0.58+v; b=0.14+v } // 丘・やや暗い緑
-  else if (y < 55)  { r=0.55+v; g=0.48+v; b=0.30+v } // 岩場・褐色
-  else              { r=0.74+v; g=0.72+v; b=0.70 }    // 高山・石灰色
+  if (y < -45)      { r=0.30+v; g=0.25+v; b=0.22 }   // 深谷岩盤
+  else if (y < -5)  { r=0.22+v; g=0.48+v; b=0.35 }   // 渓谷底・湿岩
+  else if (y < 8)   { r=0.28+v; g=0.74+v; b=0.22 }   // 低地草原
+  else if (y < 25)  { r=0.24+v; g=0.63+v; b=0.17 }   // 中腹草
+  else if (y < 48)  { r=0.26+v; g=0.56+v; b=0.14+v } // 高丘
+  else if (y < 75)  { r=0.54+v; g=0.46+v; b=0.28+v } // 岩場
+  else if (y < 105) { r=0.70+v; g=0.67+v; b=0.62 }   // 高山
+  else              { r=0.90+v; g=0.89+v; b=0.94 }    // 雪頂
   tCol[i*3]   = Math.max(0, Math.min(1, r))
   tCol[i*3+1] = Math.max(0, Math.min(1, g))
   tCol[i*3+2] = Math.max(0, Math.min(1, b))
@@ -185,8 +201,9 @@ const foliIM  = new THREE.InstancedMesh(new THREE.ConeGeometry(3.8,8,7),        
 trunkIM.castShadow = foliIM.castShadow = true
 const _d = new THREE.Object3D()
 for (let i = 0; i < TREE_COUNT; i++) {
-  const tx = (Math.random()-0.5)*1600, tz = (Math.random()-0.5)*1600
+  const tx = (Math.random()-0.5)*1800, tz = (Math.random()-0.5)*1800
   const ty = terrainH(tx, tz)
+  if (ty < 3) { i--; continue }  // 水面下・渓谷底には植樹しない
   const s = 0.7 + Math.random()*0.7
   _d.position.set(tx, ty+2*s, tz); _d.scale.setScalar(s); _d.rotation.y = Math.random()*Math.PI*2; _d.updateMatrix()
   trunkIM.setMatrixAt(i, _d.matrix)
@@ -196,12 +213,69 @@ for (let i = 0; i < TREE_COUNT; i++) {
 trunkIM.instanceMatrix.needsUpdate = true; foliIM.instanceMatrix.needsUpdate = true
 scene.add(trunkIM); scene.add(foliIM)
 
+// ===== ROCK PILLARS =====
+const pillarMat    = new THREE.MeshStandardMaterial({ color: 0x7a6855, roughness: 0.96, metalness: 0 })
+const pillarCapMat = new THREE.MeshStandardMaterial({ color: 0x9a8870, roughness: 0.93, metalness: 0 })
+
+const PILLAR_CLUSTERS: Array<{ cx:number; cz:number; n:number }> = [
+  { cx:  430, cz:  550, n: 14 },  // 渓谷1 北出口
+  { cx:  380, cz: -250, n: 12 },  // 渓谷1 南
+  { cx: -180, cz: -400, n: 11 },  // 斜め渓谷沿い
+  { cx:  860, cz:  280, n:  9 },  // 東平原
+  { cx: -560, cz:  320, n:  8 },  // 高台西麓
+]
+for (const cl of PILLAR_CLUSTERS) {
+  for (let j = 0; j < cl.n; j++) {
+    const px = cl.cx + (Math.random()-0.5) * 250
+    const pz = cl.cz + (Math.random()-0.5) * 250
+    const ph = terrainH(px, pz)
+    const ht = 40 + Math.random() * 70
+    const rb = 8 + Math.random() * 14
+    const rt = rb * (0.38 + Math.random() * 0.32)
+    const sides = 5 + Math.floor(Math.random() * 3)
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, ht, sides), pillarMat)
+    body.position.set(px, ph + ht/2, pz); body.rotation.y = Math.random()*Math.PI; body.castShadow = true; scene.add(body)
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(rt*0.45, rt*1.15, rb*0.55, sides), pillarCapMat)
+    cap.position.set(px, ph + ht + rb*0.28, pz); cap.rotation.y = Math.random()*Math.PI; cap.castShadow = true; scene.add(cap)
+  }
+}
+
+// 孤立高塔（遠くから見えるランドマーク）
+;[[410,-600,120,12],[-820,420,140,10],[1300,-100,110,14]].forEach(([px,pz,ht,rb]) => {
+  const ph = terrainH(px, pz)
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(rb*0.3, rb, ht, 6), pillarMat)
+  body.position.set(px, ph+ht/2, pz); body.castShadow=true; scene.add(body)
+})
+
+// ===== ARCHES =====
+const archMat = new THREE.MeshStandardMaterial({ color: 0x6a5848, roughness: 0.97, metalness: 0 })
+function mkArch(x: number, z: number, w: number, h: number, thick: number, rotY: number) {
+  const base = terrainH(x, z)
+  const g = new THREE.Group()
+  const pillarGeo = new THREE.BoxGeometry(thick, h, thick)
+  const beamGeo   = new THREE.BoxGeometry(w + thick*2, thick*0.85, thick)
+  const lp = new THREE.Mesh(pillarGeo, archMat); lp.position.set(-(w+thick)/2, h/2, 0); lp.castShadow=true; g.add(lp)
+  const rp = new THREE.Mesh(pillarGeo, archMat); rp.position.set( (w+thick)/2, h/2, 0); rp.castShadow=true; g.add(rp)
+  const tb = new THREE.Mesh(beamGeo,   archMat); tb.position.set(0, h, 0);               tb.castShadow=true; g.add(tb)
+  g.position.set(x, base, z); g.rotation.y = rotY; scene.add(g)
+}
+// 渓谷1内（Z方向に飛行で通過）
+mkArch( 405,  130, 90, 55, 17, 0)
+mkArch( 395, -110, 82, 50, 16, 0.08)
+mkArch( 420,  580, 95, 60, 18, 0.05)
+// 斜め渓谷内（-0.64 rad で進行方向に正対）
+mkArch(-160, -310, 86, 52, 16, -0.64)
+mkArch(-240, -470, 78, 48, 15, -0.60)
+// 平原・高地の孤立アーチ
+mkArch( 700,  420, 98, 64, 20, 1.3)
+mkArch(-680,   30, 80, 52, 16, -0.5)
+
 // ===== SUPPLY POINTS =====
 const SUPPLY_POSITIONS: THREE.Vector3[] = [
-  new THREE.Vector3( 420,  0,  180),
-  new THREE.Vector3(-360,  0, -310),
-  new THREE.Vector3( 100,  0, -520),
-  new THREE.Vector3(-150,  0,  450),
+  new THREE.Vector3( 408,  0,  420),   // 渓谷1底（低高度・危険だが隠れやすい）
+  new THREE.Vector3(-370,  0,  680),   // 西部高台（高高度・広い視界）
+  new THREE.Vector3( 960,  0, -180),   // 山岳基地（中高度）
+  new THREE.Vector3(-850,  0, -320),   // 海岸平野（低高度・開けた場所）
 ]
 SUPPLY_POSITIONS.forEach(p => { p.y = terrainH(p.x, p.z) + 18 })
 
