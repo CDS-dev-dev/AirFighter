@@ -288,6 +288,77 @@
         #boost-bar { bottom: 14px; left: 50%; }
       }
 
+      /* ===== モード選択画面 ===== */
+      #mode-screen {
+        position: fixed; inset: 0; z-index: 500;
+        background: linear-gradient(160deg, #020b1a 0%, #081830 55%, #030d1e 100%);
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+      }
+      .ms-title {
+        font-size: 48px; font-weight: 100; letter-spacing: 14px;
+        color: #e8f4ff; text-shadow: 0 0 50px rgba(60,160,255,0.55);
+        font-family: 'Segoe UI', system-ui;
+      }
+      .ms-sub { font-size: 10px; letter-spacing: 5px; color: rgba(120,190,255,0.45); }
+      .ms-grid {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+        max-width: 660px; width: 92%;
+      }
+      .ms-btn {
+        background: rgba(8,22,48,0.82);
+        border: 1px solid rgba(60,140,255,0.2);
+        border-radius: 12px; padding: 18px 10px;
+        cursor: pointer; text-align: center;
+        display: flex; flex-direction: column; align-items: center; gap: 7px;
+        transition: background 0.13s, border-color 0.13s, transform 0.1s;
+        backdrop-filter: blur(10px); color: #e8f4ff;
+      }
+      .ms-btn:hover  { background: rgba(18,48,110,0.88); border-color: rgba(80,170,255,0.5); transform: translateY(-2px); }
+      .ms-btn:active { transform: scale(0.95); }
+      .ms-icon { font-size: 26px; line-height: 1; }
+      .ms-name { font-size: 12px; font-weight: 700; letter-spacing: 1px; }
+      .ms-desc { font-size: 9px; color: rgba(140,210,255,0.5); letter-spacing: 0.5px; }
+      .ms-btn[data-mode="dogfight"] { border-color: rgba(60,140,255,0.35); }
+      .ms-btn[data-mode="base"]     { border-color: rgba(60,220,120,0.35); }
+      .ms-btn[data-mode="fleet"]    { border-color: rgba(40,160,255,0.35); }
+      .ms-btn[data-mode="bomber"]   { border-color: rgba(200,160,60,0.35); }
+      .ms-btn[data-mode="tank"]     { border-color: rgba(120,200,80,0.35); }
+      .ms-btn[data-mode="free"]     { border-color: rgba(80,220,200,0.35); }
+
+      /* ===== ミッション完了 ===== */
+      #mission-complete {
+        position: fixed; inset: 0; z-index: 400;
+        background: rgba(0,8,20,0.88); backdrop-filter: blur(10px);
+        flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+        display: none;
+      }
+      .mc-text {
+        font-size: 36px; font-weight: 100; letter-spacing: 12px; color: #4cf;
+        text-shadow: 0 0 40px rgba(0,200,255,0.7);
+      }
+      .mc-score { font-size: 20px; letter-spacing: 4px; color: rgba(200,240,255,0.8); }
+      .mc-back {
+        margin-top: 10px; padding: 11px 28px;
+        background: rgba(16,48,110,0.8); border: 1px solid rgba(60,160,255,0.42);
+        border-radius: 8px; color: #e8f4ff; font-size: 11px; letter-spacing: 3px; cursor: pointer;
+        font-family: 'Segoe UI', system-ui;
+      }
+      .mc-back:hover { background: rgba(24,64,150,0.88); }
+
+      /* ===== 目標HUD（左上） ===== */
+      #objective-hud {
+        top: 20px; left: 24px; padding: 8px 14px; display: none;
+      }
+      #objective-hud .obj-lbl { font-size: 8px; letter-spacing: 3px; color: rgba(160,220,255,0.5); }
+      #objective-hud .obj-val { font-size: 12px; letter-spacing: 1px; color: #e8f4ff; margin-top: 2px; }
+
+      @media (pointer: coarse) {
+        .ms-grid { grid-template-columns: repeat(2, 1fr); max-width: 440px; }
+        .ms-title { font-size: 34px; letter-spacing: 8px; }
+        .ms-btn { padding: 14px 8px; gap: 5px; }
+        #objective-hud { top: 80px; left: 12px; }
+      }
+
       /* 縦画面：回転促進オーバーレイ */
       #rotate-hint {
         display: none; position: fixed; inset: 0;
@@ -414,6 +485,55 @@
     <div id="supply-indicator">RESUPPLY</div>
     <!-- リスポーン演出 -->
     <div id="respawn-overlay"></div>
+
+    <!-- ゲームモード選択 -->
+    <div id="mode-screen">
+      <div class="ms-title">AirFighter</div>
+      <div class="ms-sub">SELECT MISSION MODE</div>
+      <div class="ms-grid">
+        <button class="ms-btn" data-mode="dogfight">
+          <span class="ms-icon">&#9992;</span>
+          <span class="ms-name">ドッグファイト</span>
+          <span class="ms-desc">敵機を撃墜せよ</span>
+        </button>
+        <button class="ms-btn" data-mode="base">
+          <span class="ms-icon">&#9726;</span>
+          <span class="ms-name">基地攻撃</span>
+          <span class="ms-desc">地上目標を破壊せよ</span>
+        </button>
+        <button class="ms-btn" data-mode="fleet">
+          <span class="ms-icon">&#9875;</span>
+          <span class="ms-name">艦船攻撃</span>
+          <span class="ms-desc">敵艦隊を撃滅せよ</span>
+        </button>
+        <button class="ms-btn" data-mode="bomber">
+          <span class="ms-icon">&#9993;</span>
+          <span class="ms-name">大型機迎撃</span>
+          <span class="ms-desc">爆撃機を阻止せよ</span>
+        </button>
+        <button class="ms-btn" data-mode="tank">
+          <span class="ms-icon">&#9651;</span>
+          <span class="ms-name">戦車破壊</span>
+          <span class="ms-desc">装甲部隊を殲滅せよ</span>
+        </button>
+        <button class="ms-btn" data-mode="free">
+          <span class="ms-icon">&#9711;</span>
+          <span class="ms-name">フリーフライト</span>
+          <span class="ms-desc">自由に飛行する</span>
+        </button>
+      </div>
+    </div>
+    <!-- ミッション完了 -->
+    <div id="mission-complete">
+      <div class="mc-text">MISSION COMPLETE</div>
+      <div class="mc-score" id="mc-score"></div>
+      <button class="mc-back" id="mc-back">モード選択に戻る</button>
+    </div>
+    <!-- 目標HUD -->
+    <div class="hud-panel" id="objective-hud">
+      <div class="obj-lbl">OBJECTIVE</div>
+      <div class="obj-val" id="objective-text"></div>
+    </div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

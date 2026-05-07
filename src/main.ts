@@ -537,6 +537,40 @@ SUPPLY_POSITIONS.forEach(pos => {
   light.position.copy(pos); scene.add(light)
 })
 
+// ===== CENTER AREA STRUCTURES（マップ中央の建造物・廃墟） =====
+;(() => {
+  const conMat = new THREE.MeshStandardMaterial({ color: 0x8a7e6e, roughness: 0.94, metalness: 0.0 })
+  const metalMat = new THREE.MeshStandardMaterial({ color: 0x5a6a78, roughness: 0.72, metalness: 0.55 })
+  // 格納庫群
+  const structs: [number, number, number, number, number][] = [
+    [75, 0, 55, 38, 16], [-85, 0, -35, 32, 13], [155, 0, 25, 24, 11],
+    [155, 0, 72, 24, 11], [-130, 0, 105, 28, 14], [-55, 0, 125, 18, 9],
+    [95, 0, -130, 20, 9], [-10, 0, -90, 26, 12],
+  ]
+  for (const [x, _y, z, w, h] of structs) {
+    void _y
+    const ty = terrainH(x, z)
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, w * 1.6), conMat)
+    m.position.set(x, ty + h/2, z); m.rotation.y = Math.random() * 0.5 - 0.25
+    m.castShadow = true; m.receiveShadow = true; scene.add(m)
+  }
+  // 管制塔
+  const tx = 48, tz = -75, ty = terrainH(tx, tz)
+  const tower = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.5, 38, 8), metalMat)
+  tower.position.set(tx, ty + 19, tz); tower.castShadow = true; scene.add(tower)
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 2.5, 4, 8), metalMat)
+  cap.position.set(tx, ty + 40, tz); scene.add(cap)
+  // 防壁リング
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2, r = 185 + Math.random() * 45
+    const wx = Math.cos(a) * r, wz = Math.sin(a) * r
+    const wy = terrainH(wx, wz)
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(2.2, 5 + Math.random() * 4, 14 + Math.random() * 8), conMat)
+    wall.position.set(wx, wy + 4, wz); wall.rotation.y = a + Math.PI/2
+    wall.castShadow = true; scene.add(wall)
+  }
+})()
+
 // ===== FACTORIES =====
 function createAircraft(bodyColor: number, darkColor: number): THREE.Group {
   const g = new THREE.Group()
@@ -827,10 +861,17 @@ function playExplosionSound(scale = 1.0) {
 }
 
 // ===== GAME OBJECTS =====
+type GameMode = 'dogfight' | 'base' | 'fleet' | 'bomber' | 'tank' | 'free'
+let currentMode: GameMode | null = null
+let missionComplete = false
+let modeObjectiveTotal = 0
+let modeObjectiveKilled = 0
+
 interface Projectile { mesh: THREE.Object3D; vel: THREE.Vector3; life: number }
 interface HomingMissile extends Projectile { mesh: THREE.Group; target: THREE.Object3D | null; diverted: boolean; spd: number; turnRate: number; light: THREE.PointLight | null }
 interface Enemy { group: THREE.Group; health: number; orbitAngle: number; fireCooldown: number; missileAmmo: number; seekingSupply: boolean }
 interface Explosion { particles: Array<{ mesh: THREE.Mesh; vel: THREE.Vector3 }>; life: number }
+interface GroundTarget { group: THREE.Group; health: number; maxHealth: number; vel: THREE.Vector3 }
 
 const bullets: Projectile[] = []
 const playerMissiles: HomingMissile[] = []
@@ -838,6 +879,7 @@ const enemyMissiles: HomingMissile[] = []
 const flares: Projectile[] = []
 const enemies: Enemy[] = []
 const explosions: Explosion[] = []
+const groundTargets: GroundTarget[] = []
 
 let missileAmmo = 6, flareAmmo = 8, score = 0
 let gunCooldown = 0, pMissileCooldown = 0, flareCooldown = 0
@@ -881,10 +923,10 @@ function killEnemy(ei: number) {
   scene.remove(enemies[ei].group)
   enemies.splice(ei, 1)
   score++; scoreEl.textContent = score.toString()
-  setTimeout(() => spawnEnemy(), 4000)
+  if (currentMode === 'dogfight') setTimeout(() => spawnEnemy(), 4000)
 }
 
-for (let i = 0; i < 3; i++) spawnEnemy()
+// 敵はstartGame()で生成される
 
 // ===== WEAPONS =====
 function fireGun() {
@@ -924,6 +966,7 @@ function firePlayerMissile() {
   const target: THREE.Object3D | null = lockedEnemy?.group ?? (() => {
     let nearest: THREE.Object3D | null = null, minD = Infinity
     for (const e of enemies) { const d = e.group.position.distanceTo(player.position); if (d < minD) { minD = d; nearest = e.group } }
+    for (const gt of groundTargets) { const d = gt.group.position.distanceTo(player.position); if (d < minD) { minD = d; nearest = gt.group } }
     return nearest
   })()
 
@@ -964,6 +1007,257 @@ function dropFlare() {
   flares.push({ mesh, vel: backward, life: 7.0 })
   playFlareSound()
 }
+
+// ===== GROUND TARGET MODELS =====
+function createBaseTarget(): THREE.Group {
+  const g = new THREE.Group()
+  const bldMat = new THREE.MeshStandardMaterial({ color: 0x556644, roughness: 0.92, metalness: 0.1 })
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x3a4432, roughness: 0.95 })
+  const b1 = new THREE.Mesh(new THREE.BoxGeometry(20, 14, 26), bldMat); b1.position.y = 7; b1.castShadow = true; g.add(b1)
+  const b2 = new THREE.Mesh(new THREE.BoxGeometry(12, 9, 16), bldMat); b2.position.set(-15, 4.5, 5); b2.castShadow = true; g.add(b2)
+  const b3 = new THREE.Mesh(new THREE.BoxGeometry(10, 7, 18), bldMat); b3.position.set(14, 3.5, -6); b3.castShadow = true; g.add(b3)
+  const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 22, 8), roofMat); tower.position.set(0, 18, 0); g.add(tower)
+  const dish = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 1, 12), roofMat); dish.position.set(0, 30, 0); g.add(dish)
+  return g
+}
+
+function createShipTarget(): THREE.Group {
+  const g = new THREE.Group()
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0x2a3d52, roughness: 0.7, metalness: 0.5 })
+  const superMat = new THREE.MeshStandardMaterial({ color: 0x3d5568, roughness: 0.65, metalness: 0.4 })
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(16, 5, 65), hullMat); hull.position.y = 2.5; hull.castShadow = true; g.add(hull)
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(11, 9, 22), superMat); bridge.position.set(0, 10, -8); bridge.castShadow = true; g.add(bridge)
+  const top = new THREE.Mesh(new THREE.BoxGeometry(8, 5, 12), superMat); top.position.set(0, 17, -8); g.add(top)
+  for (const tz of [-24, 24]) {
+    const gun = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 3.5, 8), hullMat); gun.position.set(0, 7, tz); g.add(gun)
+  }
+  return g
+}
+
+function createTankTarget(): THREE.Group {
+  const g = new THREE.Group()
+  const mat = new THREE.MeshStandardMaterial({ color: 0x4a5a38, roughness: 0.88, metalness: 0.2 })
+  const body = new THREE.Mesh(new THREE.BoxGeometry(7, 3, 11), mat); body.position.y = 2; body.castShadow = true; g.add(body)
+  const turret = new THREE.Mesh(new THREE.BoxGeometry(4.5, 2.5, 5), mat); turret.position.set(0, 4.8, -0.5); g.add(turret)
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 9, 6), mat)
+  barrel.rotation.x = Math.PI/2; barrel.position.set(0, 4.8, -5.5); g.add(barrel)
+  return g
+}
+
+function createBomberModel(): THREE.Group {
+  const g = new THREE.Group()
+  const mat = new THREE.MeshPhysicalMaterial({ color: 0x667788, roughness: 0.14, metalness: 0.88, clearcoat: 0.8 })
+  const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.6, 18, 12), mat)
+  fuselage.rotation.x = Math.PI/2; fuselage.castShadow = true; g.add(fuselage)
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.9, 5, 12), mat)
+  nose.rotation.x = Math.PI/2; nose.position.z = -11.5; g.add(nose)
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(32, 0.35, 6), mat); wing.position.z = 1; wing.castShadow = true; g.add(wing)
+  for (const side of [-13, -7, 7, 13]) {
+    const eng = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 3.5, 8), mat)
+    eng.rotation.x = Math.PI/2; eng.position.set(side, -1.0, 2); g.add(eng)
+  }
+  const vTail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 6, 4), mat); vTail.position.set(0, 3, 7); g.add(vTail)
+  const hTail = new THREE.Mesh(new THREE.BoxGeometry(14, 0.35, 3.5), mat); hTail.position.z = 7; g.add(hTail)
+  return g
+}
+
+// ===== GAME MODE LOGIC =====
+function setObjective(text: string) {
+  const el = document.getElementById('objective-text')!
+  el.textContent = text
+}
+
+function startGame(mode: GameMode) {
+  currentMode = mode
+  missionComplete = false
+  modeObjectiveKilled = 0
+
+  // クリア
+  for (const e of [...enemies]) scene.remove(e.group)
+  enemies.length = 0
+  for (const gt of [...groundTargets]) scene.remove(gt.group)
+  groundTargets.length = 0
+  for (const b of [...bullets]) scene.remove(b.mesh); bullets.length = 0
+  for (const m of [...playerMissiles]) { if (m.light) scene.remove(m.light); scene.remove(m.mesh) }; playerMissiles.length = 0
+  for (const m of [...enemyMissiles]) scene.remove(m.mesh); enemyMissiles.length = 0
+  lockedEnemy = null
+  score = 0; scoreEl.textContent = '0'
+  missileAmmo = 6; flareAmmo = 8
+  playerHP = MAX_HP; invincibleTimer = 0
+  updateHPDisplay()
+  updatePips(missilePips, missileAmmo, 'on')
+  updatePips(flarePips, flareAmmo, 'flare-on')
+
+  document.getElementById('mode-screen')!.style.display = 'none'
+  document.getElementById('mission-complete')!.style.display = 'none'
+  document.getElementById('objective-hud')!.style.display = 'block'
+
+  switch (mode) {
+    case 'dogfight':
+      modeObjectiveTotal = 0
+      setObjective('敵機を撃墜せよ — SCORE: 0')
+      for (let i = 0; i < 3; i++) spawnEnemy()
+      break
+    case 'base':
+      modeObjectiveTotal = 5
+      setObjective(`地上基地を破壊 0 / 5`)
+      spawnBases()
+      for (let i = 0; i < 2; i++) spawnEnemy()
+      break
+    case 'fleet':
+      modeObjectiveTotal = 4
+      setObjective(`艦船を撃沈 0 / 4`)
+      spawnShips()
+      break
+    case 'bomber':
+      modeObjectiveTotal = 3
+      setObjective(`爆撃機を迎撃 0 / 3`)
+      spawnBombers()
+      break
+    case 'tank':
+      modeObjectiveTotal = 5
+      setObjective(`戦車を撃破 0 / 5`)
+      spawnTanks()
+      break
+    case 'free':
+      modeObjectiveTotal = 0
+      setObjective('フリーフライト')
+      break
+  }
+}
+
+function spawnBases() {
+  const positions: [number, number, number][] = [
+    [380, 0, 200], [-280, 0, -360], [550, 0, -160], [-480, 0, 280], [120, 0, -520]
+  ]
+  for (const [bx, by, bz] of positions) {
+    const ty = terrainH(bx, bz); void by
+    const group = createBaseTarget()
+    group.position.set(bx, ty, bz)
+    group.rotation.y = Math.random() * Math.PI * 2
+    scene.add(group)
+    groundTargets.push({ group, health: 30, maxHealth: 30, vel: new THREE.Vector3() })
+  }
+}
+
+function spawnShips() {
+  const positions: [number, number][] = [[-180, -220], [140, -310], [-310, 90], [240, 180]]
+  for (const [sx, sz] of positions) {
+    const group = createShipTarget()
+    group.position.set(sx, WATER_LEVEL + 2.5, sz)
+    group.rotation.y = Math.random() * Math.PI * 2
+    scene.add(group)
+    groundTargets.push({ group, health: 40, maxHealth: 40, vel: new THREE.Vector3() })
+  }
+}
+
+function spawnBombers() {
+  for (let i = 0; i < 3; i++) {
+    const group = createBomberModel()
+    group.position.set(-2200, 160 + i * 28, -600 + i * 240)
+    group.rotation.y = -Math.PI / 2
+    scene.add(group)
+    groundTargets.push({ group, health: 55, maxHealth: 55, vel: new THREE.Vector3(42, 0, 0) })
+  }
+}
+
+function spawnTanks() {
+  const positions: [number, number][] = [[110, 90], [-160, 210], [200, -90], [-200, -160], [60, -200]]
+  for (const [tx, tz] of positions) {
+    const ty = terrainH(tx, tz)
+    const group = createTankTarget()
+    group.position.set(tx, ty, tz)
+    group.rotation.y = Math.random() * Math.PI * 2
+    scene.add(group)
+    groundTargets.push({ group, health: 20, maxHealth: 20, vel: new THREE.Vector3() })
+  }
+}
+
+function updateGroundTargets(dt: number) {
+  for (const gt of groundTargets) {
+    if (gt.vel.lengthSq() < 0.01) continue
+    gt.group.position.addScaledVector(gt.vel, dt)
+    if (gt.vel.y === 0) {
+      gt.group.position.y = terrainH(gt.group.position.x, gt.group.position.z)
+      gt.group.rotation.y = Math.atan2(gt.vel.x, gt.vel.z) + Math.PI
+    }
+    // 爆撃機がマップ端に達したらループ
+    if (gt.group.position.x > 2400) gt.group.position.x = -2400
+  }
+}
+
+function destroyGroundTarget(gi: number) {
+  const gt = groundTargets[gi]
+  createExplosion(gt.group.position.clone(), 2.5)
+  playExplosionSound(2.0)
+  scene.remove(gt.group)
+  groundTargets.splice(gi, 1)
+  modeObjectiveKilled++
+  score++; scoreEl.textContent = score.toString()
+  if (currentMode === 'dogfight' || currentMode === 'free') return
+  setObjective(`目標を破壊 ${modeObjectiveKilled} / ${modeObjectiveTotal}`)
+  if (modeObjectiveKilled >= modeObjectiveTotal) completeMission()
+}
+
+function checkGroundTargetCollisions() {
+  outer: for (let bi = bullets.length - 1; bi >= 0; bi--) {
+    for (let gi = groundTargets.length - 1; gi >= 0; gi--) {
+      if (bullets[bi].mesh.position.distanceTo(groundTargets[gi].group.position) < 14) {
+        scene.remove(bullets[bi].mesh); bullets.splice(bi, 1)
+        groundTargets[gi].health -= 1
+        if (groundTargets[gi].health <= 0) destroyGroundTarget(gi)
+        continue outer
+      }
+    }
+  }
+  for (let mi = playerMissiles.length - 1; mi >= 0; mi--) {
+    const m = playerMissiles[mi]; if (!m) continue
+    for (let gi = groundTargets.length - 1; gi >= 0; gi--) {
+      if (m.mesh.position.distanceTo(groundTargets[gi].group.position) < 18) {
+        createExplosion(m.mesh.position.clone(), 2.0); playExplosionSound(1.8)
+        if (m.light) scene.remove(m.light)
+        scene.remove(m.mesh); playerMissiles.splice(mi, 1)
+        groundTargets[gi].health -= 14
+        if (groundTargets[gi].health <= 0) destroyGroundTarget(gi)
+        break
+      }
+    }
+  }
+}
+
+function completeMission() {
+  missionComplete = true
+  const overlay = document.getElementById('mission-complete')!
+  document.getElementById('mc-score')!.textContent = `スコア: ${score}`
+  overlay.style.display = 'flex'
+}
+
+function returnToModeScreen() {
+  document.getElementById('mission-complete')!.style.display = 'none'
+  document.getElementById('mode-screen')!.style.display = 'flex'
+  document.getElementById('objective-hud')!.style.display = 'none'
+  currentMode = null
+  missionComplete = false
+  score = 0; scoreEl.textContent = '0'
+  for (const e of [...enemies]) scene.remove(e.group); enemies.length = 0
+  for (const gt of [...groundTargets]) scene.remove(gt.group); groundTargets.length = 0
+  for (const b of [...bullets]) scene.remove(b.mesh); bullets.length = 0
+  for (const m of [...playerMissiles]) { if (m.light) scene.remove(m.light); scene.remove(m.mesh) }; playerMissiles.length = 0
+  for (const m of [...enemyMissiles]) scene.remove(m.mesh); enemyMissiles.length = 0
+  lockedEnemy = null
+  player.position.set(0, terrainH(0, 0) + 90, 0)
+  player.quaternion.identity(); camQuat.identity(); speed = 30
+  playerHP = MAX_HP; invincibleTimer = 0; updateHPDisplay()
+  missileAmmo = 6; flareAmmo = 8
+  updatePips(missilePips, missileAmmo, 'on')
+  updatePips(flarePips, flareAmmo, 'flare-on')
+}
+
+// モードボタンとbackボタンのイベント
+document.querySelectorAll<HTMLElement>('.ms-btn').forEach(btn => {
+  btn.addEventListener('click', () => startGame(btn.dataset.mode as GameMode))
+})
+document.getElementById('mc-back')!.addEventListener('click', returnToModeScreen)
 
 // ===== HOMING =====
 function updateHoming(m: HomingMissile, dt: number) {
@@ -1331,7 +1625,7 @@ function drawRadar() {
     const rz = rel.x * Math.sin(-heading) + rel.z * Math.cos(-heading)
     const scale = Math.min(1, Math.hypot(rx, rz) / RADAR_RANGE)
     const norm = Math.hypot(rx, rz) > 0.01 ? Math.hypot(rx, rz) : 1
-    return [cx + (rx / norm) * scale * RADAR_R, cy - (rz / norm) * scale * RADAR_R]
+    return [cx - (rx / norm) * scale * RADAR_R, cy - (rz / norm) * scale * RADAR_R]
   }
 
   // 補給ポイント（緑菱形）
@@ -1416,11 +1710,13 @@ function loop() {
   flareCooldown = Math.max(0, flareCooldown - dt)
   gunSoundCooldown = Math.max(0, gunSoundCooldown - dt)
 
-  if (keysJustPressed.has('Tab') || touchState.lockPressed) cycleLock()
-  if (keysJustPressed.has('Escape')) lockedEnemy = null
-  if (keys['KeyZ'] || touchState.gun) fireGun()
-  if (keysJustPressed.has('KeyX') || touchState.missilePressed) firePlayerMissile()
-  if (keys['KeyC'] || touchState.flarePressed) dropFlare()
+  if (currentMode !== null && !missionComplete) {
+    if (keysJustPressed.has('Tab') || touchState.lockPressed) cycleLock()
+    if (keysJustPressed.has('Escape')) lockedEnemy = null
+    if (keys['KeyZ'] || touchState.gun) fireGun()
+    if (keysJustPressed.has('KeyX') || touchState.missilePressed) firePlayerMissile()
+    if (keys['KeyC'] || touchState.flarePressed) dropFlare()
+  }
   keysJustPressed.clear()
   touchState.missilePressed = false
   touchState.flarePressed   = false
@@ -1430,11 +1726,17 @@ function loop() {
   updateMissileArr(playerMissiles, dt, m => createExplosion(m.mesh.position.clone(), 0.6))
   updateMissileArr(enemyMissiles, dt, m => createExplosion(m.mesh.position.clone(), 0.5))
   updateFlares(dt)
-  updateEnemies(dt)
-  checkCollisions()
+  if (currentMode !== null && !missionComplete) {
+    updateEnemies(dt)
+    checkCollisions()
+    checkGroundTargetCollisions()
+  }
+  updateGroundTargets(dt)
   updateExplosions(dt)
   updateContrails()
-  updateSupplyPoints(dt)
+  if (currentMode !== null) updateSupplyPoints(dt)
+  // dogfightはスコアをリアルタイム更新
+  if (currentMode === 'dogfight') setObjective(`敵機を撃墜せよ — SCORE: ${score}`)
 
   // 無敵タイマー
   if (invincibleTimer > 0) {
