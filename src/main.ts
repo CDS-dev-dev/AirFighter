@@ -128,66 +128,88 @@ function fbm(x: number, z: number, octaves = 5): number {
   return total / norm
 }
 
-function ridgedNoise(x: number, z: number, octaves = 4): number {
-  let total = 0, amp = 0.55, freq = 1, norm = 0
-  for (let i = 0; i < octaves; i++) {
-    const n = 1 - Math.abs(valueNoise(x * freq, z * freq) * 2 - 1)
-    total += n * n * amp
-    norm += amp
-    amp *= 0.52
-    freq *= 2.11
-  }
-  return total / norm
+// ガウシアン地形パッチ
+function gauss2d(x: number, z: number, ax: number, az: number, rx: number, rz: number, ht: number): number {
+  return ht * Math.exp(-((x-ax)*(x-ax))/(rx*rx) - ((z-az)*(z-az))/(rz*rz))
 }
 
-function mound(x: number, z: number, cx: number, cz: number, radius: number, height: number, power = 1.7): number {
-  const d = Math.hypot(x - cx, z - cz)
-  return Math.pow(Math.max(0, 1 - d / radius), power) * height
-}
-
-function mesa(x: number, z: number, cx: number, cz: number, radius: number, height: number): number {
-  const d = Math.hypot(x - cx, z - cz)
-  const shoulder = 1 - smoothstep(radius * 0.52, radius, d)
-  const crown = 1 - smoothstep(radius * 0.18, radius * 0.48, d)
-  return (shoulder * 0.72 + crown * 0.28) * height
-}
-
+// ═══════════════════════════════════════════════════════
+//  人設計地形: ランダムノイズ主体から脱却し
+//  「プレイヤーが覚えられる地形」を目指す
+//
+//  地理:
+//    北  — 大山脈 (Peak A〜D, 300-570m)
+//    東  — 東部プラトー + 大峡谷 (x≈920, 水中の谷底)
+//    西  — 断崖海岸 → 海 → 孤島群
+//    南  — 南部湾 + 半島
+//    中央 — 平原 + 河川
+// ═══════════════════════════════════════════════════════
 function terrainH(x: number, z: number): number {
-  const broad = fbm(x * 0.00055 + 12.4, z * 0.00055 - 7.8, 5)
-  const mid = fbm(x * 0.0018 - 33.0, z * 0.0018 + 21.0, 4)
-  const detail = fbm(x * 0.0065 + 5.1, z * 0.0065 - 18.2, 3)
-  const ridges = ridgedNoise(x * 0.00115 - 14.2, z * 0.00115 + 6.8, 5)
-  let h = -55
-    + (broad - 0.38) * 260
-    + (mid - 0.5) * 86
-    + (detail - 0.5) * 24
-    + Math.pow(ridges, 2.05) * 155
+  let h = 35  // ベース高度: ほぼ全域が海面上
 
-  const riverX = 210 + Math.sin(z * 0.00125) * 340 + Math.sin(z * 0.0036 + 1.1) * 95
-  const riverDist = Math.abs(x - riverX)
-  const gorge = 1 - smoothstep(95, 420, riverDist)
-  const rim = Math.exp(-Math.pow((riverDist - 285) / 95, 2))
-  h -= gorge * 178
-  h += rim * 45
+  // ── 北部山脈 メインリッジ (z≈-1400) ──────────────────
+  const mdt = (z + 1400) / 680
+  h += Math.max(0, 1 - mdt * mdt) * (245 + Math.sin(x * 0.0022 + 0.7) * 72 + Math.sin(x * 0.006) * 38)
 
-  h -= mound(x, z, -520, 740, 560, 92, 1.85)
-  h += mesa(x, z, -1220, 820, 640, 165)
-  h += mesa(x, z, 1180, 410, 520, 145)
-  h += mesa(x, z, 820, -1180, 480, 132)
-  h += mound(x, z, -1650, -250, 740, 150, 1.35)
-  h += mound(x, z, 1600, 1190, 640, 134, 1.45)
+  // ── 主要峰 ───────────────────────────────────────────
+  h += gauss2d(x, z,  200, -1820, 340, 360, 390)  // Peak A 最高峰
+  h += gauss2d(x, z, -720, -1570, 310, 320, 340)  // Peak B 北西峰
+  h += gauss2d(x, z,  980, -1350, 280, 295, 270)  // Peak C 北東峰
+  h += gauss2d(x, z,   60, -1060, 255, 245, 185)  // Peak D 前衛峰
 
-  // 渓谷1: x≈400 に沿ってN-S方向（ミサイル回避の主要ルート）
-  const d1 = Math.abs(x - 400)
-  if (d1 < 140) h -= Math.pow(Math.max(0, 1 - d1/140), 1.8) * 110
+  // ── 東部プラトー (x:400-2000, z:-800-0) ───────────────
+  h += gauss2d(x, z, 1100, -380, 680, 520, 80)
 
-  // 渓谷2: 斜め（北西〜南東）
-  const d2 = Math.abs(x * 0.8 + z * 0.6 + 300)
-  if (d2 < 110) h -= Math.pow(Math.max(0, 1 - d2/110), 1.8) * 85
+  // ── 北西高地 ─────────────────────────────────────────
+  h += gauss2d(x, z, -1080, -720, 480, 560, 92)
 
-  // 西部高台（安全地帯）
-  const pd = Math.hypot(x + 400, z - 650)
-  if (pd < 380) h += Math.pow(Math.max(0, 1 - pd/380), 1.5) * 62
+  // ── 南西丘陵 ─────────────────────────────────────────
+  h += gauss2d(x, z, -580, 720, 580, 490, 50)
+
+  // ── 中央平野 (スタート地点付近を平坦に) ─────────────────
+  h -= Math.exp(-((x*x + z*z) / (460*460))) * 13
+
+  // ── 河川 (南北方向, x≈120) ───────────────────────────
+  const rvX = 120 + Math.sin(z * 0.0009) * 175 + Math.sin(z * 0.0025 + 1) * 55
+  const rvD = Math.abs(x - rvX)
+  const rvA = clamp01((z + 1300) / 350) * clamp01(1 - (z - 1400) / 350)
+  h -= Math.exp(-(rvD/105)*(rvD/105)) * 60 * rvA
+
+  // ── 東部大峡谷 (x≈920、南北280m×深さ100-180m) ─────────
+  const cxC = 920 + Math.sin(z * 0.0008) * 120 + Math.sin(z * 0.002 + 0.5) * 48
+  const cxD = Math.abs(x - cxC)
+  const cxA = clamp01((x - 350) / 320)
+           * clamp01((z + 700) / 380)
+           * clamp01(1 - (z - 700) / 380)
+  const cxW = Math.max(0, cxD - 130)  // フラット底幅 260m
+  h -= Math.exp(-(cxW/62)*(cxW/62)) * 162 * cxA
+  h += Math.exp(-((cxD-205)/65)*((cxD-205)/65)) * 42 * cxA  // 峡谷リム
+
+  // ── 西部断崖・海岸 (x<-1100 で海へ急降下) ─────────────
+  if (x < -1100) {
+    const cliffX = -1650 + Math.sin(z * 0.0006) * 185 + Math.sin(z * 0.0018) * 65
+    const dfc = -(x - cliffX)
+    h -= clamp01(dfc / 360) * 248
+  }
+
+  // ── 南部湾 (x≈0, z=700-1700) ─────────────────────────
+  const bayX = Math.exp(-(x/660)*(x/660))
+  const bayZ = clamp01((z - 660) / 340) * clamp01(1 - (z - 1700) / 320)
+  h -= bayX * bayZ * 76
+
+  // ── 南部半島 (湾の中央を突く陸地) ────────────────────
+  const penX = Math.exp(-(x/155)*(x/155))
+  const penZ = clamp01((z - 860) / 260) * clamp01(1 - (z - 1720) / 340)
+  h += penX * penZ * 86
+
+  // ── 西部孤島群 (海面上に顔を出す) ────────────────────
+  h += gauss2d(x, z, -2180,  -150, 145, 130, 52)
+  h += gauss2d(x, z, -2480,   320, 120, 108, 44)
+  h += gauss2d(x, z, -2090,  -640,  95,  88, 40)
+  h += gauss2d(x, z, -2700,   100, 100,  92, 27)
+
+  // ── テクスチャノイズ (小振幅) ─────────────────────────
+  h += (fbm(x * 0.006 + 5.1, z * 0.006 - 3.8, 3) - 0.5) * 22
 
   return h
 }
@@ -239,46 +261,48 @@ for (let i = 0; i < tPos.count; i++) {
   const x = tPos.getX(i), z = tPos.getZ(i)
   tPos.setY(i, terrainH(x, z))
   const y = tPos.getY(i)
-  // 横方向の色ノイズで単調さを回避
   const v = Math.sin(x * 0.042 + z * 0.063) * 0.06 + Math.sin(x * 0.11 - z * 0.09) * 0.04
   let r: number, g: number, b: number
-  if (y < -45)      { r=0.30+v; g=0.25+v; b=0.22 }   // 深谷岩盤
-  else if (y < -5)  { r=0.22+v; g=0.48+v; b=0.35 }   // 渓谷底・湿岩
-  else if (y < 8)   { r=0.28+v; g=0.74+v; b=0.22 }   // 低地草原
-  else if (y < 25)  { r=0.24+v; g=0.63+v; b=0.17 }   // 中腹草
-  else if (y < 48)  { r=0.26+v; g=0.56+v; b=0.14+v } // 高丘
-  else if (y < 75)  { r=0.54+v; g=0.46+v; b=0.28+v } // 岩場
-  else if (y < 105) { r=0.70+v; g=0.67+v; b=0.62 }   // 高山
-  else              { r=0.90+v; g=0.89+v; b=0.94 }    // 雪頂
+  // Pass 1: 高度別ベースカラー (新高度範囲 -160〜+570m)
+  if (y < -60)      { r=0.26+v; g=0.21+v; b=0.19 }   // 深谷岩盤・海底
+  else if (y < -5)  { r=0.22+v; g=0.40+v; b=0.28 }   // 峡谷壁・湿岩
+  else if (y < 12)  { r=0.28+v; g=0.70+v; b=0.22 }   // 低地草原
+  else if (y < 40)  { r=0.24+v; g=0.60+v; b=0.17 }   // 平原
+  else if (y < 80)  { r=0.25+v; g=0.53+v; b=0.14+v } // 丘陵
+  else if (y < 140) { r=0.40+v; g=0.46+v; b=0.22+v } // 高地
+  else if (y < 230) { r=0.52+v; g=0.44+v; b=0.28 }   // 山岳麓
+  else if (y < 360) { r=0.66+v; g=0.60+v; b=0.52 }   // 高山岩
+  else              { r=0.88+v; g=0.87+v; b=0.92 }    // 雪頂
   tCol[i*3]   = Math.max(0, Math.min(1, r))
   tCol[i*3+1] = Math.max(0, Math.min(1, g))
   tCol[i*3+2] = Math.max(0, Math.min(1, b))
 
+  // Pass 2: スロープ・詳細テクスチャ
   const gradX = terrainH(x + 18, z) - terrainH(x - 18, z)
   const gradZ = terrainH(x, z + 18) - terrainH(x, z - 18)
   const slope = clamp01(Math.hypot(gradX, gradZ) / 56)
   const freckles = (fbm(x * 0.018 + 7, z * 0.018 - 11, 3) - 0.5) * 0.12
   if (y < WATER_LEVEL + 2.5) {
-    r = 0.55 + freckles; g = 0.48 + freckles * 0.6; b = 0.32
-  } else if (y < 13) {
-    r = 0.49 + freckles; g = 0.67 + freckles; b = 0.31
-  } else if (y < 45) {
-    r = 0.28 + freckles; g = 0.58 + freckles; b = 0.22
-  } else if (y < 92) {
-    r = 0.36 + freckles; g = 0.50 + freckles * 0.8; b = 0.25
-  } else if (y < 145) {
-    r = 0.53 + freckles; g = 0.48 + freckles; b = 0.37 + freckles * 0.4
+    r = 0.58 + freckles; g = 0.52 + freckles * 0.6; b = 0.34  // 砂浜
+  } else if (y < 20) {
+    r = 0.44 + freckles; g = 0.68 + freckles; b = 0.28         // 低地草
+  } else if (y < 55) {
+    r = 0.28 + freckles; g = 0.58 + freckles; b = 0.22         // 平野草
+  } else if (y < 115) {
+    r = 0.34 + freckles; g = 0.50 + freckles * 0.8; b = 0.22  // 高地草
+  } else if (y < 200) {
+    r = 0.50 + freckles; g = 0.46 + freckles; b = 0.30         // 茶草
   } else {
-    r = 0.80 + freckles * 0.4; g = 0.78 + freckles * 0.4; b = 0.76 + freckles * 0.6
+    r = 0.72 + freckles * 0.5; g = 0.64 + freckles * 0.5; b = 0.52  // 岩石
   }
-  const rock = clamp01(slope * 1.45 + smoothstep(72, 138, y) * 0.4)
-  r = THREE.MathUtils.lerp(r, 0.47 + freckles, rock)
+  const rock = clamp01(slope * 1.45 + smoothstep(130, 260, y) * 0.5)
+  r = THREE.MathUtils.lerp(r, 0.48 + freckles, rock)
   g = THREE.MathUtils.lerp(g, 0.43 + freckles, rock)
   b = THREE.MathUtils.lerp(b, 0.37 + freckles, rock)
-  const snow = smoothstep(168, 230, y)
-  tCol[i*3]   = clamp01(THREE.MathUtils.lerp(r, 0.92, snow))
-  tCol[i*3+1] = clamp01(THREE.MathUtils.lerp(g, 0.93, snow))
-  tCol[i*3+2] = clamp01(THREE.MathUtils.lerp(b, 0.96, snow))
+  const snow = smoothstep(310, 430, y)
+  tCol[i*3]   = clamp01(THREE.MathUtils.lerp(r, 0.93, snow))
+  tCol[i*3+1] = clamp01(THREE.MathUtils.lerp(g, 0.94, snow))
+  tCol[i*3+2] = clamp01(THREE.MathUtils.lerp(b, 0.97, snow))
 }
 terrainGeo.setAttribute('color', new THREE.BufferAttribute(tCol, 3))
 terrainGeo.computeVertexNormals()
@@ -291,7 +315,7 @@ scene.add(ground)
 // ===== WATER =====
 const waterUniforms = { time: { value: 0 }, sunDir: { value: sunVec.clone().normalize() } }
 const waterMesh = new THREE.Mesh(
-  (() => { const g = new THREE.PlaneGeometry(3600, 3600, 72, 72); g.rotateX(-Math.PI/2); return g })(),
+  (() => { const g = new THREE.PlaneGeometry(8000, 8000, 80, 80); g.rotateX(-Math.PI/2); return g })(),
   new THREE.ShaderMaterial({
     uniforms: waterUniforms,
     transparent: true,
@@ -366,16 +390,27 @@ function makeMountainGeometry(radius: number, height: number, seed: number): THR
   return geo
 }
 
-;[[-1420,-1180,520,310], [980,-1280,470,280], [-520,1420,430,260],
-  [1450, 640,560,330], [-1580, 420,500,300], [680,-1560,390,240],
-  [-980,-1540,360,220], [1300,1360,520,315], [-1540,1120,430,265],
-  [160,1640,390,245], [-1900,-220,620,360], [1840,-320,540,325],
-  [-680,-1840,410,250], [1180,-880,360,220], [-1180,760,450,275],
-  [2300, 920,610,370], [-2450, -980,560,335],
-].forEach(([x,z,h,r], i) => {
+// 新地形の主要峰に合わせてメッシュを配置
+// [x, z, コーン高さ, コーン半径, シード]
+;[
+  // ── 北部主要峰 ──
+  [ 200, -1820, 580, 320, 1.0],  // Peak A 最高峰
+  [-720, -1570, 500, 275, 2.5],  // Peak B 北西
+  [ 980, -1350, 420, 245, 4.1],  // Peak C 北東
+  [  60, -1060, 300, 205, 6.3],  // Peak D 前衛峰
+  // ── リッジ補完サブピーク ──
+  [-320, -1680, 380, 210, 8.0],
+  [ 560, -1720, 350, 195, 9.5],
+  [-1040,-1480, 310, 185, 11.2],
+  [ 1300,-1200, 290, 175, 12.8],
+  // ── 北西高地の高台 ──
+  [-1080,  -720, 200, 220, 14.1],
+  // ── 南西丘陵の丘 ──
+  [ -580,   720, 120, 190, 15.7],
+].forEach(([x,z,h,r,seed], i) => {
   const base = terrainH(x,z)
-  const body = new THREE.Mesh(makeMountainGeometry(r, h, i * 13.37 + 2.5), mountainMat)
-  body.position.set(x, base + h/2 - 10, z)
+  const body = new THREE.Mesh(makeMountainGeometry(r, h, seed + i * 3.7), mountainMat)
+  body.position.set(x, base + h/2 - 12, z)
   body.castShadow = true
   body.receiveShadow = true
   scene.add(body)
@@ -393,8 +428,8 @@ for (let i = 0; i < TREE_COUNT; i++) {
   const tx = (Math.random()-0.5)*5600, tz = (Math.random()-0.5)*5600
   const ty = terrainH(tx, tz)
   const treeSlope = Math.hypot(terrainH(tx + 16, tz) - terrainH(tx - 16, tz), terrainH(tx, tz + 16) - terrainH(tx, tz - 16)) / 32
-  if (ty > 165 || treeSlope > 2.2 || (fbm(tx * 0.0015 + 8, tz * 0.0015 - 4, 3) < 0.34 && Math.random() < 0.75)) { i--; continue }
-  if (ty < 3) { i--; continue }  // 水面下・渓谷底には植樹しない
+  if (ty > 270 || treeSlope > 2.2 || (fbm(tx * 0.0015 + 8, tz * 0.0015 - 4, 3) < 0.34 && Math.random() < 0.75)) { i--; continue }
+  if (ty < 4) { i--; continue }  // 水面下・峡谷底には植樹しない
   const s = 0.7 + Math.random()*0.7
   _d.position.set(tx, ty+2*s, tz); _d.scale.setScalar(s); _d.rotation.y = Math.random()*Math.PI*2; _d.updateMatrix()
   trunkIM.setMatrixAt(i, _d.matrix)
@@ -426,11 +461,11 @@ function makePillarGeometry(bottom: number, top: number, height: number, sides: 
 }
 
 const PILLAR_CLUSTERS: Array<{ cx:number; cz:number; n:number }> = [
-  { cx:  430, cz:  550, n: 14 },  // 渓谷1 北出口
-  { cx:  380, cz: -250, n: 12 },  // 渓谷1 南
-  { cx: -180, cz: -400, n: 11 },  // 斜め渓谷沿い
-  { cx:  860, cz:  280, n:  9 },  // 東平原
-  { cx: -560, cz:  320, n:  8 },  // 高台西麓
+  { cx:  920, cz:  100, n: 12 },  // 東部峡谷 南部
+  { cx:  900, cz: -300, n: 10 },  // 東部峡谷 中部
+  { cx:  940, cz: -550, n:  8 },  // 東部峡谷 北端
+  { cx: -1080, cz: -720, n: 9 },  // 北西高地
+  { cx:  -620, cz:  720, n: 7 },  // 南西丘陵
 ]
 for (const cl of PILLAR_CLUSTERS) {
   for (let j = 0; j < cl.n; j++) {
@@ -449,7 +484,7 @@ for (const cl of PILLAR_CLUSTERS) {
 }
 
 // 孤立高塔（遠くから見えるランドマーク）
-;[[410,-600,120,12],[-820,420,140,10],[1300,-100,110,14]].forEach(([px,pz,ht,rb]) => {
+;[[920,300,130,13],[920,-600,115,11],[-1080,-720,125,12]].forEach(([px,pz,ht,rb]) => {
   const ph = terrainH(px, pz)
   const body = new THREE.Mesh(makePillarGeometry(rb, rb * 0.3, ht, 6, px * 0.021 + pz * 0.017), pillarMat)
   body.position.set(px, ph+ht/2, pz); body.castShadow=true; scene.add(body)
@@ -470,16 +505,16 @@ function mkArch(x: number, z: number, w: number, h: number, thick: number, rotY:
   g.add(crown)
   g.position.set(x, base, z); g.rotation.y = rotY; scene.add(g)
 }
-// 渓谷1内（Z方向に飛行で通過）
-mkArch( 405,  130, 90, 55, 17, 0)
-mkArch( 395, -110, 82, 50, 16, 0.08)
-mkArch( 420,  580, 95, 60, 18, 0.05)
-// 斜め渓谷内（-0.64 rad で進行方向に正対）
-mkArch(-160, -310, 86, 52, 16, -0.64)
-mkArch(-240, -470, 78, 48, 15, -0.60)
-// 平原・高地の孤立アーチ
-mkArch( 700,  420, 98, 64, 20, 1.3)
-mkArch(-680,   30, 80, 52, 16, -0.5)
+// 東部大峡谷 (南北飛行で通過)
+mkArch( 920,   80, 100, 62, 18,  0.0)
+mkArch( 905, -200,  92, 58, 17,  0.06)
+mkArch( 935, -480,  85, 54, 16, -0.05)
+// 峡谷リム上のランドマーク
+mkArch( 820,  320,  78, 50, 15,  1.4)
+mkArch(1020, -350,  82, 52, 16, -1.5)
+// 北西高地・平原の孤立アーチ
+mkArch(-1080, -720,  90, 58, 17, 0.8)
+mkArch(  -80,  480,  72, 48, 14, 2.1)
 
 // ===== SURFACE DETAIL =====
 const BOULDER_COUNT = 420
@@ -495,7 +530,7 @@ for (let i = 0; i < BOULDER_COUNT; i++) {
   const bz = (Math.random() - 0.5) * 6200
   const by = terrainH(bx, bz)
   const slope = Math.hypot(terrainH(bx + 14, bz) - terrainH(bx - 14, bz), terrainH(bx, bz + 14) - terrainH(bx, bz - 14)) / 28
-  if (by < WATER_LEVEL + 5 || by > 190 || slope > 3.1) { i--; continue }
+  if (by < WATER_LEVEL + 5 || by > 300 || slope > 3.1) { i--; continue }
   const s = 2.4 + Math.random() * 8
   _d.position.set(bx, by + s * 0.45, bz)
   _d.scale.set(s * (0.8 + Math.random() * 0.6), s * (0.45 + Math.random() * 0.45), s * (0.7 + Math.random() * 0.7))
@@ -508,10 +543,10 @@ scene.add(boulderIM)
 
 // ===== SUPPLY POINTS =====
 const SUPPLY_POSITIONS: THREE.Vector3[] = [
-  new THREE.Vector3( 408,  0,  420),   // 渓谷1底（低高度・危険だが隠れやすい）
-  new THREE.Vector3(-370,  0,  680),   // 西部高台（高高度・広い視界）
-  new THREE.Vector3( 960,  0, -180),   // 山岳基地（中高度）
-  new THREE.Vector3(-850,  0, -320),   // 海岸平野（低高度・開けた場所）
+  new THREE.Vector3( 920,  0,  0),     // 東部峡谷内（低高度・危険）
+  new THREE.Vector3(-200,  0,  480),   // 中央平野（開けた安全地帯）
+  new THREE.Vector3(1200,  0, -380),   // 東部プラトー（高地・敵が来やすい）
+  new THREE.Vector3(-1080, 0, -720),   // 北西高地（遠い補給拠点）
 ]
 SUPPLY_POSITIONS.forEach(p => { p.y = terrainH(p.x, p.z) + 18 })
 
@@ -923,7 +958,7 @@ function spawnEnemyAt(sx: number, sz: number) {
 
 function spawnEnemy() {
   const angle = Math.random() * Math.PI * 2
-  spawnEnemyAt(Math.cos(angle) * (190 + Math.random() * 180), Math.sin(angle) * (190 + Math.random() * 180))
+  spawnEnemyAt(Math.cos(angle) * (220 + Math.random() * 220), Math.sin(angle) * (220 + Math.random() * 220))
 }
 
 function spawnAlly(sx: number, sz: number) {
@@ -1188,8 +1223,8 @@ function spawnSouryokusen() {
   // 空中の敵 x5（リスポーンあり）
   for (let i = 0; i < 5; i++) spawnEnemy()
 
-  // 艦船 x3
-  for (const [sx, sz] of [[-180, -220], [140, -310], [240, 180]] as [number,number][]) {
+  // 艦船 x3 (西部海・南部湾の水面上)
+  for (const [sx, sz] of [[-2100, -150], [-2450, 280], [-380, 1200]] as [number,number][]) {
     const group = createShipTarget()
     group.position.set(sx, WATER_LEVEL + 2.5, sz)
     group.rotation.y = Math.random() * Math.PI * 2
