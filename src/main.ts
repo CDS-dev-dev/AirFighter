@@ -1019,7 +1019,7 @@ let missileAmmo = 6, flareAmmo = 8, score = 0
 let gunCooldown = 0, pMissileCooldown = 0, flareCooldown = 0
 let hitFlashTimer = 0, gunSoundCooldown = 0, trailFrame = 0
 let lockedEnemy: Enemy | null = null
-let playerHP = 3, invincibleTimer = 0, respawnFlash = 0
+let playerHP = 3, invincibleTimer = 0, respawnFlash = 0, respawnTimer = 0
 const MAX_HP = 3
 
 const bulletMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffdd00, emissiveIntensity: 18.0, roughness: 0.1, metalness: 0 })
@@ -2188,7 +2188,13 @@ function checkCollisions() {
         hitFlashTimer = 0.5
         updateHPDisplay()
         if (playerHP <= 0) {
-          respawnPlayer()
+          // 即時リスポーンではなく3秒カウントダウン開始
+          respawnTimer = 3.0
+          player.visible = false
+          const cd = document.getElementById('respawn-countdown')!
+          const respawnOvr = document.getElementById('respawn-overlay')!
+          cd.style.display = 'block'
+          respawnOvr.style.opacity = '1'
           return
         }
       }
@@ -2360,8 +2366,8 @@ function drawRadar() {
 
   function worldToRadar(pos: THREE.Vector3): [number, number] {
     const rel = pos.clone().sub(player.position)
-    const rx = rel.x * Math.cos(-heading) - rel.z * Math.sin(-heading)
-    const rz = rel.x * Math.sin(-heading) + rel.z * Math.cos(-heading)
+    const rx = rel.x * Math.cos(heading) - rel.z * Math.sin(heading)
+    const rz = rel.x * Math.sin(heading) + rel.z * Math.cos(heading)
     const scale = Math.min(1, Math.hypot(rx, rz) / RADAR_RANGE)
     const norm = Math.hypot(rx, rz) > 0.01 ? Math.hypot(rx, rz) : 1
     return [cx - (rx / norm) * scale * RADAR_R, cy - (rz / norm) * scale * RADAR_R]
@@ -2486,6 +2492,23 @@ function loop() {
   if (currentMode !== null) updateSupplyPoints(dt)
   if (currentMode === 'dogfight') setObjective(`敵機を撃墜せよ — SCORE: ${score}`)
   if (currentMode === 'souryokusen') setObjective(`地上目標を破壊 ${modeObjectiveKilled} / ${modeObjectiveTotal} — SCORE: ${score}`)
+
+  // ── リスポーンカウントダウン ──────────────────────────
+  if (respawnTimer > 0) {
+    respawnTimer -= dt
+    const remaining = Math.ceil(respawnTimer)
+    const countEl = document.getElementById('respawn-count')
+    if (countEl) countEl.textContent = String(Math.max(1, remaining))
+    if (respawnTimer <= 0) {
+      respawnTimer = 0
+      const cd = document.getElementById('respawn-countdown')!
+      const respawnOvr = document.getElementById('respawn-overlay')!
+      cd.style.display = 'none'
+      respawnOvr.style.opacity = '0'
+      respawnPlayer()
+    }
+    requestAnimationFrame(loop); return  // 死亡中はゲームロジックをスキップ
+  }
 
   // 無敵タイマー
   if (invincibleTimer > 0) {

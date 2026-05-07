@@ -169,6 +169,12 @@
       #respawn-overlay {
         position: fixed; inset: 0; pointer-events: none; opacity: 0;
         background: radial-gradient(ellipse at center, rgba(100,200,255,0.15) 0%, rgba(0,100,255,0.4) 100%);
+        display: flex; align-items: center; justify-content: center;
+      }
+      #respawn-countdown {
+        color: rgba(160,220,255,0.95); font-size: 48px; font-weight: 900;
+        letter-spacing: 6px; text-shadow: 0 0 30px rgba(80,160,255,0.9);
+        text-align: center; line-height: 1.3; display: none;
       }
 
       /* ── 補給インジケーター ── */
@@ -498,7 +504,7 @@
     <!-- 補給インジケーター -->
     <div id="supply-indicator">RESUPPLY</div>
     <!-- リスポーン演出 -->
-    <div id="respawn-overlay"></div>
+    <div id="respawn-overlay"><div id="respawn-countdown">DESTROYED<br><span id="respawn-count">3</span></div></div>
 
     <!-- ゲームモード選択 -->
     <div id="mode-screen">
