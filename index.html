@@ -146,7 +146,7 @@
 
       /* ── レーダー ── */
       #radar-wrap {
-        position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+        position: fixed; top: 14px; left: 14px;
         pointer-events: none;
       }
       #radar { border-radius: 50%; opacity: 0.88; }
@@ -225,9 +225,9 @@
       .tbtn .btn-icon { font-size: 18px; line-height: 1; }
       .tbtn .btn-label { font-size: 8px; letter-spacing: 1.5px; opacity: 0.7; }
 
-      /* 左上：BOOST */
+      /* 右中：BOOST（右親指でアクセス） */
       #btn-boost {
-        position: absolute; top: 12px; left: 12px; width: 80px; height: 56px;
+        position: absolute; bottom: 12px; right: 104px; width: 80px; height: 56px;
         border-color: rgba(80,180,255,0.5); color: rgba(120,210,255,0.95);
         background: rgba(10,30,60,0.75);
       }
@@ -304,26 +304,39 @@
         display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
         max-width: 660px; width: 92%;
       }
-      .ms-btn {
+      .ms-card {
         background: rgba(8,22,48,0.82);
-        border: 1px solid rgba(60,140,255,0.2);
-        border-radius: 12px; padding: 18px 10px;
-        cursor: pointer; text-align: center;
-        display: flex; flex-direction: column; align-items: center; gap: 7px;
+        border: 1px solid rgba(60,140,255,0.22);
+        border-radius: 14px; padding: 20px 14px;
+        display: flex; flex-direction: column; align-items: center; gap: 10px;
         transition: background 0.13s, border-color 0.13s, transform 0.1s;
         backdrop-filter: blur(10px); color: #e8f4ff;
       }
-      .ms-btn:hover  { background: rgba(18,48,110,0.88); border-color: rgba(80,170,255,0.5); transform: translateY(-2px); }
-      .ms-btn:active { transform: scale(0.95); }
+      .ms-card:hover { background: rgba(18,48,110,0.88); border-color: rgba(80,170,255,0.5); transform: translateY(-2px); }
+      .ms-card-war { border-color: rgba(255,80,60,0.3); }
+      .ms-card-war:hover { border-color: rgba(255,100,80,0.55); }
       .ms-icon { font-size: 26px; line-height: 1; }
-      .ms-name { font-size: 12px; font-weight: 700; letter-spacing: 1px; }
-      .ms-desc { font-size: 9px; color: rgba(140,210,255,0.5); letter-spacing: 0.5px; }
-      .ms-btn[data-mode="dogfight"] { border-color: rgba(60,140,255,0.35); }
-      .ms-btn[data-mode="base"]     { border-color: rgba(60,220,120,0.35); }
-      .ms-btn[data-mode="fleet"]    { border-color: rgba(40,160,255,0.35); }
-      .ms-btn[data-mode="bomber"]   { border-color: rgba(200,160,60,0.35); }
-      .ms-btn[data-mode="tank"]     { border-color: rgba(120,200,80,0.35); }
-      .ms-btn[data-mode="free"]     { border-color: rgba(80,220,200,0.35); }
+      .ms-name { font-size: 13px; font-weight: 700; letter-spacing: 1px; }
+      .ms-desc { font-size: 9px; color: rgba(140,210,255,0.5); letter-spacing: 0.5px; text-align: center; }
+      .ms-start {
+        margin-top: 4px; padding: 8px 22px;
+        background: rgba(20,60,140,0.8); border: 1px solid rgba(60,140,255,0.42);
+        border-radius: 8px; color: #e8f4ff; font-size: 11px; letter-spacing: 3px;
+        cursor: pointer; font-family: 'Segoe UI', system-ui; transition: background 0.12s;
+      }
+      .ms-start:hover { background: rgba(30,80,180,0.9); }
+      .ms-card-war .ms-start { border-color: rgba(255,100,60,0.5); }
+      .ms-config { width: 100%; display: flex; flex-direction: column; gap: 6px; }
+      .ms-cfg-row { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 10px; }
+      .ms-cfg-lbl { width: 28px; text-align: right; color: rgba(160,220,255,0.6); letter-spacing: 1px; }
+      .ms-cfg-val { font-size: 16px; font-weight: 200; width: 24px; text-align: center; color: #fff; }
+      .ms-adj {
+        width: 26px; height: 26px; border-radius: 6px;
+        background: rgba(30,60,120,0.7); border: 1px solid rgba(60,140,255,0.3);
+        color: #8cf; font-size: 16px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; transition: background 0.1s;
+      }
+      .ms-adj:hover { background: rgba(50,90,180,0.8); }
 
       /* ===== ミッション完了 ===== */
       #mission-complete {
@@ -353,10 +366,11 @@
       #objective-hud .obj-val { font-size: 12px; letter-spacing: 1px; color: #e8f4ff; margin-top: 2px; }
 
       @media (pointer: coarse) {
-        .ms-grid { grid-template-columns: repeat(2, 1fr); max-width: 440px; }
         .ms-title { font-size: 34px; letter-spacing: 8px; }
-        .ms-btn { padding: 14px 8px; gap: 5px; }
-        #objective-hud { top: 80px; left: 12px; }
+        .ms-card { padding: 14px 10px; gap: 7px; }
+        #objective-hud { top: 134px; left: 14px; }
+        /* スコアパネル: LOCKボタン(top:12+56=68px)の下 */
+        #hud-score { top: 76px; }
       }
 
       /* 縦画面：回転促進オーバーレイ */
@@ -445,7 +459,7 @@
       <div id="joystick-zone"></div>
       <div id="joystick-base"></div>
       <div id="joystick-knob"></div>
-      <!-- 左上：BOOST（左手人差し指） -->
+      <!-- 右下：BOOST（右親指） -->
       <div class="tbtn" id="btn-boost">
         <span class="btn-icon">&#9889;</span>
         <span class="btn-label">BOOST</span>
@@ -491,36 +505,47 @@
       <div class="ms-title">AirFighter</div>
       <div class="ms-sub">SELECT MISSION MODE</div>
       <div class="ms-grid">
-        <button class="ms-btn" data-mode="dogfight">
-          <span class="ms-icon">&#9992;</span>
-          <span class="ms-name">ドッグファイト</span>
-          <span class="ms-desc">敵機を撃墜せよ</span>
-        </button>
-        <button class="ms-btn" data-mode="base">
-          <span class="ms-icon">&#9726;</span>
-          <span class="ms-name">基地攻撃</span>
-          <span class="ms-desc">地上目標を破壊せよ</span>
-        </button>
-        <button class="ms-btn" data-mode="fleet">
-          <span class="ms-icon">&#9875;</span>
-          <span class="ms-name">艦船攻撃</span>
-          <span class="ms-desc">敵艦隊を撃滅せよ</span>
-        </button>
-        <button class="ms-btn" data-mode="bomber">
-          <span class="ms-icon">&#9993;</span>
-          <span class="ms-name">大型機迎撃</span>
-          <span class="ms-desc">爆撃機を阻止せよ</span>
-        </button>
-        <button class="ms-btn" data-mode="tank">
-          <span class="ms-icon">&#9651;</span>
-          <span class="ms-name">戦車破壊</span>
-          <span class="ms-desc">装甲部隊を殲滅せよ</span>
-        </button>
-        <button class="ms-btn" data-mode="free">
-          <span class="ms-icon">&#9711;</span>
-          <span class="ms-name">フリーフライト</span>
-          <span class="ms-desc">自由に飛行する</span>
-        </button>
+
+        <!-- ドッグファイト -->
+        <div class="ms-card">
+          <div class="ms-icon">&#9992;</div>
+          <div class="ms-name">ドッグファイト</div>
+          <div class="ms-desc">空対空格闘戦</div>
+          <div class="ms-config">
+            <div class="ms-cfg-row">
+              <span class="ms-cfg-lbl">味方</span>
+              <button class="ms-adj" id="ally-minus">&#8722;</button>
+              <span class="ms-cfg-val" id="ally-count">2</span>
+              <button class="ms-adj" id="ally-plus">&#43;</button>
+            </div>
+            <div class="ms-cfg-row">
+              <span class="ms-cfg-lbl">敵</span>
+              <button class="ms-adj" id="enemy-minus">&#8722;</button>
+              <span class="ms-cfg-val" id="enemy-count">3</span>
+              <button class="ms-adj" id="enemy-plus">&#43;</button>
+            </div>
+          </div>
+          <button class="ms-start" data-mode="dogfight">START</button>
+        </div>
+
+        <!-- 総力戦 -->
+        <div class="ms-card ms-card-war">
+          <div class="ms-icon">&#9876;</div>
+          <div class="ms-name">総力戦</div>
+          <div class="ms-desc">航空機・戦車・艦船・爆撃機<br>全種の敵が一斉に出現</div>
+          <div style="flex:1"></div>
+          <button class="ms-start" data-mode="souryokusen">START</button>
+        </div>
+
+        <!-- フリーフライト -->
+        <div class="ms-card">
+          <div class="ms-icon">&#9711;</div>
+          <div class="ms-name">フリーフライト</div>
+          <div class="ms-desc">敵なし。マップを自由に探索する</div>
+          <div style="flex:1"></div>
+          <button class="ms-start" data-mode="free">START</button>
+        </div>
+
       </div>
     </div>
     <!-- ミッション完了 -->
