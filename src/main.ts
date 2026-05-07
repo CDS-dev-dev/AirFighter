@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { Sky } from 'three/addons/objects/Sky.js'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 
 // 縦画面強制横向き: CSS rotate(90deg)で回転するため canvas も landscape サイズで初期化する
@@ -24,11 +25,14 @@ renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.toneMappingExposure = 0.78
 document.body.appendChild(renderer.domElement)
 
+// ===== GLTF LOADER（地形・機体GLB読み込みで共有）=====
+const gltfLoader = new GLTFLoader()
+
 // ===== SCENE =====
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x9ccfe4)
-// 空気遠近法：近景は明確に、地平線だけ霞む
-scene.fog = new THREE.Fog(0x9ccfe4, 1700, 6900)
+scene.background = new THREE.Color(0x7da8c8)
+// 指数フォグ：距離に比例した大気の霞み（より自然なフォールオフ）
+scene.fog = new THREE.FogExp2(0x8db5cc, 0.000075)
 
 const camera = new THREE.PerspectiveCamera(70, initW / initH, 0.1, 8000)
 
@@ -42,50 +46,59 @@ const sky = new Sky()
 sky.scale.setScalar(8000)
 scene.add(sky)
 const skyUniforms = sky.material.uniforms
-// 澄んだ午後の空（BotW的明るい昼間）
-skyUniforms['turbidity'].value = 0.8
-skyUniforms['rayleigh'].value = 2.2
-skyUniforms['mieCoefficient'].value = 0.002
-skyUniforms['mieDirectionalG'].value = 0.88
+// 午後3時頃の黄金時間帯に近い空（霞・大気散乱を強調）
+skyUniforms['turbidity'].value = 3.0
+skyUniforms['rayleigh'].value = 3.5
+skyUniforms['mieCoefficient'].value = 0.005
+skyUniforms['mieDirectionalG'].value = 0.94
 
 const sunVec = new THREE.Vector3()
-// 45°の斜め光（昼すぎの柔らかい角度）
-sunVec.setFromSphericalCoords(1, THREE.MathUtils.degToRad(46), THREE.MathUtils.degToRad(195))
+// 地平線から28°の低い太陽（ドラマチックな斜め光）
+sunVec.setFromSphericalCoords(1, THREE.MathUtils.degToRad(62), THREE.MathUtils.degToRad(195))
 skyUniforms['sunPosition'].value.copy(sunVec)
 
-// ===== ENV MAP（空を機体・水面に反射させる）=====
-const cubeRT = new THREE.WebGLCubeRenderTarget(256)
-const cubeCamera = new THREE.CubeCamera(1, 6000, cubeRT)
+// ===== ENV MAP（PMREMGenerator で IBL: 機体・水面の金属反射）=====
+// Sky を先にレンダリングしてから PMREM でフィルタリング
+const pmremGen = new THREE.PMREMGenerator(renderer)
+pmremGen.compileCubemapShader()
+const cubeRT = new THREE.WebGLCubeRenderTarget(512)
+const cubeCamera = new THREE.CubeCamera(1, 8000, cubeRT)
 cubeCamera.position.set(0, 120, 0)
 scene.add(cubeCamera)
-// 空だけある状態でキャプチャ（ゲームオブジェクト追加前）
 cubeCamera.update(renderer, scene)
-scene.environment = cubeRT.texture
+scene.environment = pmremGen.fromCubemap(cubeRT.texture).texture
+pmremGen.dispose()
 scene.remove(cubeCamera)
 
 // ===== LIGHTING =====
-// メインサン：暖かい白昼光
-const sun = new THREE.DirectionalLight(0xfff4de, 3.7)
+// メインサン：低い太陽の暖かい橙色光（黄金時間帯）
+const sun = new THREE.DirectionalLight(0xffecd0, 4.5)
 sun.position.copy(sunVec).multiplyScalar(600)
 sun.castShadow = true
-sun.shadow.mapSize.set(2048, 2048)  // 4096→2048で軽量化（品質十分）
+sun.shadow.mapSize.set(2048, 2048)
 sun.shadow.camera.near = 1; sun.shadow.camera.far = 2000
 sun.shadow.camera.left = -600; sun.shadow.camera.right = 600
 sun.shadow.camera.top = 600; sun.shadow.camera.bottom = -600
 sun.shadow.bias = -0.0004
 scene.add(sun)
-// 環境光：やや青みがかった空の反射
-scene.add(new THREE.AmbientLight(0x4668aa, 0.42))
-// 半球光：空→地面のグラデーション（草の照り返し）
-scene.add(new THREE.HemisphereLight(0x9fd4ff, 0x436d2c, 1.35))
-// バックフィル：影部分を自然に（逆方向から弱く）
-const fillLight = new THREE.DirectionalLight(0x6688bb, 0.4)
-fillLight.position.set(-sunVec.x, sunVec.y * 0.3, -sunVec.z).multiplyScalar(400)
+// 環境光：黄昏時の大気散乱（やや橙がかった空）
+scene.add(new THREE.AmbientLight(0x6070a0, 0.52))
+// 半球光：空→地面のグラデーション（強めで立体感アップ）
+scene.add(new THREE.HemisphereLight(0xb8d4ff, 0x5c7a3e, 1.6))
+// バックフィル：影部分を青空色で自然に補光
+const fillLight = new THREE.DirectionalLight(0x7799cc, 0.55)
+fillLight.position.set(-sunVec.x, sunVec.y * 0.4, -sunVec.z).multiplyScalar(400)
 scene.add(fillLight)
 
 // Engine glow light (moves with player)
 const engineLight = new THREE.PointLight(0xff6600, 4, 25)
 scene.add(engineLight)
+
+// ===== STRUCTURAL MATERIALS（基地・港・橋で共有）=====
+const concMat  = new THREE.MeshStandardMaterial({ color: 0x8a8a80, roughness: 0.94, metalness: 0.02 })
+const steelMat = new THREE.MeshStandardMaterial({ color: 0x58636e, roughness: 0.50, metalness: 0.82, envMapIntensity: 1.6 })
+const milGreen = new THREE.MeshStandardMaterial({ color: 0x3c4a28, roughness: 0.90, metalness: 0.12 })
+const radarDishes: THREE.Group[] = []  // 回転アニメ用
 
 
 // ===== TERRAIN =====
@@ -134,22 +147,28 @@ function gauss2d(x: number, z: number, ax: number, az: number, rx: number, rz: n
 }
 
 // ═══════════════════════════════════════════════════════
-//  人設計地形: ランダムノイズ主体から脱却し
-//  「プレイヤーが覚えられる地形」を目指す
+//  人設計地形 v2: 全域に高低差・峡谷を入り組ませる
 //
 //  地理:
 //    北  — 大山脈 (Peak A〜D, 300-570m)
-//    東  — 東部プラトー + 大峡谷 (x≈920, 水中の谷底)
+//    中央北 — 高地帯 (100-160m) + 東西峡谷が横断
+//    中央  — 起伏丘陵 (50-120m) + 南北渓谷
+//    東  — 東部プラトー + 南北大峡谷
 //    西  — 断崖海岸 → 海 → 孤島群
-//    南  — 南部湾 + 半島
-//    中央 — 平原 + 河川
+//    南  — 南山地 + 湾 + 半島
+//    ※ 平地は最小化。どこでも高低差あり
 // ═══════════════════════════════════════════════════════
 function terrainH(x: number, z: number): number {
-  let h = 35  // ベース高度: ほぼ全域が海面上
+  // ── ベース: 長波うねりで全域に基本起伏 ──────────────────
+  let h = 60
+    + Math.sin(x * 0.00055 + 0.8) * 32
+    + Math.sin(z * 0.00070 + 0.3) * 28
+    + Math.sin((x - z) * 0.00042 + 1.1) * 20
+    + Math.sin((x + z * 0.6) * 0.00028) * 15
 
   // ── 北部山脈 メインリッジ (z≈-1400) ──────────────────
   const mdt = (z + 1400) / 680
-  h += Math.max(0, 1 - mdt * mdt) * (245 + Math.sin(x * 0.0022 + 0.7) * 72 + Math.sin(x * 0.006) * 38)
+  h += Math.max(0, 1 - mdt * mdt) * (260 + Math.sin(x * 0.0022 + 0.7) * 72 + Math.sin(x * 0.006) * 38)
 
   // ── 主要峰 ───────────────────────────────────────────
   h += gauss2d(x, z,  200, -1820, 340, 360, 390)  // Peak A 最高峰
@@ -157,23 +176,36 @@ function terrainH(x: number, z: number): number {
   h += gauss2d(x, z,  980, -1350, 280, 295, 270)  // Peak C 北東峰
   h += gauss2d(x, z,   60, -1060, 255, 245, 185)  // Peak D 前衛峰
 
+  // ── 中央北部高地 (z:-800〜-300, 広い高台) ─────────────
+  h += gauss2d(x, z, -180, -640, 900, 520, 130)   // 中央北高地
+  h += gauss2d(x, z,  620, -520, 440, 400,  95)   // 東部中央丘陵
+
+  // ── 南部山地 (南にも山を配置) ────────────────────────
+  h += gauss2d(x, z, -720,  480, 520, 440, 115)   // 南西山地
+  h += gauss2d(x, z,  380,  580, 360, 320,  80)   // 南東丘陵
+  h += gauss2d(x, z, -160,  920, 320, 280,  65)   // 南部内陸丘
+
   // ── 東部プラトー (x:400-2000, z:-800-0) ───────────────
   h += gauss2d(x, z, 1100, -380, 680, 520, 80)
 
   // ── 北西高地 ─────────────────────────────────────────
   h += gauss2d(x, z, -1080, -720, 480, 560, 92)
 
-  // ── 南西丘陵 ─────────────────────────────────────────
-  h += gauss2d(x, z, -580, 720, 580, 490, 50)
+  // ── 南西丘陵（強化）──────────────────────────────────
+  h += gauss2d(x, z, -580, 720, 580, 490, 75)
 
-  // ── 中央平野 (スタート地点付近を平坦に) ─────────────────
-  h -= Math.exp(-((x*x + z*z) / (460*460))) * 13
+  // ── 東西横断峡谷 (z≈-220、マップを東西に切る) ──────────
+  const ewZ = -220 + Math.sin(x * 0.00085) * 150 + Math.sin(x * 0.0022 + 0.6) * 65
+  const ewD = Math.abs(z - ewZ)
+  const ewA = clamp01((x + 900) / 350) * clamp01((900 - x) / 350)
+  h -= Math.exp(-(ewD / 80) * (ewD / 80)) * 160 * ewA
+  h += Math.exp(-((ewD - 170) / 55) * ((ewD - 170) / 55)) * 38 * ewA  // リム
 
-  // ── 河川 (南北方向, x≈120) ───────────────────────────
-  const rvX = 120 + Math.sin(z * 0.0009) * 175 + Math.sin(z * 0.0025 + 1) * 55
-  const rvD = Math.abs(x - rvX)
-  const rvA = clamp01((z + 1300) / 350) * clamp01(1 - (z - 1400) / 350)
-  h -= Math.exp(-(rvD/105)*(rvD/105)) * 60 * rvA
+  // ── 中央南北渓谷 (x≈-350、南北に走る) ──────────────────
+  const nsX = -350 + Math.sin(z * 0.0007) * 140 + Math.sin(z * 0.0019 + 1.2) * 55
+  const nsD = Math.abs(x - nsX)
+  const nsA = clamp01((z + 1100) / 400) * clamp01((1100 - z) / 400)
+  h -= Math.exp(-(nsD / 70) * (nsD / 70)) * 110 * nsA
 
   // ── 東部大峡谷 (x≈920、南北280m×深さ100-180m) ─────────
   const cxC = 920 + Math.sin(z * 0.0008) * 120 + Math.sin(z * 0.002 + 0.5) * 48
@@ -181,35 +213,47 @@ function terrainH(x: number, z: number): number {
   const cxA = clamp01((x - 350) / 320)
            * clamp01((z + 700) / 380)
            * clamp01(1 - (z - 700) / 380)
-  const cxW = Math.max(0, cxD - 130)  // フラット底幅 260m
-  h -= Math.exp(-(cxW/62)*(cxW/62)) * 162 * cxA
-  h += Math.exp(-((cxD-205)/65)*((cxD-205)/65)) * 42 * cxA  // 峡谷リム
+  const cxW = Math.max(0, cxD - 130)
+  h -= Math.exp(-(cxW / 62) * (cxW / 62)) * 162 * cxA
+  h += Math.exp(-((cxD - 205) / 65) * ((cxD - 205) / 65)) * 42 * cxA  // 峡谷リム
+
+  // ── 斜行渓谷 SW→NE (x=-600〜200, z=200〜800) ─────────
+  const diagT = ((x - z) + 400) / 160
+  const diagA = clamp01((x + 700) / 500) * clamp01((300 - x) / 500)
+             * clamp01((z - 100) / 300) * clamp01((900 - z) / 300)
+  h -= Math.exp(-(diagT * diagT)) * 95 * diagA
+
+  // ── 河川 (南北方向, x≈120) ───────────────────────────
+  const rvX = 120 + Math.sin(z * 0.0009) * 175 + Math.sin(z * 0.0025 + 1) * 55
+  const rvD = Math.abs(x - rvX)
+  const rvA = clamp01((z + 1300) / 350) * clamp01(1 - (z - 1400) / 350)
+  h -= Math.exp(-(rvD / 105) * (rvD / 105)) * 60 * rvA
 
   // ── 西部断崖・海岸 (x<-1100 で海へ急降下) ─────────────
   if (x < -1100) {
     const cliffX = -1650 + Math.sin(z * 0.0006) * 185 + Math.sin(z * 0.0018) * 65
     const dfc = -(x - cliffX)
-    h -= clamp01(dfc / 360) * 248
+    h -= clamp01(dfc / 360) * 260
   }
 
   // ── 南部湾 (x≈0, z=700-1700) ─────────────────────────
-  const bayX = Math.exp(-(x/660)*(x/660))
+  const bayX = Math.exp(-(x / 660) * (x / 660))
   const bayZ = clamp01((z - 660) / 340) * clamp01(1 - (z - 1700) / 320)
-  h -= bayX * bayZ * 76
+  h -= bayX * bayZ * 80
 
   // ── 南部半島 (湾の中央を突く陸地) ────────────────────
-  const penX = Math.exp(-(x/155)*(x/155))
+  const penX = Math.exp(-(x / 155) * (x / 155))
   const penZ = clamp01((z - 860) / 260) * clamp01(1 - (z - 1720) / 340)
   h += penX * penZ * 86
 
-  // ── 西部孤島群 (海面上に顔を出す) ────────────────────
+  // ── 西部孤島群 ───────────────────────────────────────
   h += gauss2d(x, z, -2180,  -150, 145, 130, 52)
   h += gauss2d(x, z, -2480,   320, 120, 108, 44)
   h += gauss2d(x, z, -2090,  -640,  95,  88, 40)
   h += gauss2d(x, z, -2700,   100, 100,  92, 27)
 
-  // ── テクスチャノイズ (小振幅) ─────────────────────────
-  h += (fbm(x * 0.006 + 5.1, z * 0.006 - 3.8, 3) - 0.5) * 22
+  // ── テクスチャノイズ (振幅アップで凹凸感を強化) ───────────
+  h += (fbm(x * 0.006 + 5.1, z * 0.006 - 3.8, 4) - 0.5) * 38
 
   return h
 }
@@ -311,6 +355,34 @@ const ground = new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({
 }))
 ground.receiveShadow = true
 scene.add(ground)
+
+// ===== TERRAIN GLB（Blender生成の高品質地形）=====
+// 非同期で読み込み、完了後にプロシージャル地形と差し替え
+gltfLoader.load(
+  import.meta.env.BASE_URL + 'terrain.glb',
+  (gltf) => {
+    gltf.scene.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const m = child as THREE.Mesh
+        m.receiveShadow = true
+        // 頂点カラーを確実に有効化
+        if (Array.isArray(m.material)) {
+          m.material.forEach(mat => { (mat as THREE.MeshStandardMaterial).vertexColors = true })
+        } else {
+          (m.material as THREE.MeshStandardMaterial).vertexColors = true
+        }
+      }
+    })
+    // プロシージャル地形を非表示にして GLB 地形に切り替え
+    scene.remove(ground)
+    scene.add(gltf.scene)
+    console.log('[Terrain] GLB loaded — procedural terrain replaced')
+  },
+  undefined,
+  (err) => {
+    console.warn('[Terrain] GLB not found, using procedural fallback:', err)
+  }
+)
 
 // ===== WATER =====
 const waterUniforms = { time: { value: 0 }, sunDir: { value: sunVec.clone().normalize() } }
@@ -572,54 +644,33 @@ SUPPLY_POSITIONS.forEach(pos => {
   light.position.copy(pos); scene.add(light)
 })
 
-// ===== CENTER AREA STRUCTURES（マップ中央の建造物・廃墟） =====
-;(() => {
-  const conMat = new THREE.MeshStandardMaterial({ color: 0x8a7e6e, roughness: 0.94, metalness: 0.0 })
-  const metalMat = new THREE.MeshStandardMaterial({ color: 0x5a6a78, roughness: 0.72, metalness: 0.55 })
-  // 格納庫群
-  const structs: [number, number, number, number, number][] = [
-    [75, 0, 55, 38, 16], [-85, 0, -35, 32, 13], [155, 0, 25, 24, 11],
-    [155, 0, 72, 24, 11], [-130, 0, 105, 28, 14], [-55, 0, 125, 18, 9],
-    [95, 0, -130, 20, 9], [-10, 0, -90, 26, 12],
-  ]
-  for (const [x, _y, z, w, h] of structs) {
-    void _y
-    const ty = terrainH(x, z)
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, w * 1.6), conMat)
-    m.position.set(x, ty + h/2, z); m.rotation.y = Math.random() * 0.5 - 0.25
-    m.castShadow = true; m.receiveShadow = true; scene.add(m)
-  }
-  // 管制塔
-  const tx = 48, tz = -75, ty = terrainH(tx, tz)
-  const tower = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.5, 38, 8), metalMat)
-  tower.position.set(tx, ty + 19, tz); tower.castShadow = true; scene.add(tower)
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 2.5, 4, 8), metalMat)
-  cap.position.set(tx, ty + 40, tz); scene.add(cap)
-  // 防壁リング
-  for (let i = 0; i < 14; i++) {
-    const a = (i / 14) * Math.PI * 2, r = 185 + Math.random() * 45
-    const wx = Math.cos(a) * r, wz = Math.sin(a) * r
-    const wy = terrainH(wx, wz)
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(2.2, 5 + Math.random() * 4, 14 + Math.random() * 8), conMat)
-    wall.position.set(wx, wy + 4, wz); wall.rotation.y = a + Math.PI/2
-    wall.castShadow = true; scene.add(wall)
-  }
-})()
+// ===== WORLD STRUCTURES（全てfunction宣言でホイスト済み）=====
+buildAirBase(   0,  -60, 0,           'A')   // 中央基地 Alpha（プレイヤー出撃地点）
+buildAirBase(1100, -280, Math.PI*0.1, 'B')   // 東部高原基地 Bravo
+buildPort(   -130,  920, 0)                  // 南部湾 軍港
+buildBridge(   80, -185, 220, 0)             // 東西峡谷橋
 
 // ===== FACTORIES =====
 function createAircraft(bodyColor: number, darkColor: number): THREE.Group {
   const g = new THREE.Group()
   const mat = new THREE.MeshPhysicalMaterial({
-    color: bodyColor, roughness: 0.08, metalness: 0.92,
-    clearcoat: 1.0, clearcoatRoughness: 0.05, envMapIntensity: 1.2
+    color: bodyColor, roughness: 0.06, metalness: 0.94,
+    clearcoat: 1.0, clearcoatRoughness: 0.02, envMapIntensity: 2.5
   })
   const dark = new THREE.MeshPhysicalMaterial({
-    color: darkColor, roughness: 0.18, metalness: 0.88,
-    clearcoat: 0.5, clearcoatRoughness: 0.1
+    color: darkColor, roughness: 0.16, metalness: 0.90,
+    clearcoat: 0.6, clearcoatRoughness: 0.08, envMapIntensity: 2.0
   })
   const glass = new THREE.MeshPhysicalMaterial({
-    color: 0x99ccff, transparent: true, opacity: 0.28,
-    roughness: 0.0, metalness: 0.0, transmission: 0.7, ior: 1.5
+    color: 0x88bbff, transparent: true, opacity: 0.22,
+    roughness: 0.0, metalness: 0.0, transmission: 0.82, ior: 1.5,
+    envMapIntensity: 3.0
+  })
+  const pylonMat = new THREE.MeshPhysicalMaterial({
+    color: darkColor, roughness: 0.22, metalness: 0.85, envMapIntensity: 1.8
+  })
+  const missileSkinMat = new THREE.MeshPhysicalMaterial({
+    color: 0xcccccc, roughness: 0.28, metalness: 0.72, envMapIntensity: 1.5
   })
 
   const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.55, 4.5, 12), mat)
@@ -648,6 +699,18 @@ function createAircraft(bodyColor: number, darkColor: number): THREE.Group {
   const intake = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.20, 1.4, 10), dark)
   intake.rotation.x = Math.PI / 2; intake.position.z = 2.3; g.add(intake)
 
+  // ウイングパイロン + 外装ミサイル（左右対称）
+  for (const side of [-2.6, 2.6]) {
+    const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.42, 1.0), pylonMat)
+    pylon.position.set(side, -0.22, 0.5); g.add(pylon)
+    const mBody = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.9, 7), missileSkinMat)
+    mBody.rotation.x = Math.PI / 2; mBody.position.set(side, -0.46, 0.5); g.add(mBody)
+    const mTip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.28, 7), missileSkinMat)
+    mTip.rotation.x = Math.PI / 2; mTip.position.set(side, -0.46, -0.04); g.add(mTip)
+    const mFin = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.18), missileSkinMat)
+    mFin.position.set(side, -0.46, 0.88); g.add(mFin)
+  }
+
   // エンジンノズルグロー
   const nozzleMat = new THREE.MeshStandardMaterial({
     color: 0xff6600, emissive: 0xff3300, emissiveIntensity: 8, roughness: 0.4
@@ -670,6 +733,26 @@ function createMissileModel(mat: THREE.Material): THREE.Group {
   const exhaust = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.45, 8), exhaustMat)
   exhaust.rotation.x = -Math.PI / 2; exhaust.position.z = 0.72; g.add(exhaust)
   return g
+}
+
+// ===== GLTF LOADER（地形GLB + 将来の機体モデル差し替え用インフラ）=====
+
+// GLBモデル読み込みユーティリティ。Phase 3 以降で機体・建造物の置き換えに使用する。
+// window に公開することで将来のコード（動的 import 等）から呼び出せる。
+;(window as unknown as Record<string, unknown>).loadAircraftGLB = function(url: string, onLoad: (group: THREE.Group) => void): void {
+  gltfLoader.load(url, (gltf) => {
+    const group = gltf.scene
+    group.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh
+        mesh.castShadow = true
+        mesh.receiveShadow = true
+        const mat = mesh.material as THREE.MeshStandardMaterial
+        if (mat) mat.envMapIntensity = 2.5
+      }
+    })
+    onLoad(group)
+  }, undefined, (err) => console.warn('GLB load failed:', err))
 }
 
 // ===== CLOUDS (volumetric-ish) =====
@@ -907,7 +990,15 @@ interface HomingMissile extends Projectile { mesh: THREE.Group; target: THREE.Ob
 interface Enemy { group: THREE.Group; health: number; orbitAngle: number; fireCooldown: number; missileAmmo: number; seekingSupply: boolean }
 interface Ally { group: THREE.Group; health: number; orbitAngle: number; fireCooldown: number; missileAmmo: number }
 interface Explosion { particles: Array<{ mesh: THREE.Mesh; vel: THREE.Vector3 }>; life: number }
-interface GroundTarget { group: THREE.Group; health: number; maxHealth: number; vel: THREE.Vector3 }
+interface GroundTarget {
+  group: THREE.Group; health: number; maxHealth: number; vel: THREE.Vector3
+  type?: 'ship'|'tank'|'sam'|'bomber'|'heli'
+  fireCooldown?: number   // SAM専用: 発射クールダウン
+  smokeTimer?: number     // 煙エフェクトタイマー
+  patrolAngle?: number    // ヘリ専用: 旋回角度
+  patrolCenter?: THREE.Vector3  // ヘリ専用: 旋回中心
+}
+interface SmokeParticle { mesh: THREE.Mesh; vel: THREE.Vector3; life: number; maxLife: number }
 
 const bullets: Projectile[] = []
 const playerMissiles: HomingMissile[] = []
@@ -916,6 +1007,8 @@ const allyMissiles: HomingMissile[] = []
 const flares: Projectile[] = []
 const enemies: Enemy[] = []
 const allies: Ally[] = []
+const smokeParticles: SmokeParticle[] = []
+const heliBlades: THREE.Group[] = []  // ヘリローター回転用
 const explosions: Explosion[] = []
 const groundTargets: GroundTarget[] = []
 
@@ -1115,26 +1208,494 @@ function dropFlare() {
 }
 
 // ===== GROUND TARGET MODELS =====
+// ═══════════════════════════════════════════════════════
+//  WORLD STRUCTURE BUILDERS
+//  function宣言はホイストされるため、上部の配置呼び出しより
+//  後に定義しても実行時には問題ない
+// ═══════════════════════════════════════════════════════
+
+function mkRunwayTex(): THREE.CanvasTexture {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 1024
+  const ctx = c.getContext('2d')!
+  ctx.fillStyle = '#1c1c20'; ctx.fillRect(0, 0, 256, 1024)
+  // 中央線（破線）
+  for (let y = 60; y < 960; y += 90) {
+    ctx.fillStyle = '#d8d8d0'; ctx.fillRect(120, y, 16, 48)
+  }
+  // 閾値マーキング
+  for (const yOff of [16, 994]) {
+    for (let x = 36; x < 220; x += 30) {
+      ctx.fillStyle = '#e0e0d8'; ctx.fillRect(x, yOff, 18, 14)
+    }
+  }
+  // エッジライン
+  ctx.fillStyle = '#c8c8c0'
+  ctx.fillRect(18, 0, 4, 1024); ctx.fillRect(234, 0, 4, 1024)
+  const t = new THREE.CanvasTexture(c)
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace
+  return t
+}
+
+const _runwayTex = mkRunwayTex()  // 共有テクスチャ
+
+function addRunway(cx: number, cz: number, length: number, rotY: number): void {
+  const w = 32, g2 = new THREE.Group()
+  const deck = new THREE.Mesh(
+    new THREE.PlaneGeometry(w, length),
+    new THREE.MeshStandardMaterial({ map: _runwayTex, roughness: 0.98, metalness: 0 })
+  )
+  deck.rotation.x = -Math.PI / 2; deck.receiveShadow = true; g2.add(deck)
+  // 誘導灯（両サイド交互に白/赤）
+  for (let i = -length/2 + 20; i < length/2; i += 24) {
+    for (const side of [-w/2 - 1.8, w/2 + 1.8]) {
+      const col = Math.abs(i) < 80 ? 0xff3300 : 0xeeeedd
+      const lm = new THREE.Mesh(new THREE.SphereGeometry(0.45, 5, 5),
+        new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 10 }))
+      lm.position.set(side, 0.35, i); g2.add(lm)
+    }
+  }
+  g2.position.set(cx, terrainH(cx, cz) + 0.3, cz); g2.rotation.y = rotY; scene.add(g2)
+}
+
+function addHangar(cx: number, cz: number, w: number, h: number, d: number, rotY: number, baseY: number): void {
+  const g2 = new THREE.Group()
+  // 側壁
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h * 0.58, d), milGreen)
+  wall.position.y = h * 0.29; wall.castShadow = true; wall.receiveShadow = true; g2.add(wall)
+  // 半円筒屋根
+  const roofGeo = new THREE.CylinderGeometry(w * 0.52, w * 0.52, d, 14, 1, false, 0, Math.PI)
+  roofGeo.rotateZ(Math.PI / 2)
+  const roof = new THREE.Mesh(roofGeo, steelMat)
+  roof.position.y = h * 0.56; roof.castShadow = true; g2.add(roof)
+  // 正面扉枠
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(w * 0.68, h * 0.52, 1.2),
+    new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.8, metalness: 0.5 }))
+  frame.position.set(0, h * 0.26, -d / 2); g2.add(frame)
+  g2.position.set(cx, baseY, cz); g2.rotation.y = rotY; scene.add(g2)
+}
+
+function addControlTower(cx: number, cz: number, baseY: number): void {
+  const g2 = new THREE.Group()
+  const base2 = new THREE.Mesh(new THREE.BoxGeometry(9, 5, 9), concMat)
+  base2.position.y = 2.5; base2.castShadow = true; g2.add(base2)
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(5.5, 30, 5.5), concMat)
+  shaft.position.y = 20; shaft.castShadow = true; g2.add(shaft)
+  const glassMat2 = new THREE.MeshPhysicalMaterial({
+    color: 0x88ccee, transparent: true, opacity: 0.5,
+    roughness: 0, metalness: 0, transmission: 0.6, envMapIntensity: 3
+  })
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(10, 5, 10), glassMat2)
+  cab.position.y = 37.5; g2.add(cab)
+  const roofS = new THREE.Mesh(new THREE.BoxGeometry(12, 0.7, 12), steelMat)
+  roofS.position.y = 40.5; g2.add(roofS)
+  const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 9, 6), steelMat)
+  ant.position.y = 45.5; g2.add(ant)
+  const navL = new THREE.Mesh(new THREE.SphereGeometry(0.4, 6, 6),
+    new THREE.MeshStandardMaterial({ color: 0xff1100, emissive: 0xff1100, emissiveIntensity: 14 }))
+  navL.position.y = 50.5; g2.add(navL)
+  g2.position.set(cx, baseY, cz); scene.add(g2)
+}
+
+function addRadarDish(cx: number, cz: number, baseY: number): void {
+  const g2 = new THREE.Group()
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.8, 15, 8), steelMat)
+  mast.position.y = 7.5; mast.castShadow = true; g2.add(mast)
+  const rotGrp = new THREE.Group(); rotGrp.position.y = 15.5
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(5.8, 0.38, 8, 24), steelMat)
+  rim.rotation.y = Math.PI / 2; rotGrp.add(rim)
+  for (let i = 0; i < 8; i++) {
+    const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 5.8, 4), steelMat)
+    sp.rotation.z = Math.PI / 2; sp.rotation.x = (i / 8) * Math.PI; rotGrp.add(sp)
+  }
+  const feed = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 2, 8), steelMat)
+  feed.rotation.z = Math.PI / 2; feed.position.x = 7; rotGrp.add(feed)
+  g2.add(rotGrp); radarDishes.push(rotGrp)
+  g2.position.set(cx, baseY, cz); scene.add(g2)
+}
+
+function addFuelTanks(cx: number, cz: number, baseY: number, count: number): void {
+  const specs = [{r:9,h:16},{r:11,h:20},{r:8,h:13},{r:10,h:17},{r:7,h:11},{r:9,h:14}].slice(0, count)
+  const tankMat2 = new THREE.MeshStandardMaterial({ color: 0x8a929e, roughness: 0.32, metalness: 0.82, envMapIntensity: 1.8 })
+  const bermMat  = new THREE.MeshStandardMaterial({ color: 0x606248, roughness: 0.96, metalness: 0 })
+  specs.forEach(({ r, h }, i) => {
+    const a = (i / specs.length) * Math.PI * 2, dist = 20 + i * 5
+    const tx = cx + Math.cos(a) * dist, tz = cz + Math.sin(a) * dist
+    const berm = new THREE.Mesh(new THREE.CylinderGeometry(r+5, r+8, 2.8, 10), bermMat)
+    berm.position.set(tx, baseY + 1.4, tz); scene.add(berm)
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), tankMat2)
+    tank.position.set(tx, baseY + h/2 + 2.5, tz); tank.castShadow = true; scene.add(tank)
+    const top2 = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 6, 0, Math.PI*2, 0, Math.PI/2), tankMat2)
+    top2.position.set(tx, baseY + h + 2.5, tz); scene.add(top2)
+  })
+}
+
+function addPerimeterWall(cx: number, cz: number, baseY: number, rx: number, rz: number, rotY: number): void {
+  const wallH = 5.5, wallT = 2.5
+  const corners = [[-rx,-rz],[rx,-rz],[rx,rz],[-rx,rz]]
+  for (let i = 0; i < 4; i++) {
+    const [ax,az] = corners[i], [bx,bz] = corners[(i+1)%4]
+    const mx = (ax+bx)/2, mz = (az+bz)/2
+    const len = Math.hypot(bx-ax, bz-az), angle = Math.atan2(bx-ax, bz-az)
+    const cos = Math.cos(rotY), sin = Math.sin(rotY)
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(wallT, wallH, len), concMat)
+    wall.position.set(cx + mx*cos - mz*sin, baseY + wallH/2, cz + mx*sin + mz*cos)
+    wall.rotation.y = rotY + angle; wall.castShadow = true; wall.receiveShadow = true; scene.add(wall)
+  }
+  // 四隅の番兵塔
+  corners.forEach(([wx,wz]) => {
+    const cos = Math.cos(rotY), sin = Math.sin(rotY)
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.8, wallH+7, 8), concMat)
+    tower.position.set(cx + wx*cos - wz*sin, baseY + (wallH+7)/2, cz + wx*sin + wz*cos)
+    tower.castShadow = true; scene.add(tower)
+    const top3 = new THREE.Mesh(new THREE.BoxGeometry(8, 1.5, 8), concMat)
+    top3.position.set(cx + wx*cos - wz*sin, baseY + wallH + 7.5, cz + wx*sin + wz*cos)
+    scene.add(top3)
+  })
+}
+
+function buildAirBase(cx: number, cz: number, rotY: number, label: 'A' | 'B'): void {
+  const baseY = terrainH(cx, cz)
+  // エプロン（コンクリート舗装）
+  const apron = new THREE.Mesh(new THREE.PlaneGeometry(135, 110), concMat)
+  apron.rotation.x = -Math.PI/2; apron.receiveShadow = true
+  apron.position.set(cx, baseY + 0.22, cz + 55); scene.add(apron)
+  // 滑走路
+  addRunway(cx, cz - 18, 300, rotY)
+  // 格納庫 x3
+  const hw = 44, hh = 19, hd = 58
+  for (let i = -1; i <= 1; i++) addHangar(cx + i*(hw+10), cz + 100, hw, hh, hd, rotY, baseY)
+  // 管制塔
+  addControlTower(cx + 78, cz - 55, baseY)
+  // レーダーアンテナ
+  addRadarDish(cx - 82, cz - 65, baseY)
+  // 燃料タンク群
+  addFuelTanks(cx + 115, cz + 65, baseY, label === 'A' ? 4 : 3)
+  // 周壁 + 番兵塔
+  addPerimeterWall(cx, cz + 28, baseY, 155, 148, rotY)
+}
+
+function addDockPlatform(cx: number, cz: number, baseY: number, w: number, d: number): void {
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(w, 3, d), concMat)
+  deck.position.set(cx, baseY + 1.5, cz); deck.receiveShadow = true; deck.castShadow = true; scene.add(deck)
+  // 杭（ピリング）
+  const pn = Math.ceil(w / 28)
+  for (let i = 0; i < pn; i++) {
+    const px = cx - w/2 + (i + 0.5) * (w/pn)
+    for (const pz of [cz - d/2 + 5, cz + d/2 - 5]) {
+      const pile = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.6, 14, 6), concMat)
+      pile.position.set(px, baseY - 5, pz); scene.add(pile)
+    }
+  }
+  // ボラード（係留柱）
+  const steelB = new THREE.MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.6, metalness: 0.8 })
+  for (let i = 0; i < 7; i++) {
+    const bx = cx - w/2 + (i + 0.5) * (w/7)
+    const bollard = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 2.2, 8), steelB)
+    bollard.position.set(bx, baseY + 3.5, cz - d/2 + 1); scene.add(bollard)
+  }
+}
+
+function addCrane(cx: number, cz: number, baseY: number, rotY: number): void {
+  const g2 = new THREE.Group()
+  const tower = new THREE.Mesh(new THREE.BoxGeometry(5, 45, 5), steelMat)
+  tower.position.y = 22.5; tower.castShadow = true; g2.add(tower)
+  const boom = new THREE.Mesh(new THREE.BoxGeometry(40, 2.5, 2.5), steelMat)
+  boom.position.set(14, 46, 0); g2.add(boom)
+  const counter = new THREE.Mesh(new THREE.BoxGeometry(16, 2.5, 2.5), steelMat)
+  counter.position.set(-10, 46, 0); g2.add(counter)
+  const cw = new THREE.Mesh(new THREE.BoxGeometry(5, 6, 4), concMat)
+  cw.position.set(-17, 43, 0); g2.add(cw)
+  const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 30, 4), steelMat)
+  cable.position.set(25, 31, 0); g2.add(cable)
+  const hook = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.35, 6, 12, Math.PI), steelMat)
+  hook.position.set(25, 16, 0); hook.rotation.z = Math.PI/2; g2.add(hook)
+  const warnL = new THREE.Mesh(new THREE.SphereGeometry(0.6, 6, 6),
+    new THREE.MeshStandardMaterial({ color: 0xff7700, emissive: 0xff5500, emissiveIntensity: 10 }))
+  warnL.position.set(34, 47.5, 0); g2.add(warnL)
+  g2.position.set(cx, baseY, cz); g2.rotation.y = rotY; scene.add(g2)
+}
+
+function addWarehouse(cx: number, cz: number, w: number, h: number, d: number, rotY: number, baseY: number): void {
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), milGreen)
+  body.position.set(cx, baseY + h/2, cz); body.rotation.y = rotY
+  body.castShadow = true; body.receiveShadow = true; scene.add(body)
+  const roofMat2 = new THREE.MeshStandardMaterial({ color: 0x5a3c28, roughness: 0.90, metalness: 0.18 })
+  const ridge = new THREE.Mesh(new THREE.BoxGeometry(w + 2.5, 1, d + 2.5), roofMat2)
+  ridge.position.set(cx, baseY + h + 0.5, cz); ridge.rotation.y = rotY; scene.add(ridge)
+}
+
+function buildPort(cx: number, cz: number, _rotY: number): void {
+  const baseY = Math.max(terrainH(cx, cz), WATER_LEVEL + 3.5)
+  addDockPlatform(cx, cz, baseY, 175, 65)
+  // 倉庫群
+  addWarehouse(cx - 50, cz + 58, 55, 15, 30, 0, terrainH(cx - 50, cz + 58))
+  addWarehouse(cx + 50, cz + 58, 55, 15, 30, 0, terrainH(cx + 50, cz + 58))
+  addWarehouse(cx,      cz + 95, 65, 13, 24, 0, terrainH(cx,      cz + 95))
+  // クレーン x3
+  for (let i = -1; i <= 1; i++) addCrane(cx + i * 52, cz - 22, baseY + 3, Math.PI/2)
+  // 燃料タンク
+  addFuelTanks(cx + 100, cz + 45, terrainH(cx + 100, cz + 45), 3)
+  // 港湾レーダー
+  addRadarDish(cx - 95, cz + 35, terrainH(cx - 95, cz + 35))
+}
+
+function buildBridge(cx: number, cz: number, span: number, rotY: number): void {
+  const w = 20
+  const yN = terrainH(cx + (rotY===0 ? 0 : -span/2), cz + (rotY===0 ? -span/2 : 0))
+  const yS = terrainH(cx + (rotY===0 ? 0 :  span/2), cz + (rotY===0 ?  span/2 : 0))
+  const bY = Math.max(yN, yS) + 4
+
+  const deckMat2 = new THREE.MeshStandardMaterial({ color: 0x606270, roughness: 0.88, metalness: 0.08 })
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(w, 1.8, span), deckMat2)
+  deck.position.set(cx, bY, cz); deck.rotation.y = rotY
+  deck.castShadow = true; deck.receiveShadow = true; scene.add(deck)
+
+  // アーチ（左右一対）
+  const archMat3 = new THREE.MeshStandardMaterial({ color: 0x708090, roughness: 0.48, metalness: 0.80 })
+  const archR = span * 0.44
+  for (const side of [-w/2 + 1.5, w/2 - 1.5]) {
+    const lx = cx + (rotY === 0 ? side : 0)
+    const lz = cz + (rotY === 0 ? 0 : side)
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(archR, 2, 9, 36, Math.PI), archMat3)
+    arch.position.set(lx, bY + 1, lz)
+    arch.rotation.z = Math.PI / 2; if (rotY !== 0) arch.rotation.y = rotY
+    arch.castShadow = true; scene.add(arch)
+    // ハンガー（吊り材）
+    for (let t = -0.38; t <= 0.38; t += 0.12) {
+      const hx = Math.sin(t * Math.PI) * archR
+      const topY = Math.sqrt(Math.max(0, archR*archR - hx*hx))
+      const hangerH = topY - archR + archR  // from bY to arch
+      if (hangerH < 1) continue
+      const hanger = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, hangerH, 4), archMat3)
+      hanger.position.set(lx, bY + hangerH/2, cz + t * span)
+      scene.add(hanger)
+    }
+  }
+  // 橋台（両端）
+  for (const end of [-span/2, span/2]) {
+    const ex = cx + (rotY===0 ? 0 : end), ez = cz + (rotY===0 ? end : 0)
+    const abt = new THREE.Mesh(new THREE.BoxGeometry(w + 10, 10, 14), concMat)
+    abt.position.set(ex, bY - 3.5, ez); abt.castShadow = true; scene.add(abt)
+  }
+  // ガードレール
+  for (const side of [-w/2 - 0.5, w/2 + 0.5]) {
+    const rlx = cx + (rotY===0 ? side : 0), rlz = cz + (rotY===0 ? 0 : side)
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.45, 1.6, span), steelMat)
+    rail.position.set(rlx, bY + 1.8, rlz); scene.add(rail)
+  }
+}
+
+// ===== SMOKE PARTICLE SYSTEM =====
+const _smokeMat = new THREE.MeshStandardMaterial({
+  color: 0x1a1a1a, transparent: true, opacity: 0.55, roughness: 1, depthWrite: false
+})
+
+function spawnSmoke(pos: THREE.Vector3, radius = 3.5, col = 0x1a1a1a): void {
+  if (smokeParticles.length > 160) return  // 上限
+  const mat = _smokeMat.clone(); mat.color.set(col)
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 5, 5), mat)
+  mesh.position.copy(pos).add(new THREE.Vector3(
+    (Math.random()-0.5)*4, 0, (Math.random()-0.5)*4
+  ))
+  scene.add(mesh)
+  const maxLife = 3.5 + Math.random() * 2
+  smokeParticles.push({
+    mesh,
+    vel: new THREE.Vector3((Math.random()-0.5)*3, 5 + Math.random()*4, (Math.random()-0.5)*3),
+    life: 0, maxLife
+  })
+}
+
+function updateSmoke(dt: number): void {
+  for (let i = smokeParticles.length - 1; i >= 0; i--) {
+    const sp = smokeParticles[i]
+    sp.life += dt
+    sp.mesh.position.addScaledVector(sp.vel, dt)
+    sp.vel.x *= 0.97; sp.vel.z *= 0.97  // 横方向減衰
+    const t = sp.life / sp.maxLife
+    ;(sp.mesh.material as THREE.MeshStandardMaterial).opacity = 0.55 * (1 - t * t)
+    sp.mesh.scale.setScalar(1 + t * 1.8)
+    if (sp.life >= sp.maxLife) {
+      scene.remove(sp.mesh)
+      smokeParticles.splice(i, 1)
+    }
+  }
+}
+
+// ===== HELICOPTER TARGET =====
+function createHelicopterTarget(): THREE.Group {
+  const g = new THREE.Group()
+  const mat = new THREE.MeshStandardMaterial({ color: 0x4a5a38, roughness: 0.86, metalness: 0.22 })
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x2a3820, roughness: 0.90, metalness: 0.15 })
+  const glassMat = new THREE.MeshPhysicalMaterial({
+    color: 0x88ccee, transparent: true, opacity: 0.38, roughness: 0, transmission: 0.65
+  })
+
+  // 機体（横長楕円）
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.8, 8, 10), mat)
+  body.rotation.z = Math.PI / 2; body.castShadow = true; g.add(body)
+  // コクピットバブル
+  const cockpit = new THREE.Mesh(new THREE.SphereGeometry(2.2, 10, 7, 0, Math.PI*2, 0, Math.PI*0.62), glassMat)
+  cockpit.position.set(-3, 0.4, 0); cockpit.rotation.z = -0.3; g.add(cockpit)
+  // テールブーム
+  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 1.3, 9, 7), darkMat)
+  tail.rotation.z = Math.PI / 2; tail.position.set(7.5, 0.5, 0); tail.castShadow = true; g.add(tail)
+  // テール垂直安定板
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.5, 2.2), mat)
+  fin.position.set(12, 1.8, 0); g.add(fin)
+
+  // メインローター
+  const mastM = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 2.5, 7), darkMat)
+  mastM.position.set(0, 3.2, 0); g.add(mastM)
+  const rotorGrp = new THREE.Group(); rotorGrp.position.set(0, 4.7, 0)
+  const bladeShape = new THREE.BoxGeometry(11, 0.12, 0.85)
+  for (let i = 0; i < 4; i++) {
+    const blade = new THREE.Mesh(bladeShape, mat)
+    blade.rotation.y = (i / 4) * Math.PI * 2; rotorGrp.add(blade)
+  }
+  heliBlades.push(rotorGrp); g.add(rotorGrp)
+
+  // テールローター
+  const tailRotGrp = new THREE.Group(); tailRotGrp.position.set(12.5, 2.5, 0.8)
+  for (let i = 0; i < 3; i++) {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.8, 0.45), mat)
+    blade.rotation.x = (i / 3) * Math.PI * 2; tailRotGrp.add(blade)
+  }
+  heliBlades.push(tailRotGrp); g.add(tailRotGrp)
+
+  // スキッド（着陸脚）
+  for (const side of [-2.2, 2.2]) {
+    const skid = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 9, 6), darkMat)
+    skid.rotation.z = Math.PI / 2; skid.position.set(1, -3, side); g.add(skid)
+    for (const bx of [-2, 2]) {
+      const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 3.2, 5), darkMat)
+      strut.position.set(bx, -1.4, side); strut.rotation.z = 0.2; g.add(strut)
+    }
+  }
+
+  // 武装ポッド（ロケット）
+  for (const side of [-2.5, 2.5]) {
+    const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.55, 3.5, 7), darkMat)
+    pod.rotation.z = Math.PI / 2; pod.position.set(-1, -1.5, side); g.add(pod)
+  }
+
+  return g
+}
+
+// ===== SAM LAUNCHER（地上目標） =====
+function createSAMLauncher(): THREE.Group {
+  const g = new THREE.Group()
+  const mat = new THREE.MeshStandardMaterial({ color: 0x4a5a38, roughness: 0.86, metalness: 0.22 })
+  // 基盤パッド
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 1, 8), mat)
+  pad.position.y = 0.5; g.add(pad)
+  // 発射台支柱
+  const ped = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.5, 6, 8), mat)
+  ped.position.y = 4; g.add(ped)
+  // 追跡レーダー
+  const rGrp = new THREE.Group(); rGrp.position.y = 7.5
+  const rDish = new THREE.Mesh(new THREE.SphereGeometry(2.2, 8, 5, 0, Math.PI*2, 0, Math.PI/2), steelMat)
+  rDish.rotation.x = -Math.PI*0.25; rGrp.add(rDish)
+  const rAnt = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 3.5, 6), steelMat)
+  rAnt.position.y = 2.2; rGrp.add(rAnt)
+  radarDishes.push(rGrp); g.add(rGrp)
+  // ミサイルチューブ × 4
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 5.5, 7), mat)
+    tube.rotation.x = -Math.PI * 0.28; tube.position.set(Math.cos(a)*4.5, 2.8, Math.sin(a)*4.5); g.add(tube)
+    const msl = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.44, 5, 7), steelMat)
+    msl.rotation.x = -Math.PI * 0.28; msl.position.set(Math.cos(a)*4.5, 3.2, Math.sin(a)*4.5); g.add(msl)
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.44, 1.2, 7), steelMat)
+    tip.rotation.x = -Math.PI * 0.28
+    const tip_y = 3.2 + Math.cos(Math.PI * 0.28) * 3.1
+    const tip_z = Math.sin(a)*4.5 - Math.sin(Math.PI * 0.28) * 3.1
+    tip.position.set(Math.cos(a)*4.5, tip_y, tip_z); g.add(tip)
+  }
+  return g
+}
+
 function createShipTarget(): THREE.Group {
   const g = new THREE.Group()
-  const hullMat = new THREE.MeshStandardMaterial({ color: 0x2a3d52, roughness: 0.7, metalness: 0.5 })
-  const superMat = new THREE.MeshStandardMaterial({ color: 0x3d5568, roughness: 0.65, metalness: 0.4 })
-  const hull = new THREE.Mesh(new THREE.BoxGeometry(16, 5, 65), hullMat); hull.position.y = 2.5; hull.castShadow = true; g.add(hull)
-  const bridge = new THREE.Mesh(new THREE.BoxGeometry(11, 9, 22), superMat); bridge.position.set(0, 10, -8); bridge.castShadow = true; g.add(bridge)
-  const top = new THREE.Mesh(new THREE.BoxGeometry(8, 5, 12), superMat); top.position.set(0, 17, -8); g.add(top)
-  for (const tz of [-24, 24]) {
-    const gun = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 3.5, 8), hullMat); gun.position.set(0, 7, tz); g.add(gun)
+  const hullMat  = new THREE.MeshStandardMaterial({ color: 0x253545, roughness: 0.68, metalness: 0.55, envMapIntensity: 1.4 })
+  const superMat2 = new THREE.MeshStandardMaterial({ color: 0x3a5065, roughness: 0.60, metalness: 0.45 })
+  const waterline = new THREE.MeshStandardMaterial({ color: 0x8b3022, roughness: 0.80, metalness: 0.1 })
+  // 船体（喫水線上/下で2層）
+  const hullTop = new THREE.Mesh(new THREE.BoxGeometry(14, 4.5, 72), hullMat)
+  hullTop.position.y = 4.5; hullTop.castShadow = true; g.add(hullTop)
+  const hullBot = new THREE.Mesh(new THREE.BoxGeometry(16, 4, 68), waterline)
+  hullBot.position.y = 0.5; g.add(hullBot)
+  // 船首バルバス
+  const bow = new THREE.Mesh(new THREE.CylinderGeometry(3, 4.5, 10, 8), hullMat)
+  bow.rotation.z = Math.PI/2; bow.position.set(0, 3, -38); g.add(bow)
+  // ブリッジ複数層
+  const br1 = new THREE.Mesh(new THREE.BoxGeometry(12, 6, 24), superMat2)
+  br1.position.set(0, 11.5, -10); br1.castShadow = true; g.add(br1)
+  const br2 = new THREE.Mesh(new THREE.BoxGeometry(10, 5, 16), superMat2)
+  br2.position.set(0, 18, -10); g.add(br2)
+  const br3 = new THREE.Mesh(new THREE.BoxGeometry(8, 4, 11), superMat2)
+  br3.position.set(0, 23.5, -10); g.add(br3)
+  // マスト
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 18, 8), steelMat)
+  mast.position.set(0, 35, -10); g.add(mast)
+  // レーダー（回転）
+  const shipRadar = new THREE.Group(); shipRadar.position.set(0, 44, -10)
+  const srd = new THREE.Mesh(new THREE.BoxGeometry(8, 0.6, 1.5), steelMat)
+  shipRadar.add(srd); radarDishes.push(shipRadar); g.add(shipRadar)
+  // 主砲前部
+  const gunBase = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 2.8, 2.5, 8), superMat2)
+  gunBase.position.set(0, 8, -28); g.add(gunBase)
+  const gunBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 12, 7), hullMat)
+  gunBarrel.rotation.x = Math.PI/2; gunBarrel.position.set(0, 9.5, -34); g.add(gunBarrel)
+  // 後部砲
+  const gunBase2 = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 2.2, 8), superMat2)
+  gunBase2.position.set(0, 8, 24); g.add(gunBase2)
+  const gunBarrel2 = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 10, 7), hullMat)
+  gunBarrel2.rotation.x = Math.PI/2; gunBarrel2.position.set(0, 9.2, 29); g.add(gunBarrel2)
+  // 煙突
+  const stack = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.2, 8, 8), hullMat)
+  stack.position.set(0, 14.5, 4); g.add(stack)
+  // VLSミサイルセル（前甲板）
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) {
+    const cell = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.2, 2.8), superMat2)
+    cell.position.set((j-0.5)*3.2, 7.4, -14 + i*4); g.add(cell)
   }
   return g
 }
 
 function createTankTarget(): THREE.Group {
   const g = new THREE.Group()
-  const mat = new THREE.MeshStandardMaterial({ color: 0x4a5a38, roughness: 0.88, metalness: 0.2 })
-  const body = new THREE.Mesh(new THREE.BoxGeometry(7, 3, 11), mat); body.position.y = 2; body.castShadow = true; g.add(body)
-  const turret = new THREE.Mesh(new THREE.BoxGeometry(4.5, 2.5, 5), mat); turret.position.set(0, 4.8, -0.5); g.add(turret)
-  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 9, 6), mat)
-  barrel.rotation.x = Math.PI/2; barrel.position.set(0, 4.8, -5.5); g.add(barrel)
+  const mat = new THREE.MeshStandardMaterial({ color: 0x4a5a38, roughness: 0.88, metalness: 0.22 })
+  const trackMat = new THREE.MeshStandardMaterial({ color: 0x2a2a24, roughness: 0.96, metalness: 0.3 })
+  // 車体本体
+  const body = new THREE.Mesh(new THREE.BoxGeometry(7.5, 2.8, 12), mat)
+  body.position.y = 2.4; body.castShadow = true; body.receiveShadow = true; g.add(body)
+  // 傾斜装甲（前面）
+  const frontArmor = new THREE.Mesh(new THREE.BoxGeometry(7.5, 3.5, 1.5), mat)
+  frontArmor.position.set(0, 2.4, -6); frontArmor.rotation.x = -0.4; g.add(frontArmor)
+  // 履帯（左右）
+  for (const side of [-4, 4]) {
+    const track = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.2, 13.5), trackMat)
+    track.position.set(side, 1.1, 0); track.castShadow = true; g.add(track)
+    // 転輪
+    for (let wi = -2; wi <= 2; wi++) {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 2.0, 10), trackMat)
+      wheel.rotation.z = Math.PI/2; wheel.position.set(side, 1.1, wi * 2.8); g.add(wheel)
+    }
+  }
+  // 砲塔
+  const turret = new THREE.Mesh(new THREE.BoxGeometry(5, 2.8, 5.5), mat)
+  turret.position.set(0, 5.2, -0.8); g.add(turret)
+  const turretTop = new THREE.Mesh(new THREE.BoxGeometry(4.5, 1, 5), mat)
+  turretTop.position.set(0, 6.9, -0.8); g.add(turretTop)
+  // 主砲
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 11, 7), mat)
+  barrel.rotation.x = Math.PI/2; barrel.position.set(0, 5.4, -6.3); g.add(barrel)
+  const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.28, 0.8, 7), mat)
+  muzzle.rotation.x = Math.PI/2; muzzle.position.set(0, 5.4, -11.8); g.add(muzzle)
+  // 機銃
+  const mg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 3, 6), mat)
+  mg.rotation.x = Math.PI/2; mg.position.set(1.5, 7.2, -2.5); g.add(mg)
   return g
 }
 
@@ -1208,8 +1769,8 @@ function startGame(mode: GameMode) {
       break
     }
     case 'souryokusen':
-      modeObjectiveTotal = 9  // 3艦船 + 4戦車 + 2爆撃機
-      setObjective(`地上目標を破壊 0 / 9`)
+      modeObjectiveTotal = 16  // 3艦船 + 4戦車 + 2爆撃機 + 4SAM + 3ヘリ
+      setObjective(`地上目標を破壊 0 / 16`)
       spawnSouryokusen()
       break
     case 'free':
@@ -1223,45 +1784,112 @@ function spawnSouryokusen() {
   // 空中の敵 x5（リスポーンあり）
   for (let i = 0; i < 5; i++) spawnEnemy()
 
-  // 艦船 x3 (西部海・南部湾の水面上)
+  // 艦船 x3（西部海・南部湾）
   for (const [sx, sz] of [[-2100, -150], [-2450, 280], [-380, 1200]] as [number,number][]) {
     const group = createShipTarget()
     group.position.set(sx, WATER_LEVEL + 2.5, sz)
     group.rotation.y = Math.random() * Math.PI * 2
     scene.add(group)
-    groundTargets.push({ group, health: 40, maxHealth: 40, vel: new THREE.Vector3() })
+    groundTargets.push({ group, health: 40, maxHealth: 40, vel: new THREE.Vector3(), type: 'ship' })
   }
 
   // 戦車 x4
   for (const [tx, tz] of [[110, 90], [-160, 210], [200, -90], [-200, -160]] as [number,number][]) {
-    const ty = terrainH(tx, tz)
     const group = createTankTarget()
-    group.position.set(tx, ty, tz)
+    group.position.set(tx, terrainH(tx, tz), tz)
     group.rotation.y = Math.random() * Math.PI * 2
     scene.add(group)
-    groundTargets.push({ group, health: 20, maxHealth: 20, vel: new THREE.Vector3() })
+    groundTargets.push({ group, health: 20, maxHealth: 20, vel: new THREE.Vector3(), type: 'tank' })
   }
 
-  // 爆撃機 x2
+  // 爆撃機 x2（西から東へ飛行）
   for (let i = 0; i < 2; i++) {
     const group = createBomberModel()
     group.position.set(-2200, 160 + i * 40, -200 + i * 340)
     group.rotation.y = -Math.PI / 2
     scene.add(group)
-    groundTargets.push({ group, health: 55, maxHealth: 55, vel: new THREE.Vector3(42, 0, 0) })
+    groundTargets.push({ group, health: 55, maxHealth: 55, vel: new THREE.Vector3(42, 0, 0), type: 'bomber' })
+  }
+
+  // SAMサイト x4（各基地・高地に配置）
+  for (const [sx, sz] of [
+    [  60,  -30],   // 中央基地 Alpha
+    [1080, -320],   // 東部高原基地 Bravo
+    [-780, -680],   // 北西高地
+    [ 320,  560],   // 南部丘陵
+  ] as [number, number][]) {
+    const group = createSAMLauncher()
+    group.position.set(sx, terrainH(sx, sz), sz)
+    group.rotation.y = Math.random() * Math.PI * 2
+    scene.add(group)
+    groundTargets.push({ group, health: 15, maxHealth: 15, vel: new THREE.Vector3(), type: 'sam', fireCooldown: 8 + Math.random() * 6 })
+  }
+
+  // 攻撃ヘリ x3（各エリアを旋回哨戒）
+  for (const [hx, hz] of [[200, -300], [-500, 400], [800, -100]] as [number,number][]) {
+    const group = createHelicopterTarget()
+    const baseY = terrainH(hx, hz) + 55
+    group.position.set(hx, baseY, hz)
+    scene.add(group)
+    groundTargets.push({
+      group, health: 30, maxHealth: 30, vel: new THREE.Vector3(), type: 'heli',
+      patrolAngle: Math.random() * Math.PI * 2,
+      patrolCenter: new THREE.Vector3(hx, baseY, hz)
+    })
   }
 }
 
 function updateGroundTargets(dt: number) {
   for (const gt of groundTargets) {
-    if (gt.vel.lengthSq() < 0.01) continue
-    gt.group.position.addScaledVector(gt.vel, dt)
-    if (gt.vel.y === 0) {
-      gt.group.position.y = terrainH(gt.group.position.x, gt.group.position.z)
-      gt.group.rotation.y = Math.atan2(gt.vel.x, gt.vel.z) + Math.PI
+    const hpRatio = gt.health / gt.maxHealth
+
+    // ── 爆撃機: 移動 ──────────────────────────────────────
+    if (gt.type === 'bomber' && gt.vel.lengthSq() > 0.01) {
+      gt.group.position.addScaledVector(gt.vel, dt)
+      if (gt.group.position.x > 2400) gt.group.position.x = -2400
     }
-    // 爆撃機がマップ端に達したらループ
-    if (gt.group.position.x > 2400) gt.group.position.x = -2400
+
+    // ── ヘリコプター: 低高度旋回 ──────────────────────────
+    if (gt.type === 'heli') {
+      gt.patrolAngle = (gt.patrolAngle ?? 0) + dt * 0.28
+      const center = gt.patrolCenter ?? gt.group.position.clone()
+      gt.patrolCenter = center
+      const r = 120
+      gt.group.position.x = center.x + Math.cos(gt.patrolAngle) * r
+      gt.group.position.z = center.z + Math.sin(gt.patrolAngle) * r
+      gt.group.position.y = terrainH(gt.group.position.x, gt.group.position.z) + 55
+                          + Math.sin(gt.patrolAngle * 2.3) * 8
+      gt.group.rotation.y = -gt.patrolAngle + Math.PI / 2
+    }
+
+    // ── SAM: プレイヤー検知 → ミサイル発射 ───────────────
+    if (gt.type === 'sam' && currentMode !== null) {
+      gt.fireCooldown = (gt.fireCooldown ?? 14) - dt
+      const dist = gt.group.position.distanceTo(player.position)
+      if (dist < 950 && (gt.fireCooldown ?? 0) <= 0 && invincibleTimer <= 0) {
+        const m = createMissileModel(enemyMissileMat)
+        m.position.copy(gt.group.position).y += 9
+        scene.add(m)
+        const vel = player.position.clone().sub(m.position).normalize().multiplyScalar(175)
+        enemyMissiles.push({
+          mesh: m, vel, life: 0,
+          target: player, diverted: false, spd: 175, turnRate: 0.55, light: null
+        })
+        gt.fireCooldown = 14 + Math.random() * 8
+        playMissileSound()
+      }
+    }
+
+    // ── 被弾煙エフェクト（HP50%以下） ────────────────────
+    if (hpRatio < 0.55) {
+      gt.smokeTimer = (gt.smokeTimer ?? 0) - dt
+      const rate = (1 - hpRatio) * 3.5  // HP低いほど煙が濃い
+      if ((gt.smokeTimer ?? 0) <= 0) {
+        const smokeY = gt.group.position.y + (gt.type === 'heli' ? 5 : 10)
+        spawnSmoke(new THREE.Vector3(gt.group.position.x, smokeY, gt.group.position.z))
+        gt.smokeTimer = 1 / rate
+      }
+    }
   }
 }
 
@@ -1900,6 +2528,19 @@ function loop() {
   drawRadar()
 
   waterUniforms.time.value += dt
+  radarDishes.forEach(d => { d.rotation.y += dt * 0.65 })
+  heliBlades.forEach(d => { d.rotation.y += dt * 18 })  // ローター高速回転
+  updateSmoke(dt)
+
+  // プレイヤー被弾時の煙トレイル
+  if (playerHP < MAX_HP && currentMode !== null) {
+    const smokeRate = (MAX_HP - playerHP) * 1.8
+    if (Math.random() < dt * smokeRate) {
+      const tailPos = player.position.clone()
+        .addScaledVector(new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion), 4)
+      spawnSmoke(tailPos, 1.8, 0x222200)
+    }
+  }
 
   if (composer) {
     try { composer.render() }
