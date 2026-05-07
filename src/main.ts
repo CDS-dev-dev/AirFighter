@@ -7,16 +7,17 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'hi
 renderer.setSize(window.innerWidth, window.innerHeight)  // initW/initH で上書きされる
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFShadowMap
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
-renderer.toneMappingExposure = 0.6   // 白飛び防止
-renderer.outputColorSpace = THREE.LinearSRGBColorSpace
+renderer.outputColorSpace = THREE.SRGBColorSpace
+renderer.toneMappingExposure = 0.78
 document.body.appendChild(renderer.domElement)
 
 // ===== SCENE =====
 const scene = new THREE.Scene()
+scene.background = new THREE.Color(0x9ccfe4)
 // 空気遠近法：近景は明確に、地平線だけ霞む
-scene.fog = new THREE.Fog(0x7aaec8, 1400, 5500)
+scene.fog = new THREE.Fog(0x9ccfe4, 1700, 6900)
 
 // 縦画面強制横向き: 縦持ちのとき縦横スワップしたサイズで描画
 function isPortraitMode() {
@@ -64,7 +65,7 @@ scene.remove(cubeCamera)
 
 // ===== LIGHTING =====
 // メインサン：暖かい白昼光
-const sun = new THREE.DirectionalLight(0xfff8ec, 3.2)
+const sun = new THREE.DirectionalLight(0xfff4de, 3.7)
 sun.position.copy(sunVec).multiplyScalar(600)
 sun.castShadow = true
 sun.shadow.mapSize.set(2048, 2048)  // 4096→2048で軽量化（品質十分）
@@ -74,9 +75,9 @@ sun.shadow.camera.top = 600; sun.shadow.camera.bottom = -600
 sun.shadow.bias = -0.0004
 scene.add(sun)
 // 環境光：やや青みがかった空の反射
-scene.add(new THREE.AmbientLight(0x4466cc, 0.55))
+scene.add(new THREE.AmbientLight(0x4668aa, 0.42))
 // 半球光：空→地面のグラデーション（草の照り返し）
-scene.add(new THREE.HemisphereLight(0x88bbff, 0x4a7a25, 1.1))
+scene.add(new THREE.HemisphereLight(0x9fd4ff, 0x436d2c, 1.35))
 // バックフィル：影部分を自然に（逆方向から弱く）
 const fillLight = new THREE.DirectionalLight(0x6688bb, 0.4)
 fillLight.position.set(-sunVec.x, sunVec.y * 0.3, -sunVec.z).multiplyScalar(400)
@@ -88,11 +89,93 @@ scene.add(engineLight)
 
 
 // ===== TERRAIN =====
+const WATER_LEVEL = 1.8
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v))
+}
+
+function smoothstep(edge0: number, edge1: number, v: number): number {
+  const t = clamp01((v - edge0) / (edge1 - edge0))
+  return t * t * (3 - 2 * t)
+}
+
+function hash2(x: number, z: number): number {
+  const n = Math.sin(x * 127.1 + z * 311.7) * 43758.5453123
+  return n - Math.floor(n)
+}
+
+function valueNoise(x: number, z: number): number {
+  const ix = Math.floor(x), iz = Math.floor(z)
+  const fx = x - ix, fz = z - iz
+  const ux = fx * fx * (3 - 2 * fx)
+  const uz = fz * fz * (3 - 2 * fz)
+  const a = hash2(ix, iz)
+  const b = hash2(ix + 1, iz)
+  const c = hash2(ix, iz + 1)
+  const d = hash2(ix + 1, iz + 1)
+  return THREE.MathUtils.lerp(THREE.MathUtils.lerp(a, b, ux), THREE.MathUtils.lerp(c, d, ux), uz)
+}
+
+function fbm(x: number, z: number, octaves = 5): number {
+  let total = 0, amp = 0.5, freq = 1, norm = 0
+  for (let i = 0; i < octaves; i++) {
+    total += valueNoise(x * freq, z * freq) * amp
+    norm += amp
+    amp *= 0.5
+    freq *= 2.03
+  }
+  return total / norm
+}
+
+function ridgedNoise(x: number, z: number, octaves = 4): number {
+  let total = 0, amp = 0.55, freq = 1, norm = 0
+  for (let i = 0; i < octaves; i++) {
+    const n = 1 - Math.abs(valueNoise(x * freq, z * freq) * 2 - 1)
+    total += n * n * amp
+    norm += amp
+    amp *= 0.52
+    freq *= 2.11
+  }
+  return total / norm
+}
+
+function mound(x: number, z: number, cx: number, cz: number, radius: number, height: number, power = 1.7): number {
+  const d = Math.hypot(x - cx, z - cz)
+  return Math.pow(Math.max(0, 1 - d / radius), power) * height
+}
+
+function mesa(x: number, z: number, cx: number, cz: number, radius: number, height: number): number {
+  const d = Math.hypot(x - cx, z - cz)
+  const shoulder = 1 - smoothstep(radius * 0.52, radius, d)
+  const crown = 1 - smoothstep(radius * 0.18, radius * 0.48, d)
+  return (shoulder * 0.72 + crown * 0.28) * height
+}
+
 function terrainH(x: number, z: number): number {
-  let h = Math.sin(x * 0.003) * Math.cos(z * 0.002) * 50
-         + Math.sin(x * 0.008 + z * 0.006) * 22
-         + Math.sin(x * 0.02 + 1.3) * Math.cos(z * 0.017) * 10
-         + Math.max(0, Math.sin(x * 0.0015 + z * 0.001) * 130 - 65)
+  const broad = fbm(x * 0.00055 + 12.4, z * 0.00055 - 7.8, 5)
+  const mid = fbm(x * 0.0018 - 33.0, z * 0.0018 + 21.0, 4)
+  const detail = fbm(x * 0.0065 + 5.1, z * 0.0065 - 18.2, 3)
+  const ridges = ridgedNoise(x * 0.00115 - 14.2, z * 0.00115 + 6.8, 5)
+  let h = -55
+    + (broad - 0.38) * 260
+    + (mid - 0.5) * 86
+    + (detail - 0.5) * 24
+    + Math.pow(ridges, 2.05) * 155
+
+  const riverX = 210 + Math.sin(z * 0.00125) * 340 + Math.sin(z * 0.0036 + 1.1) * 95
+  const riverDist = Math.abs(x - riverX)
+  const gorge = 1 - smoothstep(95, 420, riverDist)
+  const rim = Math.exp(-Math.pow((riverDist - 285) / 95, 2))
+  h -= gorge * 178
+  h += rim * 45
+
+  h -= mound(x, z, -520, 740, 560, 92, 1.85)
+  h += mesa(x, z, -1220, 820, 640, 165)
+  h += mesa(x, z, 1180, 410, 520, 145)
+  h += mesa(x, z, 820, -1180, 480, 132)
+  h += mound(x, z, -1650, -250, 740, 150, 1.35)
+  h += mound(x, z, 1600, 1190, 640, 134, 1.45)
 
   // 渓谷1: x≈400 に沿ってN-S方向（ミサイル回避の主要ルート）
   const d1 = Math.abs(x - 400)
@@ -112,21 +195,43 @@ function terrainH(x: number, z: number): number {
 function mkGroundTex(): THREE.CanvasTexture {
   const c = document.createElement('canvas'); c.width = c.height = 512
   const ctx = c.getContext('2d')!
-  ctx.fillStyle = '#4a7c3f'; ctx.fillRect(0, 0, 512, 512)
-  for (let i = 0; i < 120; i++) {
-    const h = 90 + Math.random() * 50, l = 22 + Math.random() * 22
-    ctx.fillStyle = `hsl(${h},38%,${l}%)`
-    const r = 8 + Math.random() * 35
+  const grd = ctx.createLinearGradient(0, 0, 512, 512)
+  grd.addColorStop(0, '#6fa84a')
+  grd.addColorStop(0.45, '#4d8439')
+  grd.addColorStop(1, '#87745a')
+  ctx.fillStyle = grd
+  ctx.fillRect(0, 0, 512, 512)
+
+  for (let i = 0; i < 900; i++) {
+    const h = 58 + Math.random() * 72
+    const s = 24 + Math.random() * 28
+    const l = 18 + Math.random() * 34
+    ctx.fillStyle = `hsla(${h},${s}%,${l}%,${0.11 + Math.random() * 0.18})`
+    const r = 2 + Math.random() * 16
     ctx.beginPath()
-    ctx.ellipse(Math.random()*512, Math.random()*512, r, r*0.55, Math.random()*Math.PI, 0, Math.PI*2)
+    ctx.ellipse(Math.random()*512, Math.random()*512, r, r*(0.25 + Math.random()*0.35), Math.random()*Math.PI, 0, Math.PI*2)
     ctx.fill()
   }
+
+  for (let i = 0; i < 180; i++) {
+    const x = Math.random() * 512
+    const y = Math.random() * 512
+    ctx.strokeStyle = `rgba(235,220,180,${0.08 + Math.random() * 0.1})`
+    ctx.lineWidth = 0.8 + Math.random() * 1.6
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(x + (Math.random() - 0.5) * 46, y + (Math.random() - 0.5) * 18)
+    ctx.stroke()
+  }
   const t = new THREE.CanvasTexture(c)
-  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(70, 70)
+  t.wrapS = t.wrapT = THREE.RepeatWrapping
+  t.repeat.set(92, 92)
+  t.colorSpace = THREE.SRGBColorSpace
+  t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy())
   return t
 }
 
-const terrainGeo = new THREE.PlaneGeometry(8000, 8000, 192, 192)
+const terrainGeo = new THREE.PlaneGeometry(9000, 9000, 256, 256)
 terrainGeo.rotateX(-Math.PI / 2)
 const tPos = terrainGeo.attributes.position as THREE.BufferAttribute
 const tCol = new Float32Array(tPos.count * 3)
@@ -148,6 +253,32 @@ for (let i = 0; i < tPos.count; i++) {
   tCol[i*3]   = Math.max(0, Math.min(1, r))
   tCol[i*3+1] = Math.max(0, Math.min(1, g))
   tCol[i*3+2] = Math.max(0, Math.min(1, b))
+
+  const gradX = terrainH(x + 18, z) - terrainH(x - 18, z)
+  const gradZ = terrainH(x, z + 18) - terrainH(x, z - 18)
+  const slope = clamp01(Math.hypot(gradX, gradZ) / 56)
+  const freckles = (fbm(x * 0.018 + 7, z * 0.018 - 11, 3) - 0.5) * 0.12
+  if (y < WATER_LEVEL + 2.5) {
+    r = 0.55 + freckles; g = 0.48 + freckles * 0.6; b = 0.32
+  } else if (y < 13) {
+    r = 0.49 + freckles; g = 0.67 + freckles; b = 0.31
+  } else if (y < 45) {
+    r = 0.28 + freckles; g = 0.58 + freckles; b = 0.22
+  } else if (y < 92) {
+    r = 0.36 + freckles; g = 0.50 + freckles * 0.8; b = 0.25
+  } else if (y < 145) {
+    r = 0.53 + freckles; g = 0.48 + freckles; b = 0.37 + freckles * 0.4
+  } else {
+    r = 0.80 + freckles * 0.4; g = 0.78 + freckles * 0.4; b = 0.76 + freckles * 0.6
+  }
+  const rock = clamp01(slope * 1.45 + smoothstep(72, 138, y) * 0.4)
+  r = THREE.MathUtils.lerp(r, 0.47 + freckles, rock)
+  g = THREE.MathUtils.lerp(g, 0.43 + freckles, rock)
+  b = THREE.MathUtils.lerp(b, 0.37 + freckles, rock)
+  const snow = smoothstep(168, 230, y)
+  tCol[i*3]   = clamp01(THREE.MathUtils.lerp(r, 0.92, snow))
+  tCol[i*3+1] = clamp01(THREE.MathUtils.lerp(g, 0.93, snow))
+  tCol[i*3+2] = clamp01(THREE.MathUtils.lerp(b, 0.96, snow))
 }
 terrainGeo.setAttribute('color', new THREE.BufferAttribute(tCol, 3))
 terrainGeo.computeVertexNormals()
@@ -160,7 +291,7 @@ scene.add(ground)
 // ===== WATER =====
 const waterUniforms = { time: { value: 0 }, sunDir: { value: sunVec.clone().normalize() } }
 const waterMesh = new THREE.Mesh(
-  (() => { const g = new THREE.PlaneGeometry(2800, 2800, 48, 48); g.rotateX(-Math.PI/2); return g })(),
+  (() => { const g = new THREE.PlaneGeometry(3600, 3600, 72, 72); g.rotateX(-Math.PI/2); return g })(),
   new THREE.ShaderMaterial({
     uniforms: waterUniforms,
     transparent: true,
@@ -169,7 +300,7 @@ const waterMesh = new THREE.Mesh(
       varying vec3 vNorm; varying vec3 vPos;
       void main(){
         vec3 p=position;
-        p.y+=sin(p.x*.07+time*1.1)*.7+sin(p.z*.055+time*.85)*.6+sin((p.x+p.z)*.035+time*1.4)*.35;
+        p.y+=sin(p.x*.055+time*1.1)*.45+sin(p.z*.043+time*.85)*.42+sin((p.x+p.z)*.026+time*1.4)*.26;
         vPos=(modelMatrix*vec4(p,1.)).xyz;
         vec3 n=normalize(vec3(cos(p.x*.07+time)*.12,1.,cos(p.z*.055+time*.85)*.1));
         vNorm=normalMatrix*n;
@@ -180,53 +311,119 @@ const waterMesh = new THREE.Mesh(
       void main(){
         vec3 n=normalize(vNorm);
         float ndl=max(0.,dot(n,normalize(sunDir)));
-        float spec=pow(max(0.,dot(reflect(-normalize(sunDir),n),vec3(0,0,-1))),55.)*3.5;
+        float spec=pow(max(0.,dot(reflect(-normalize(sunDir),n),vec3(0,0,-1))),70.)*4.2;
         float fresnel=pow(1.-abs(n.y),2.2)*.7;
-        vec3 deep=vec3(.04,.18,.52), shallow=vec3(.10,.45,.72);
+        vec3 deep=vec3(.03,.20,.42), shallow=vec3(.18,.56,.70);
         vec3 col=mix(deep,shallow,fresnel+ndl*.25)+vec3(1.,.96,.88)*spec;
         gl_FragColor=vec4(col,.82);
       }`
   })
 )
-waterMesh.position.y = 1.8
+waterMesh.position.y = WATER_LEVEL
 scene.add(waterMesh)
 
 // ===== MOUNTAINS =====
-;[[-1200,-1000,420,260],[ 900,-1100,380,240],[-500,1300,360,230],
-  [1400, 600,470,290],[-1500, 400,400,250],[600,-1400,320,200],
-  [-900,-1400,290,185],[1200,1200,430,270],[-1400,1000,355,225],
-  [200,1500,315,205],[-1800,-200,500,310],[1700,-300,450,280],
-  [-600,-1700,340,215],[1100,-800,290,180],[-1100,700,370,235],
-].forEach(([x,z,h,r]) => {
+const mountainMat = new THREE.MeshStandardMaterial({
+  vertexColors: true, roughness: 0.96, metalness: 0, flatShading: false
+})
+
+function makeMountainGeometry(radius: number, height: number, seed: number): THREE.ConeGeometry {
+  const geo = new THREE.ConeGeometry(radius, height, 17, 7, false)
+  const pos = geo.attributes.position as THREE.BufferAttribute
+  const col = new Float32Array(pos.count * 3)
+
+  for (let i = 0; i < pos.count; i++) {
+    const px = pos.getX(i), py = pos.getY(i), pz = pos.getZ(i)
+    const level = clamp01((py + height / 2) / height)
+    const angle = Math.atan2(pz, px)
+    const side = 1 - level * 0.82
+    const rough = 1
+      + Math.sin(angle * 3.1 + seed) * 0.14 * side
+      + Math.sin(angle * 7.4 - seed * 0.6) * 0.07 * side
+      + (valueNoise(Math.cos(angle) * 4 + seed, Math.sin(angle) * 4 - seed) - 0.5) * 0.15 * side
+    if (level < 0.98) {
+      pos.setX(i, px * rough)
+      pos.setZ(i, pz * rough)
+    }
+    pos.setY(i, py + (valueNoise(px * 0.012 + seed, pz * 0.012 - seed) - 0.5) * height * 0.04 * side)
+
+    const snow = smoothstep(0.68, 0.88, level)
+    const green = 1 - smoothstep(0.08, 0.34, level)
+    const shade = (valueNoise(px * 0.018 + seed, pz * 0.018 - seed) - 0.5) * 0.13
+    let r = THREE.MathUtils.lerp(0.36, 0.62, level) + shade
+    let g = THREE.MathUtils.lerp(0.33, 0.56, level) + shade
+    let b = THREE.MathUtils.lerp(0.29, 0.50, level) + shade * 0.7
+    r = THREE.MathUtils.lerp(r, 0.28, green)
+    g = THREE.MathUtils.lerp(g, 0.48, green)
+    b = THREE.MathUtils.lerp(b, 0.21, green)
+    col[i*3]   = clamp01(THREE.MathUtils.lerp(r, 0.93, snow))
+    col[i*3+1] = clamp01(THREE.MathUtils.lerp(g, 0.94, snow))
+    col[i*3+2] = clamp01(THREE.MathUtils.lerp(b, 0.98, snow))
+  }
+
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  geo.computeVertexNormals()
+  return geo
+}
+
+;[[-1420,-1180,520,310], [980,-1280,470,280], [-520,1420,430,260],
+  [1450, 640,560,330], [-1580, 420,500,300], [680,-1560,390,240],
+  [-980,-1540,360,220], [1300,1360,520,315], [-1540,1120,430,265],
+  [160,1640,390,245], [-1900,-220,620,360], [1840,-320,540,325],
+  [-680,-1840,410,250], [1180,-880,360,220], [-1180,760,450,275],
+  [2300, 920,610,370], [-2450, -980,560,335],
+].forEach(([x,z,h,r], i) => {
   const base = terrainH(x,z)
-  const body = new THREE.Mesh(new THREE.ConeGeometry(r,h,9), new THREE.MeshStandardMaterial({color:0x7a8870,roughness:0.96,metalness:0.0}))
-  body.position.set(x, base + h/2, z); body.castShadow = true; scene.add(body)
-  const cap = new THREE.Mesh(new THREE.ConeGeometry(r*0.3,h*0.22,9), new THREE.MeshStandardMaterial({color:0xf0f5ff,roughness:0.9}))
-  cap.position.set(x, base + h*0.89, z); scene.add(cap)
+  const body = new THREE.Mesh(makeMountainGeometry(r, h, i * 13.37 + 2.5), mountainMat)
+  body.position.set(x, base + h/2 - 10, z)
+  body.castShadow = true
+  body.receiveShadow = true
+  scene.add(body)
 })
 
 // ===== TREES (instanced) =====
-const TREE_COUNT = 500
-const trunkIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.45,0.65,4,6), new THREE.MeshStandardMaterial({color:0x6b4423,roughness:0.95}), TREE_COUNT)
-const foliIM  = new THREE.InstancedMesh(new THREE.ConeGeometry(3.8,8,7),           new THREE.MeshStandardMaterial({color:0x2e7a1a,roughness:0.88}),  TREE_COUNT)
-trunkIM.castShadow = foliIM.castShadow = true
+const TREE_COUNT = 1500
+const trunkIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.4,0.72,5.2,6), new THREE.MeshStandardMaterial({color:0x6b4423,roughness:0.95}), TREE_COUNT)
+const foliIM  = new THREE.InstancedMesh(new THREE.ConeGeometry(4.4,10,8,2),         new THREE.MeshStandardMaterial({color:0x2f7d2b,roughness:0.9}),   TREE_COUNT)
+const foli2IM = new THREE.InstancedMesh(new THREE.ConeGeometry(3.2,7,8,2),          new THREE.MeshStandardMaterial({color:0x5f9d3a,roughness:0.88}),  TREE_COUNT)
+trunkIM.castShadow = foliIM.castShadow = foli2IM.castShadow = true
+trunkIM.receiveShadow = foliIM.receiveShadow = foli2IM.receiveShadow = true
 const _d = new THREE.Object3D()
 for (let i = 0; i < TREE_COUNT; i++) {
-  const tx = (Math.random()-0.5)*1800, tz = (Math.random()-0.5)*1800
+  const tx = (Math.random()-0.5)*5600, tz = (Math.random()-0.5)*5600
   const ty = terrainH(tx, tz)
+  const treeSlope = Math.hypot(terrainH(tx + 16, tz) - terrainH(tx - 16, tz), terrainH(tx, tz + 16) - terrainH(tx, tz - 16)) / 32
+  if (ty > 165 || treeSlope > 2.2 || (fbm(tx * 0.0015 + 8, tz * 0.0015 - 4, 3) < 0.34 && Math.random() < 0.75)) { i--; continue }
   if (ty < 3) { i--; continue }  // 水面下・渓谷底には植樹しない
   const s = 0.7 + Math.random()*0.7
   _d.position.set(tx, ty+2*s, tz); _d.scale.setScalar(s); _d.rotation.y = Math.random()*Math.PI*2; _d.updateMatrix()
   trunkIM.setMatrixAt(i, _d.matrix)
   _d.position.set(tx, ty+7.5*s, tz); _d.updateMatrix()
   foliIM.setMatrixAt(i, _d.matrix)
+  _d.position.set(tx, ty+11.5*s, tz); _d.scale.setScalar(s * 0.78); _d.updateMatrix()
+  foli2IM.setMatrixAt(i, _d.matrix)
 }
-trunkIM.instanceMatrix.needsUpdate = true; foliIM.instanceMatrix.needsUpdate = true
-scene.add(trunkIM); scene.add(foliIM)
+trunkIM.instanceMatrix.needsUpdate = true; foliIM.instanceMatrix.needsUpdate = true; foli2IM.instanceMatrix.needsUpdate = true
+scene.add(trunkIM); scene.add(foliIM); scene.add(foli2IM)
 
 // ===== ROCK PILLARS =====
 const pillarMat    = new THREE.MeshStandardMaterial({ color: 0x7a6855, roughness: 0.96, metalness: 0 })
 const pillarCapMat = new THREE.MeshStandardMaterial({ color: 0x9a8870, roughness: 0.93, metalness: 0 })
+
+function makePillarGeometry(bottom: number, top: number, height: number, sides: number, seed: number): THREE.CylinderGeometry {
+  const geo = new THREE.CylinderGeometry(top, bottom, height, sides, 5)
+  const pos = geo.attributes.position as THREE.BufferAttribute
+  for (let i = 0; i < pos.count; i++) {
+    const px = pos.getX(i), py = pos.getY(i), pz = pos.getZ(i)
+    const angle = Math.atan2(pz, px)
+    const level = clamp01((py + height / 2) / height)
+    const rough = 1 + Math.sin(angle * 3.5 + seed + level * 1.7) * 0.16 + Math.sin(angle * 8.2 - seed) * 0.05
+    pos.setX(i, px * rough)
+    pos.setZ(i, pz * rough)
+  }
+  geo.computeVertexNormals()
+  return geo
+}
 
 const PILLAR_CLUSTERS: Array<{ cx:number; cz:number; n:number }> = [
   { cx:  430, cz:  550, n: 14 },  // 渓谷1 北出口
@@ -244,7 +441,7 @@ for (const cl of PILLAR_CLUSTERS) {
     const rb = 8 + Math.random() * 14
     const rt = rb * (0.38 + Math.random() * 0.32)
     const sides = 5 + Math.floor(Math.random() * 3)
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, ht, sides), pillarMat)
+    const body = new THREE.Mesh(makePillarGeometry(rb, rt, ht, sides, px * 0.017 + pz * 0.011), pillarMat)
     body.position.set(px, ph + ht/2, pz); body.rotation.y = Math.random()*Math.PI; body.castShadow = true; scene.add(body)
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(rt*0.45, rt*1.15, rb*0.55, sides), pillarCapMat)
     cap.position.set(px, ph + ht + rb*0.28, pz); cap.rotation.y = Math.random()*Math.PI; cap.castShadow = true; scene.add(cap)
@@ -254,7 +451,7 @@ for (const cl of PILLAR_CLUSTERS) {
 // 孤立高塔（遠くから見えるランドマーク）
 ;[[410,-600,120,12],[-820,420,140,10],[1300,-100,110,14]].forEach(([px,pz,ht,rb]) => {
   const ph = terrainH(px, pz)
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(rb*0.3, rb, ht, 6), pillarMat)
+  const body = new THREE.Mesh(makePillarGeometry(rb, rb * 0.3, ht, 6, px * 0.021 + pz * 0.017), pillarMat)
   body.position.set(px, ph+ht/2, pz); body.castShadow=true; scene.add(body)
 })
 
@@ -263,11 +460,14 @@ const archMat = new THREE.MeshStandardMaterial({ color: 0x6a5848, roughness: 0.9
 function mkArch(x: number, z: number, w: number, h: number, thick: number, rotY: number) {
   const base = terrainH(x, z)
   const g = new THREE.Group()
-  const pillarGeo = new THREE.BoxGeometry(thick, h, thick)
-  const beamGeo   = new THREE.BoxGeometry(w + thick*2, thick*0.85, thick)
-  const lp = new THREE.Mesh(pillarGeo, archMat); lp.position.set(-(w+thick)/2, h/2, 0); lp.castShadow=true; g.add(lp)
-  const rp = new THREE.Mesh(pillarGeo, archMat); rp.position.set( (w+thick)/2, h/2, 0); rp.castShadow=true; g.add(rp)
-  const tb = new THREE.Mesh(beamGeo,   archMat); tb.position.set(0, h, 0);               tb.castShadow=true; g.add(tb)
+  const pillarGeo = makePillarGeometry(thick * 0.72, thick * 0.45, h, 7, x * 0.01 + z * 0.02)
+  const lp = new THREE.Mesh(pillarGeo, archMat); lp.position.set(-w/2, h/2, 0); lp.castShadow=true; lp.receiveShadow=true; g.add(lp)
+  const rp = new THREE.Mesh(pillarGeo.clone(), archMat); rp.position.set(w/2, h/2, 0); rp.castShadow=true; rp.receiveShadow=true; g.add(rp)
+  const crown = new THREE.Mesh(new THREE.TorusGeometry(w * 0.5, thick * 0.42, 8, 32, Math.PI), archMat)
+  crown.position.set(0, h, 0)
+  crown.castShadow = true
+  crown.receiveShadow = true
+  g.add(crown)
   g.position.set(x, base, z); g.rotation.y = rotY; scene.add(g)
 }
 // 渓谷1内（Z方向に飛行で通過）
@@ -280,6 +480,31 @@ mkArch(-240, -470, 78, 48, 15, -0.60)
 // 平原・高地の孤立アーチ
 mkArch( 700,  420, 98, 64, 20, 1.3)
 mkArch(-680,   30, 80, 52, 16, -0.5)
+
+// ===== SURFACE DETAIL =====
+const BOULDER_COUNT = 420
+const boulderIM = new THREE.InstancedMesh(
+  new THREE.DodecahedronGeometry(1, 1),
+  new THREE.MeshStandardMaterial({ color: 0x776b5b, roughness: 0.96, metalness: 0, flatShading: true }),
+  BOULDER_COUNT
+)
+boulderIM.castShadow = true
+boulderIM.receiveShadow = true
+for (let i = 0; i < BOULDER_COUNT; i++) {
+  const bx = (Math.random() - 0.5) * 6200
+  const bz = (Math.random() - 0.5) * 6200
+  const by = terrainH(bx, bz)
+  const slope = Math.hypot(terrainH(bx + 14, bz) - terrainH(bx - 14, bz), terrainH(bx, bz + 14) - terrainH(bx, bz - 14)) / 28
+  if (by < WATER_LEVEL + 5 || by > 190 || slope > 3.1) { i--; continue }
+  const s = 2.4 + Math.random() * 8
+  _d.position.set(bx, by + s * 0.45, bz)
+  _d.scale.set(s * (0.8 + Math.random() * 0.6), s * (0.45 + Math.random() * 0.45), s * (0.7 + Math.random() * 0.7))
+  _d.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+  _d.updateMatrix()
+  boulderIM.setMatrixAt(i, _d.matrix)
+}
+boulderIM.instanceMatrix.needsUpdate = true
+scene.add(boulderIM)
 
 // ===== SUPPLY POINTS =====
 const SUPPLY_POSITIONS: THREE.Vector3[] = [
@@ -379,20 +604,20 @@ function createMissileModel(mat: THREE.Material): THREE.Group {
 }
 
 // ===== CLOUDS (volumetric-ish) =====
-const cloudMat    = new THREE.MeshStandardMaterial({ color: 0xf2f8ff, roughness: 1, transparent: true, opacity: 0.86 })
-const cloudMatLit = new THREE.MeshStandardMaterial({ color: 0xffeedd, roughness: 1, transparent: true, opacity: 0.60 })
-for (let i = 0; i < 90; i++) {
+const cloudMat    = new THREE.MeshStandardMaterial({ color: 0xf2f8ff, roughness: 1, transparent: true, opacity: 0.78 })
+const cloudMatLit = new THREE.MeshStandardMaterial({ color: 0xffeedd, roughness: 1, transparent: true, opacity: 0.56 })
+for (let i = 0; i < 130; i++) {
   const cg = new THREE.Group()
   const count = 5 + Math.floor(Math.random() * 7)
   const useWarm = Math.random() < 0.25
   for (let j = 0; j < count; j++) {
-    const r = 7 + Math.random() * 14
+    const r = 9 + Math.random() * 21
     const puff = new THREE.Mesh(new THREE.SphereGeometry(r, 9, 9), useWarm ? cloudMatLit : cloudMat)
     puff.position.set(j * 11 - count * 5.5 + (Math.random()-0.5)*8, (Math.random()-0.5)*8, (Math.random()-0.5)*14)
     puff.scale.set(1, 0.55, 1)
     cg.add(puff)
   }
-  cg.position.set((Math.random()-0.5)*2000, 80 + Math.random()*220, (Math.random()-0.5)*2000)
+  cg.position.set((Math.random()-0.5)*5200, 230 + Math.random()*470, (Math.random()-0.5)*5200)
   scene.add(cg)
 }
 
@@ -423,7 +648,7 @@ scene.add(new THREE.Points(trailGeo, new THREE.PointsMaterial({
 
 // ===== PLAYER =====
 const player = createAircraft(0x2255cc, 0x112244)
-player.position.set(0, 60, 0)
+player.position.set(0, terrainH(0, 0) + 90, 0)
 scene.add(player)
 const cameraOffset = new THREE.Vector3(0, 5, 20)
 const camQuat = new THREE.Quaternion()
@@ -642,7 +867,9 @@ function cycleLock() {
 function spawnEnemy() {
   const angle = Math.random() * Math.PI * 2
   const group = createAircraft(0xcc2222, 0x661111)
-  group.position.set(Math.cos(angle) * (160 + Math.random() * 80), 45 + Math.random() * 45, Math.sin(angle) * (160 + Math.random() * 80))
+  const sx = Math.cos(angle) * (190 + Math.random() * 180)
+  const sz = Math.sin(angle) * (190 + Math.random() * 180)
+  group.position.set(sx, terrainH(sx, sz) + 75 + Math.random() * 55, sz)
   scene.add(group)
   enemies.push({ group, health: 2, orbitAngle: angle, fireCooldown: 5 + Math.random() * 5, missileAmmo: 4, seekingSupply: false })
 }
@@ -896,16 +1123,19 @@ function checkCollisions() {
     }
   }
   for (let mi = playerMissiles.length - 1; mi >= 0; mi--) {
+    const missile = playerMissiles[mi]
+    if (!missile) continue
     for (let ei = enemies.length - 1; ei >= 0; ei--) {
-      if (playerMissiles[mi].mesh.position.distanceTo(enemies[ei].group.position) < 6) {
-        createExplosion(playerMissiles[mi].mesh.position.clone(), 1.5); playExplosionSound(1.2)
-        scene.remove(playerMissiles[mi].mesh); playerMissiles.splice(mi, 1)
+      if (missile.mesh.position.distanceTo(enemies[ei].group.position) < 6) {
+        createExplosion(missile.mesh.position.clone(), 1.5); playExplosionSound(1.2)
+        scene.remove(missile.mesh); playerMissiles.splice(mi, 1)
         killEnemy(ei); break
       }
     }
   }
   for (let mi = enemyMissiles.length - 1; mi >= 0; mi--) {
     const m = enemyMissiles[mi]
+    if (!m) continue
     if (m.mesh.position.distanceTo(player.position) < 4) {
       createExplosion(m.mesh.position.clone(), 1.0); playExplosionSound(0.8)
       scene.remove(m.mesh); enemyMissiles.splice(mi, 1)
@@ -913,7 +1143,10 @@ function checkCollisions() {
         playerHP = Math.max(0, playerHP - 1)
         hitFlashTimer = 0.5
         updateHPDisplay()
-        if (playerHP <= 0) respawnPlayer()
+        if (playerHP <= 0) {
+          respawnPlayer()
+          return
+        }
       }
       continue
     }
@@ -1008,7 +1241,7 @@ function updateHPDisplay() {
 
 function respawnPlayer() {
   playerHP = MAX_HP
-  player.position.set(0, 80, 0)
+  player.position.set(0, terrainH(0, 0) + 90, 0)
   player.quaternion.identity()
   camQuat.identity()
   speed = 30
