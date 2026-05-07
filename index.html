@@ -274,6 +274,20 @@
 
       @media (pointer: coarse) { #controls { display: none; } }
 
+      /* モバイル：UI重なり解消 */
+      @media (pointer: coarse) {
+        /* スコア/HP：LOCKボタン（top:12+56=68px）の下へ */
+        #hud-score { top: 76px; right: 12px; bottom: auto; padding: 8px 12px; min-width: 0; }
+        #hud-score .score-val { font-size: 22px; }
+        /* 兵装ピップは戦闘ボタンと重なるため非表示 */
+        #hud-weapons { display: none; }
+        /* 飛行データ：フォント縮小 */
+        #hud-flight { bottom: 14px; left: 10px; padding: 8px 12px; min-width: 0; }
+        #hud-flight .val { font-size: 18px; }
+        /* ブーストバー：左下飛行データと被らない位置 */
+        #boost-bar { bottom: 14px; left: 50%; }
+      }
+
       /* 縦画面：回転促進オーバーレイ */
       #rotate-hint {
         display: none; position: fixed; inset: 0;

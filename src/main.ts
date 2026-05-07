@@ -2,9 +2,20 @@ import * as THREE from 'three'
 import { Sky } from 'three/addons/objects/Sky.js'
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 
+// 縦画面強制横向き: CSS rotate(90deg)で回転するため canvas も landscape サイズで初期化する
+function isPortraitMode() {
+  return navigator.maxTouchPoints > 0 && window.innerHeight > window.innerWidth
+}
+function getEffectiveSize() {
+  return isPortraitMode()
+    ? { w: window.innerHeight, h: window.innerWidth }
+    : { w: window.innerWidth,  h: window.innerHeight }
+}
+const { w: initW, h: initH } = getEffectiveSize()
+
 // ===== RENDERER =====
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
-renderer.setSize(window.innerWidth, window.innerHeight)  // initW/initH で上書きされる
+renderer.setSize(initW, initH)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
@@ -19,17 +30,6 @@ scene.background = new THREE.Color(0x9ccfe4)
 // 空気遠近法：近景は明確に、地平線だけ霞む
 scene.fog = new THREE.Fog(0x9ccfe4, 1700, 6900)
 
-// 縦画面強制横向き: 縦持ちのとき縦横スワップしたサイズで描画
-function isPortraitMode() {
-  return navigator.maxTouchPoints > 0 && window.innerHeight > window.innerWidth
-}
-function getEffectiveSize() {
-  return isPortraitMode()
-    ? { w: window.innerHeight, h: window.innerWidth }
-    : { w: window.innerWidth,  h: window.innerHeight }
-}
-
-const { w: initW, h: initH } = getEffectiveSize()
 const camera = new THREE.PerspectiveCamera(70, initW / initH, 0.1, 8000)
 
 // ===== POST-PROCESSING =====
@@ -828,7 +828,7 @@ function playExplosionSound(scale = 1.0) {
 
 // ===== GAME OBJECTS =====
 interface Projectile { mesh: THREE.Object3D; vel: THREE.Vector3; life: number }
-interface HomingMissile extends Projectile { mesh: THREE.Group; target: THREE.Object3D | null; diverted: boolean; spd: number; turnRate: number }
+interface HomingMissile extends Projectile { mesh: THREE.Group; target: THREE.Object3D | null; diverted: boolean; spd: number; turnRate: number; light: THREE.PointLight | null }
 interface Enemy { group: THREE.Group; health: number; orbitAngle: number; fireCooldown: number; missileAmmo: number; seekingSupply: boolean }
 interface Explosion { particles: Array<{ mesh: THREE.Mesh; vel: THREE.Vector3 }>; life: number }
 
@@ -846,8 +846,8 @@ let lockedEnemy: Enemy | null = null
 let playerHP = 3, invincibleTimer = 0, respawnFlash = 0
 const MAX_HP = 3
 
-const bulletMat = new THREE.MeshStandardMaterial({ color: 0xffee00, emissive: 0xffaa00, emissiveIntensity: 5.0, roughness: 0.2, metalness: 0 })
-const playerMissileMat = new THREE.MeshStandardMaterial({ color: 0xccccdd, roughness: 0.35, metalness: 0.9 })
+const bulletMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffdd00, emissiveIntensity: 18.0, roughness: 0.1, metalness: 0 })
+const playerMissileMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xff8800, emissiveIntensity: 6.0, roughness: 0.3, metalness: 0.7 })
 const enemyMissileMat = new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xcc2200, emissiveIntensity: 2.0, roughness: 0.5, metalness: 0.3 })
 const _fwd = new THREE.Vector3(0, 0, -1)
 
@@ -901,12 +901,17 @@ function fireGun() {
 
   for (const side of [-0.7, 0.7]) {
     const offset = new THREE.Vector3(side, 0, -3).applyQuaternion(player.quaternion)
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.13, 5, 5), bulletMat)
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.32, 6, 6), bulletMat)
     mesh.position.copy(player.position).add(offset)
     scene.add(mesh)
     bullets.push({ mesh, vel: aimDir.clone().multiplyScalar(230), life: 1.8 })
   }
   if (gunSoundCooldown <= 0) { playGunSound(); gunSoundCooldown = 0.06 }
+  // 砲口フラッシュ
+  const mFlash = new THREE.PointLight(0xffee00, 10, 30)
+  mFlash.position.copy(player.position).add(new THREE.Vector3(0, 0, -3.5).applyQuaternion(player.quaternion))
+  scene.add(mFlash)
+  setTimeout(() => scene.remove(mFlash), 55)
 }
 
 function firePlayerMissile() {
@@ -926,7 +931,10 @@ function firePlayerMissile() {
   mesh.position.copy(player.position).add(new THREE.Vector3(0, -0.5, 2).applyQuaternion(player.quaternion))
   mesh.quaternion.copy(player.quaternion)
   scene.add(mesh)
-  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(80), life: 12, target, diverted: false, spd: 95, turnRate: 1.8 })
+  const mLight = new THREE.PointLight(0xff8800, 6, 55)
+  mLight.position.copy(mesh.position)
+  scene.add(mLight)
+  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(80), life: 12, target, diverted: false, spd: 95, turnRate: 1.8, light: mLight })
   playMissileSound()
 }
 
@@ -938,7 +946,7 @@ function fireEnemyMissile(enemy: Enemy) {
   const toPlayer = player.position.clone().sub(enemy.group.position).normalize()
   mesh.quaternion.setFromUnitVectors(_fwd, toPlayer)
   scene.add(mesh)
-  enemyMissiles.push({ mesh, vel: toPlayer.clone().multiplyScalar(70), life: 15, target: player, diverted: false, spd: 75, turnRate: 1.4 })
+  enemyMissiles.push({ mesh, vel: toPlayer.clone().multiplyScalar(70), life: 15, target: player, diverted: false, spd: 75, turnRate: 1.4, light: null })
 }
 
 function dropFlare() {
@@ -983,6 +991,7 @@ function updateHoming(m: HomingMissile, dt: number) {
   }
   m.life -= dt
   m.mesh.position.addScaledVector(m.vel, dt)
+  if (m.light) m.light.position.copy(m.mesh.position)
   if (m.vel.lengthSq() > 0.01) m.mesh.quaternion.setFromUnitVectors(_fwd, m.vel.clone().normalize())
 }
 
@@ -1021,7 +1030,7 @@ function updateBullets(dt: number) {
 function updateMissileArr(arr: HomingMissile[], dt: number, onExpire: (m: HomingMissile) => void) {
   for (let i = arr.length - 1; i >= 0; i--) {
     updateHoming(arr[i], dt)
-    if (arr[i].life <= 0) { onExpire(arr[i]); scene.remove(arr[i].mesh); arr.splice(i, 1) }
+    if (arr[i].life <= 0) { onExpire(arr[i]); scene.remove(arr[i].mesh); if (arr[i].light) scene.remove(arr[i].light!); arr.splice(i, 1) }
   }
 }
 
@@ -1128,6 +1137,7 @@ function checkCollisions() {
     for (let ei = enemies.length - 1; ei >= 0; ei--) {
       if (missile.mesh.position.distanceTo(enemies[ei].group.position) < 6) {
         createExplosion(missile.mesh.position.clone(), 1.5); playExplosionSound(1.2)
+        if (missile.light) scene.remove(missile.light)
         scene.remove(missile.mesh); playerMissiles.splice(mi, 1)
         killEnemy(ei); break
       }
@@ -1138,6 +1148,7 @@ function checkCollisions() {
     if (!m) continue
     if (m.mesh.position.distanceTo(player.position) < 4) {
       createExplosion(m.mesh.position.clone(), 1.0); playExplosionSound(0.8)
+      if (m.light) scene.remove(m.light)
       scene.remove(m.mesh); enemyMissiles.splice(mi, 1)
       if (invincibleTimer <= 0) {
         playerHP = Math.max(0, playerHP - 1)
@@ -1154,6 +1165,7 @@ function checkCollisions() {
       for (let fi = flares.length - 1; fi >= 0; fi--) {
         if (m.mesh.position.distanceTo(flares[fi].mesh.position) < 12) {
           createExplosion(m.mesh.position.clone(), 0.6)
+          if (m.light) scene.remove(m.light)
           scene.remove(m.mesh); enemyMissiles.splice(mi, 1)
           scene.remove(flares[fi].mesh); flares.splice(fi, 1); break
         }
@@ -1201,9 +1213,10 @@ function updateReticle() {
   const pos = lockedEnemy.group.position.clone()
   if (pos.clone().sub(camera.position).dot(_fwd.clone().applyQuaternion(camera.quaternion)) < 0) { reticleEl.style.display = 'none'; return }
   pos.project(camera)
+  const { w: rW, h: rH } = getEffectiveSize()
   reticleEl.style.display = 'block'
-  reticleEl.style.left = ((pos.x + 1) / 2 * window.innerWidth) + 'px'
-  reticleEl.style.top = ((-pos.y + 1) / 2 * window.innerHeight) + 'px'
+  reticleEl.style.left = ((pos.x + 1) / 2 * rW) + 'px'
+  reticleEl.style.top = ((-pos.y + 1) / 2 * rH) + 'px'
 }
 
 function updateWarning() {
