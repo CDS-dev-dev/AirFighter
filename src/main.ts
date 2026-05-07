@@ -4,7 +4,7 @@ import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.
 
 // ===== RENDERER =====
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
-renderer.setSize(window.innerWidth, window.innerHeight)
+renderer.setSize(window.innerWidth, window.innerHeight)  // initW/initH で上書きされる
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFShadowMap
@@ -18,7 +18,18 @@ const scene = new THREE.Scene()
 // 空気遠近法：近景は明確に、地平線だけ霞む
 scene.fog = new THREE.Fog(0x7aaec8, 1400, 5500)
 
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 8000)
+// 縦画面強制横向き: 縦持ちのとき縦横スワップしたサイズで描画
+function isPortraitMode() {
+  return navigator.maxTouchPoints > 0 && window.innerHeight > window.innerWidth
+}
+function getEffectiveSize() {
+  return isPortraitMode()
+    ? { w: window.innerHeight, h: window.innerWidth }
+    : { w: window.innerWidth,  h: window.innerHeight }
+}
+
+const { w: initW, h: initH } = getEffectiveSize()
+const camera = new THREE.PerspectiveCamera(70, initW / initH, 0.1, 8000)
 
 // ===== POST-PROCESSING =====
 // ブルームは白飛びの原因になるため Phase 1 では無効化
@@ -449,21 +460,31 @@ function setupTouchControls() {
     initAudio()
     const t = e.changedTouches[0]
     joyId = t.identifier; ox = t.clientX; oy = t.clientY
-    base.style.left = ox + 'px'; base.style.top = oy + 'px'; base.style.opacity = '1'
-    knob.style.left = ox + 'px'; knob.style.top  = oy + 'px'; knob.style.opacity = '1'
+    // 縦持ち強制横向き時: HTML座標系に変換して表示
+    const portrait = isPortraitMode()
+    const H = window.innerHeight
+    const bx = portrait ? (H - oy) : ox
+    const by = portrait ? ox       : oy
+    base.style.left = bx + 'px'; base.style.top = by + 'px'; base.style.opacity = '1'
+    knob.style.left = bx + 'px'; knob.style.top  = by + 'px'; knob.style.opacity = '1'
   }, { passive: false })
 
   zone.addEventListener('touchmove', (e) => {
     e.preventDefault()
     for (const t of Array.from(e.changedTouches)) {
       if (t.identifier !== joyId) continue
-      let dx = t.clientX - ox, dy = t.clientY - oy
-      const d = Math.hypot(dx, dy)
-      if (d > MAX_R) { dx = dx / d * MAX_R; dy = dy / d * MAX_R }
-      touchState.yaw   =  dx / MAX_R
-      touchState.pitch = -dy / MAX_R  // 上スワイプ→上昇
-      knob.style.left = (ox + dx) + 'px'
-      knob.style.top  = (oy + dy) + 'px'
+      const portrait = isPortraitMode()
+      // 縦持ち時: viewport dx/dy → landscape ldx/ldy に変換
+      let ldx = portrait ? (t.clientY - oy) : (t.clientX - ox)
+      let ldy = portrait ? -(t.clientX - ox) : (t.clientY - oy)
+      const d = Math.hypot(ldx, ldy)
+      if (d > MAX_R) { ldx = ldx/d*MAX_R; ldy = ldy/d*MAX_R }
+      touchState.yaw   =  ldx / MAX_R
+      touchState.pitch = -ldy / MAX_R
+      // ノブのCSS位置（HTML座標系）
+      const H = window.innerHeight
+      knob.style.left = (portrait ? H - oy + ldx : ox + ldx) + 'px'
+      knob.style.top  = (portrait ? ox + ldy      : oy + ldy) + 'px'
     }
   }, { passive: false })
 
@@ -966,12 +987,15 @@ function updateWarning() {
   }
 }
 
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight
+function updateRendererSize() {
+  const { w, h } = getEffectiveSize()
+  renderer.setSize(w, h)
+  camera.aspect = w / h
   camera.updateProjectionMatrix()
-  renderer.setSize(window.innerWidth, window.innerHeight)
-  composer?.setSize(window.innerWidth, window.innerHeight)
-})
+  composer?.setSize(w, h)
+}
+window.addEventListener('resize', updateRendererSize)
+window.addEventListener('orientationchange', () => setTimeout(updateRendererSize, 150))
 
 // ===== HP / RESPAWN =====
 function updateHPDisplay() {
