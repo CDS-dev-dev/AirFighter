@@ -1541,12 +1541,22 @@ function handleRightLock() {
   const fwdWorld = _fwd.clone().applyQuaternion(player.quaternion)
   let best: { group: THREE.Group } | null = null, bestScore = -Infinity
   const allTargets: Array<{ group: THREE.Group }> = [...enemies, ...groundTargets]
+
+  // レイキャスター for地形遮蔽判定
+  const raycaster = new THREE.Raycaster()
+
   for (const t of allTargets) {
     const toT = t.group.position.clone().sub(player.position)
     const dist = toT.length()
-    if (dist > MISSILE_LOCK_RANGE * 1.2) continue
+    if (dist > MISSILE_LOCK_RANGE) continue  // ミサイル射程内のみロックオン可能
     const dot = toT.normalize().dot(fwdWorld)
     if (dot > 0.3) {
+      // 地形遮蔽チェック（プレイヤーから敵への直線上に地形がないか確認）
+      raycaster.set(player.position, toT.normalize())
+      raycaster.far = dist - 5  // 敵の手前までチェック
+      const intersects = raycaster.intersectObject(ground, false)
+      if (intersects.length > 0) continue  // 地形に遮られている場合はスキップ
+
       const sc = dot - dist / MISSILE_LOCK_RANGE * 0.25
       if (sc > bestScore) { bestScore = sc; best = t }
     }
@@ -1560,9 +1570,16 @@ function handleLeftRelease(holdTime: number) {
     // Multi-lock: add up to 4 enemies in front arc
     multiLockTargets.length = 0
     const fwdWorld = _fwd.clone().applyQuaternion(player.quaternion)
+    const raycaster = new THREE.Raycaster()
     const sorted = enemies.slice().filter(e => {
       const toE = e.group.position.clone().sub(player.position)
-      return toE.length() < MISSILE_LOCK_RANGE && toE.normalize().dot(fwdWorld) > 0.2
+      const dist = toE.length()
+      if (dist > MISSILE_LOCK_RANGE || toE.normalize().dot(fwdWorld) <= 0.2) return false
+      // 地形遮蔽チェック
+      raycaster.set(player.position, toE.normalize())
+      raycaster.far = dist - 5
+      const intersects = raycaster.intersectObject(ground, false)
+      return intersects.length === 0
     }).sort((a, b) => a.group.position.distanceTo(player.position) - b.group.position.distanceTo(player.position))
     multiLockTargets.push(...sorted.slice(0, 4))
     // Sequential fire
@@ -3163,19 +3180,31 @@ function drawEnemyBrackets() {
   }
 
   // Air enemies
+  const raycaster = new THREE.Raycaster()
   for (const e of enemies) {
     const dist = e.group.position.distanceTo(player.position)
+    const toE = e.group.position.clone().sub(player.position)
+    const toENorm = toE.clone().normalize()
+    const frontDot = toENorm.dot(playerFwd)
+
+    // 地形遮蔽チェック
+    raycaster.set(player.position, toENorm)
+    raycaster.far = dist - 5
+    const intersects = raycaster.intersectObject(ground, false)
+    const blockedByTerrain = intersects.length > 0
+
     const [sx, sy, vis] = projectToScreen(e.group.position)
     const isLocked = e === lockedTarget
     const isMulti  = multiLockTargets.includes(e)
     const inRange  = dist < MISSILE_LOCK_RANGE
-    const toE = e.group.position.clone().sub(player.position)
-    const frontDot = toE.normalize().dot(playerFwd)
 
     if (!vis) {
       if (isLocked) _drawOffscreenArrow(ctx, e.group.position, w, h)
       continue
     }
+
+    // 地形に遮られている場合は表示しない
+    if (blockedByTerrain && !isLocked && !isMulti) continue
 
     if (isLocked || isMulti) {
       const pulse = 0.65 + 0.35 * Math.sin(t * 0.007)
@@ -3185,20 +3214,21 @@ function drawEnemyBrackets() {
       ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.stroke()
       ctx.strokeStyle = col.replace(/[\d.]+\)$/, `${pulse * 0.5})`); ctx.lineWidth = 1
       ctx.beginPath(); ctx.arc(sx, sy, r * 0.65, 0, Math.PI * 2); ctx.stroke()
-      ctx.fillStyle = col; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center'
+      ctx.fillStyle = col; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'
       if (isMulti && !isLocked) {
         ctx.fillText(`[${multiLockTargets.indexOf(e) + 1}]`, sx, sy - r - 5)
       } else {
         ctx.fillText('LOCKED', sx, sy + r + 14)
       }
-      ctx.fillText(`${Math.round(dist)}m`, sx, sy + r + 24)
+      ctx.font = 'bold 14px monospace'
+      ctx.fillText(`${Math.round(dist)}m`, sx, sy + r + 28)
       if (!inRange) {
         ctx.fillStyle = 'rgba(255,80,80,0.9)'
-        ctx.font = '8px monospace'
+        ctx.font = '9px monospace'
         ctx.fillText('OUT OF RANGE', sx, sy - r - 8)
       }
     } else if (inRange && frontDot > 0.25) {
-      // Lockable: rotating dashed ring + corner brackets
+      // Lockable: rotating dashed ring + double corner brackets (射程内)
       const spin = t * 0.0022
       const r = 22
       ctx.strokeStyle = 'rgba(255,210,60,0.8)'; ctx.lineWidth = 1.2
@@ -3207,17 +3237,17 @@ function drawEnemyBrackets() {
         ctx.beginPath(); ctx.arc(sx, sy, r, a0, a0 + Math.PI * 0.42); ctx.stroke()
       }
       ctx.strokeStyle = 'rgba(255,210,60,0.55)'
-      _drawCornerBrackets(ctx, sx, sy, 16, 6)
-      ctx.fillStyle = 'rgba(255,210,60,0.8)'; ctx.font = '8px monospace'; ctx.textAlign = 'center'
-      ctx.fillText(`${Math.round(dist)}m`, sx, sy + 16 + 13)
+      _drawCornerBrackets(ctx, sx, sy, 16, 6)  // 内側ブラケット
+      ctx.strokeStyle = 'rgba(255,210,60,0.35)'
+      _drawCornerBrackets(ctx, sx, sy, 22, 8)  // 外側ブラケット（射程内表示）
+      ctx.fillStyle = 'rgba(255,210,60,0.8)'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center'
+      ctx.fillText(`${Math.round(dist)}m`, sx, sy + 22 + 16)
     } else {
-      // Out of range or behind: dim brackets
+      // Out of range or behind: dim single brackets
       ctx.strokeStyle = 'rgba(200,70,70,0.35)'; ctx.lineWidth = 1
       _drawCornerBrackets(ctx, sx, sy, 16, 5)
-      if (!inRange) {
-        ctx.fillStyle = 'rgba(200,70,70,0.5)'; ctx.font = '7px monospace'; ctx.textAlign = 'center'
-        ctx.fillText(`${Math.round(dist)}m`, sx, sy + 16 + 11)
-      }
+      ctx.fillStyle = 'rgba(200,70,70,0.5)'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center'
+      ctx.fillText(`${Math.round(dist)}m`, sx, sy + 16 + 14)
     }
   }
 
@@ -3226,15 +3256,29 @@ function drawEnemyBrackets() {
     for (const gt of groundTargets) {
       const dist = gt.group.position.distanceTo(player.position)
       if (dist > MISSILE_LOCK_RANGE * 1.4) continue
+
+      // 地形遮蔽チェック
+      const toGT = gt.group.position.clone().sub(player.position)
+      raycaster.set(player.position, toGT.normalize())
+      raycaster.far = dist - 5
+      const intersects = raycaster.intersectObject(ground, false)
+      if (intersects.length > 0 && gt !== lockedTarget) continue  // 遮蔽されている場合はスキップ
+
       const [sx, sy, vis] = projectToScreen(gt.group.position)
       if (!vis) continue
       const inR = dist < MISSILE_LOCK_RANGE
       ctx.strokeStyle = inR ? 'rgba(255,155,40,0.9)' : 'rgba(200,120,40,0.35)'
       ctx.lineWidth = inR ? 1.5 : 1
       _drawCornerBrackets(ctx, sx, sy, 18, 6)
+      if (inR) {
+        // 射程内は二重ブラケット
+        ctx.strokeStyle = 'rgba(255,155,40,0.4)'
+        _drawCornerBrackets(ctx, sx, sy, 24, 8)
+      }
       ctx.fillStyle = inR ? 'rgba(255,175,60,0.9)' : 'rgba(180,120,50,0.45)'
-      ctx.font = '8px monospace'; ctx.textAlign = 'center'
-      ctx.fillText(`${Math.round(dist)}m`, sx, sy + 18 + 13)
+      ctx.font = inR ? 'bold 12px monospace' : 'bold 11px monospace'
+      ctx.textAlign = 'center'
+      ctx.fillText(`${Math.round(dist)}m`, sx, sy + 18 + 16)
     }
   }
 }
