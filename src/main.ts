@@ -1088,7 +1088,7 @@ scene.add(new THREE.Points(trailGeo, new THREE.PointsMaterial({
 
 // ===== PLAYER =====
 const player = createAircraft(0x2255cc, 0x112244)
-player.position.set(0, terrainH(0, 0) + 90, 0)
+player.position.set(0, terrainH(0, 0) + 150, 0)  // 初期位置を高く（90→150m）
 scene.add(player)
 let cameraOffset = new THREE.Vector3(0, 5, 20)
 const camQuat = new THREE.Quaternion()
@@ -2358,7 +2358,7 @@ function startGame(mode: GameMode) {
       // プレイヤーも味方側（北）にスポーン
       dfSpawnX = (Math.random() - 0.5) * 120
       dfSpawnZ = -(200 + Math.random() * 150)
-      player.position.set(dfSpawnX, terrainH(dfSpawnX, dfSpawnZ) + 110, dfSpawnZ)
+      player.position.set(dfSpawnX, terrainH(dfSpawnX, dfSpawnZ) + 200, dfSpawnZ)  // 高度を上げて安全に（110→200m）
       player.quaternion.identity()
       camQuat.identity()
       speed = 200  // ゲーム開始時も巡航速度
@@ -3328,7 +3328,7 @@ function respawnPlayer() {
   playerHP = MAX_HP
   const rx = currentMode === 'dogfight' ? dfSpawnX : 0
   const rz = currentMode === 'dogfight' ? dfSpawnZ : 0
-  player.position.set(rx, terrainH(rx, rz) + 110, rz)
+  player.position.set(rx, terrainH(rx, rz) + 200, rz)  // リスポーン高度を上げて安全に（110→200m）
   player.quaternion.identity()
   camQuat.identity()
   speed = 200  // リスポーン時も巡航速度
@@ -3526,8 +3526,65 @@ function loop() {
   player.quaternion.setFromEuler(_bEuler)
   player.quaternion.normalize()
 
+  // 移動前の位置を保存
+  const prevPos = player.position.clone()
   player.position.addScaledVector(_fwd.clone().applyQuaternion(player.quaternion), speed * dt)
-  player.position.y = Math.max(terrainH(player.position.x, player.position.z) + 4, player.position.y)
+
+  // 衝突判定：地形との衝突
+  const minAltitude = terrainH(player.position.x, player.position.z) + 10
+  if (player.position.y < minAltitude) {
+    player.position.y = minAltitude
+    // 地形衝突時はダメージ
+    if (player.position.y - prevPos.y < -5) {
+      playerHP -= 15
+      updateHPDisplay()
+      hitFlashTimer = 0.5
+      if (playerHP <= 0) respawnPlayer()
+    }
+  }
+
+  // 衝突判定：構造物との衝突（建物、地上目標）
+  const collisionRadius = 8  // プレイヤーの衝突半径
+
+  // 東京の建物との衝突
+  for (const obj of tokyoObjects) {
+    const dx = player.position.x - obj.position.x
+    const dz = player.position.z - obj.position.z
+    const distXZ = Math.sqrt(dx * dx + dz * dz)
+
+    if (distXZ < collisionRadius + 15) {
+      const buildingHeight = obj.scale.y * 40
+      if (player.position.y < obj.position.y + buildingHeight) {
+        const pushDir = new THREE.Vector3(dx, 0, dz).normalize()
+        player.position.x = obj.position.x + pushDir.x * (collisionRadius + 15)
+        player.position.z = obj.position.z + pushDir.z * (collisionRadius + 15)
+        playerHP -= 20
+        updateHPDisplay()
+        hitFlashTimer = 0.5
+        camShakeAmt = Math.max(camShakeAmt, 0.8)
+        if (playerHP <= 0) respawnPlayer()
+      }
+    }
+  }
+
+  // 地上目標（戦車、建物、艦船など）との衝突
+  for (const gt of groundTargets) {
+    const dx = player.position.x - gt.group.position.x
+    const dz = player.position.z - gt.group.position.z
+    const distXZ = Math.sqrt(dx * dx + dz * dz)
+
+    if (distXZ < collisionRadius + 12 && player.position.y < gt.group.position.y + 25) {
+      const pushDir = new THREE.Vector3(dx, 0, dz).normalize()
+      player.position.x = gt.group.position.x + pushDir.x * (collisionRadius + 12)
+      player.position.z = gt.group.position.z + pushDir.z * (collisionRadius + 12)
+      player.position.y = Math.max(player.position.y, gt.group.position.y + 25)
+      playerHP -= 25
+      updateHPDisplay()
+      hitFlashTimer = 0.5
+      camShakeAmt = Math.max(camShakeAmt, 1.0)
+      if (playerHP <= 0) respawnPlayer()
+    }
+  }
 
   // Engine glow follows player
   engineLight.position.copy(player.position).add(new THREE.Vector3(0, 0, 2).applyQuaternion(player.quaternion))
