@@ -158,31 +158,62 @@ function gauss2d(x: number, z: number, ax: number, az: number, rx: number, rz: n
 //    南  — 南山地 (350-650m) + 湾 + 半島
 //    ※ 山は高く、谷は深く、30秒飛ぶたびに景観が変わる
 // ═══════════════════════════════════════════════════════
-// Tokyo MAP用の地形関数（平坦な都市地形）
+// Tokyo MAP用の地形関数（実際の東京の地形を再現）
 function tokyoTerrainH(x: number, z: number): number {
-  // 基本高度：海抜10-30m（ほぼ平坦）
-  let h = 20 + Math.sin(x * 0.0008) * 5 + Math.sin(z * 0.0006) * 4
+  // 東京の地形：武蔵野台地（西）と下町低地（東）
+  // スケール: 1unit = 10m, 範囲: -3000〜3000 (60km四方)
 
-  // 東京湾（南東部、x>500, z>300）
-  const bayDist = Math.hypot(Math.max(0, x - 800), Math.max(0, z - 600))
-  if (bayDist < 1200) {
-    h -= smoothstep(1200, 0, bayDist) * 25  // 海面まで下げる
+  // ベース高度：西高東低
+  let h = 25 - (x / 3000) * 15  // 西40m → 東10m
+
+  // 武蔵野台地（西部、標高40-60m）
+  if (x < 0) {
+    h += 15 + Math.sin(x * 0.0003) * 8
   }
 
-  // 皇居（緑地、中央西部）
-  const palaceDist = Math.hypot(x + 400, z - 100)
+  // 隅田川（北から南へ流れる、x=400-600付近）
+  const sumidaDist = Math.abs(x - 500)
+  if (sumidaDist < 100 && z > -1500 && z < 1500) {
+    h -= smoothstep(100, 0, sumidaDist) * 20  // 川底まで下げる
+  }
+
+  // 荒川（東部、x=1200-1400付近）
+  const arakawaDist = Math.abs(x - 1300)
+  if (arakawaDist < 150 && z > -1000 && z < 1500) {
+    h -= smoothstep(150, 0, arakawaDist) * 18
+  }
+
+  // 東京湾（南東部、x>600, z>800）
+  if (x > 600 && z > 800) {
+    const bayDepth = smoothstep(0, 800, Math.hypot(x - 600, z - 800))
+    h -= bayDepth * 30
+  }
+
+  // 皇居（緑地、x=-400付近、z=-200付近）
+  const palaceDist = Math.hypot(x + 400, z + 200)
   if (palaceDist < 300) {
-    h += Math.sin((palaceDist / 300) * Math.PI) * 8  // 緩やかな丘
+    h += Math.sin((palaceDist / 300) * Math.PI) * 12  // 江戸城の丘
   }
 
-  // 代々木公園（緑地）
-  const yoyogiDist = Math.hypot(x + 800, z - 500)
+  // 上野の山（北部台地、x=-100, z=-800）
+  const uenoDist = Math.hypot(x + 100, z + 800)
+  if (uenoDist < 200) {
+    h += Math.sin((uenoDist / 200) * Math.PI) * 15
+  }
+
+  // 代々木公園（緑地、x=-800, z=-400）
+  const yoyogiDist = Math.hypot(x + 800, z + 400)
   if (yoyogiDist < 250) {
-    h += Math.sin((yoyogiDist / 250) * Math.PI) * 6
+    h += Math.sin((yoyogiDist / 250) * Math.PI) * 8
+  }
+
+  // 下町低地（東部、低い土地）
+  if (x > 600) {
+    h -= 10
   }
 
   // 微細な起伏（道路・建物の基礎）
-  h += (fbm(x * 0.02, z * 0.02, 2) - 0.5) * 2
+  h += (fbm(x * 0.015, z * 0.015, 2) - 0.5) * 3
 
   return Math.max(h, WATER_LEVEL)  // 水面以下にならない
 }
@@ -2493,103 +2524,134 @@ function completeMission() {
   overlay.style.display = 'flex'
 }
 
-function returnToMapScreen() {
-  document.getElementById('mission-complete')!.style.display = 'none'
-  document.getElementById('mode-screen')!.style.display = 'none'
-  document.getElementById('map-screen')!.style.display = 'flex'
-  document.getElementById('objective-hud')!.style.display = 'none'
-  currentMode = null
-  missionComplete = false
-  score = 0; scoreEl.textContent = '0'
-  for (const e of [...enemies]) scene.remove(e.group); enemies.length = 0
-  for (const a of [...allies]) scene.remove(a.group); allies.length = 0
-  for (const gt of [...groundTargets]) scene.remove(gt.group); groundTargets.length = 0
-  for (const b of [...bullets]) scene.remove(b.mesh); bullets.length = 0
-  for (const m of [...playerMissiles]) { if (m.light) scene.remove(m.light); scene.remove(m.mesh) }; playerMissiles.length = 0
-  for (const m of [...enemyMissiles]) scene.remove(m.mesh); enemyMissiles.length = 0
-  for (const m of [...allyMissiles]) scene.remove(m.mesh); allyMissiles.length = 0
-  lockedTarget = null
-  player.position.set(0, terrainH(0, 0) + 90, 0)
-  player.quaternion.identity(); camQuat.identity(); speed = 30
-  playerHP = MAX_HP; invincibleTimer = 0; updateHPDisplay()
-  missileAmmo = 6; flareAmmo = 8
-  updatePips(missilePips, missileAmmo, 'on')
-  updatePips(flarePips, flareAmmo, 'flare-on')
-}
-
 // Tokyo MAP用のランドマーク配置関数
+// 新宿駅を原点(0,0)として実際の東京を再現
+// スケール: 1unit = 10m
 function buildTokyoLandmarks() {
-  // 渋谷駅を原点(0,0)として、実際の相対位置に配置
-  // スケール: 1unit = 10m
-
-  // 東京タワー（渋谷から南西 約4.5km）
-  if (glbTokyoTower) {
-    const tower = glbTokyoTower.clone()
-    tower.position.set(-450, tokyoTerrainH(-450, -200), -200)
-    tower.scale.setScalar(1.0)
-    scene.add(tower)
-  }
-
-  // 東京スカイツリー（渋谷から北東 約10km）
-  if (glbTokyoSkytree) {
-    const skytree = glbTokyoSkytree.clone()
-    skytree.position.set(800, tokyoTerrainH(800, -600), -600)
-    skytree.scale.setScalar(1.0)
-    scene.add(skytree)
-  }
-
-  // 六本木ヒルズ（渋谷から東 約3km）
-  if (glbRoppongiHills) {
-    const roppongi = glbRoppongiHills.clone()
-    roppongi.position.set(300, tokyoTerrainH(300, -100), -100)
-    roppongi.scale.setScalar(1.0)
-    scene.add(roppongi)
-  }
-
-  // 東京都庁（渋谷から北西 約3.5km）
+  // 東京都庁（新宿駅西口、原点から西へ800m）
   if (glbTokyoGovernment) {
     const tocho = glbTokyoGovernment.clone()
-    tocho.position.set(-350, tokyoTerrainH(-350, -350), -350)
+    tocho.position.set(-80, tokyoTerrainH(-80, 0), 0)
     tocho.scale.setScalar(1.0)
     scene.add(tocho)
   }
 
-  // 東京ドーム（渋谷から北 約7km）
-  if (glbTokyoDome) {
-    const dome = glbTokyoDome.clone()
-    dome.position.set(0, tokyoTerrainH(0, -700), -700)
-    dome.scale.setScalar(1.0)
-    scene.add(dome)
-  }
-
-  // レインボーブリッジ（渋谷から南東 約6km、東京湾）
-  if (glbRainbowBridge) {
-    const bridge = glbRainbowBridge.clone()
-    bridge.position.set(600, tokyoTerrainH(600, 400) + 45, 400)
-    bridge.rotation.y = Math.PI * 0.3
-    bridge.scale.setScalar(1.0)
-    scene.add(bridge)
-  }
-
-  // 渋谷スクランブルスクエア（渋谷駅直上）
+  // 渋谷スクランブルスクエア（新宿から南西3.5km）
   if (glbShibuyaScramble) {
     const scramble = glbShibuyaScramble.clone()
-    scramble.position.set(0, tokyoTerrainH(0, 0), 0)
+    scramble.position.set(-250, tokyoTerrainH(-250, 350), 350)
     scramble.scale.setScalar(1.0)
     scene.add(scramble)
   }
 
-  // 都市ビル群を大量配置（5種類のビルをランダム配置）
+  // 六本木ヒルズ（新宿から南東5km）
+  if (glbRoppongiHills) {
+    const roppongi = glbRoppongiHills.clone()
+    roppongi.position.set(200, tokyoTerrainH(200, 500), 500)
+    roppongi.scale.setScalar(1.0)
+    scene.add(roppongi)
+  }
+
+  // 東京タワー（新宿から南東7km）
+  if (glbTokyoTower) {
+    const tower = glbTokyoTower.clone()
+    tower.position.set(300, tokyoTerrainH(300, 700), 700)
+    tower.scale.setScalar(1.0)
+    scene.add(tower)
+  }
+
+  // 東京ドーム（新宿から北東5km）
+  if (glbTokyoDome) {
+    const dome = glbTokyoDome.clone()
+    dome.position.set(400, tokyoTerrainH(400, -500), -500)
+    dome.scale.setScalar(1.0)
+    scene.add(dome)
+  }
+
+  // 東京スカイツリー（新宿から東12km）
+  if (glbTokyoSkytree) {
+    const skytree = glbTokyoSkytree.clone()
+    skytree.position.set(1200, tokyoTerrainH(1200, 0), 0)
+    skytree.scale.setScalar(1.0)
+    scene.add(skytree)
+  }
+
+  // レインボーブリッジ（新宿から南東10km、東京湾）
+  if (glbRainbowBridge) {
+    const bridge = glbRainbowBridge.clone()
+    bridge.position.set(800, tokyoTerrainH(800, 1000) + 45, 1000)
+    bridge.rotation.y = Math.PI * 0.15
+    bridge.scale.setScalar(1.0)
+    scene.add(bridge)
+  }
+
+  // 都市ビル群を実際の東京に合わせて配置
   const glbBuildings = [glbCityBuilding01, glbCityBuilding02, glbCityBuilding03, glbCityBuilding04, glbCityBuilding05]
   const availableGLBs = glbBuildings.filter(g => g !== null)
 
   if (availableGLBs.length > 0) {
-    // 新宿エリア（西）
-    for (let i = 0; i < 40; i++) {
-      const x = -600 + (Math.random() - 0.5) * 400
-      const z = -400 + (Math.random() - 0.5) * 400
+    // 新宿西口超高層ビル街（原点周辺、西側）
+    for (let i = 0; i < 50; i++) {
+      const x = -150 + (Math.random() - 0.5) * 300
+      const z = -100 + (Math.random() - 0.5) * 200
       const y = tokyoTerrainH(x, z)
       if (y < WATER_LEVEL + 3) continue
+      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
+      const building = glb.clone()
+      building.position.set(x, y, z)
+      building.rotation.y = Math.random() * Math.PI * 2
+      building.scale.setScalar(0.9 + Math.random() * 0.6)  // 大きめ
+      scene.add(building)
+    }
+
+    // 新宿東口・歌舞伎町（原点の東側）
+    for (let i = 0; i < 35; i++) {
+      const x = 50 + (Math.random() - 0.5) * 200
+      const z = -50 + (Math.random() - 0.5) * 250
+      const y = tokyoTerrainH(x, z)
+      if (y < WATER_LEVEL + 3) continue
+      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
+      const building = glb.clone()
+      building.position.set(x, y, z)
+      building.rotation.y = Math.random() * Math.PI * 2
+      building.scale.setScalar(0.6 + Math.random() * 0.7)
+      scene.add(building)
+    }
+
+    // 渋谷エリア（南西）
+    for (let i = 0; i < 45; i++) {
+      const x = -250 + (Math.random() - 0.5) * 300
+      const z = 350 + (Math.random() - 0.5) * 300
+      const y = tokyoTerrainH(x, z)
+      if (y < WATER_LEVEL + 3) continue
+      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
+      const building = glb.clone()
+      building.position.set(x, y, z)
+      building.rotation.y = Math.random() * Math.PI * 2
+      building.scale.setScalar(0.7 + Math.random() * 0.8)
+      scene.add(building)
+    }
+
+    // 六本木・赤坂エリア（南東）
+    for (let i = 0; i < 40; i++) {
+      const x = 200 + (Math.random() - 0.5) * 400
+      const z = 500 + (Math.random() - 0.5) * 400
+      const y = tokyoTerrainH(x, z)
+      if (y < WATER_LEVEL + 3) continue
+      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
+      const building = glb.clone()
+      building.position.set(x, y, z)
+      building.rotation.y = Math.random() * Math.PI * 2
+      building.scale.setScalar(0.8 + Math.random() * 0.7)
+      scene.add(building)
+    }
+
+    // 皇居周辺・丸の内オフィス街（南）
+    for (let i = 0; i < 35; i++) {
+      const x = -200 + (Math.random() - 0.5) * 400
+      const z = -200 + (Math.random() - 0.5) * 300
+      const y = tokyoTerrainH(x, z)
+      if (y < WATER_LEVEL + 3 || Math.hypot(x + 400, z + 200) < 300) continue  // 皇居内を避ける
       const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
       const building = glb.clone()
       building.position.set(x, y, z)
@@ -2598,45 +2660,45 @@ function buildTokyoLandmarks() {
       scene.add(building)
     }
 
-    // 渋谷エリア（中央）
-    for (let i = 0; i < 35; i++) {
-      const x = -100 + (Math.random() - 0.5) * 300
-      const z = -50 + (Math.random() - 0.5) * 300
-      const y = tokyoTerrainH(x, z)
-      if (y < WATER_LEVEL + 3) continue
-      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
-      const building = glb.clone()
-      building.position.set(x, y, z)
-      building.rotation.y = Math.random() * Math.PI * 2
-      building.scale.setScalar(0.6 + Math.random() * 0.8)
-      scene.add(building)
-    }
-
-    // 六本木エリア（東）
+    // 上野・秋葉原エリア（北東）
     for (let i = 0; i < 30; i++) {
-      const x = 300 + (Math.random() - 0.5) * 350
-      const z = -100 + (Math.random() - 0.5) * 350
+      const x = 200 + (Math.random() - 0.5) * 400
+      const z = -600 + (Math.random() - 0.5) * 400
       const y = tokyoTerrainH(x, z)
       if (y < WATER_LEVEL + 3) continue
       const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
       const building = glb.clone()
       building.position.set(x, y, z)
       building.rotation.y = Math.random() * Math.PI * 2
-      building.scale.setScalar(0.7 + Math.random() * 0.7)
+      building.scale.setScalar(0.6 + Math.random() * 0.6)
       scene.add(building)
     }
 
-    // 東京駅・丸の内エリア（北）
+    // 押上・スカイツリー周辺（東）
     for (let i = 0; i < 25; i++) {
-      const x = -200 + (Math.random() - 0.5) * 400
-      const z = -500 + (Math.random() - 0.5) * 300
+      const x = 1200 + (Math.random() - 0.5) * 300
+      const z = -100 + (Math.random() - 0.5) * 300
       const y = tokyoTerrainH(x, z)
       if (y < WATER_LEVEL + 3) continue
       const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
       const building = glb.clone()
       building.position.set(x, y, z)
       building.rotation.y = Math.random() * Math.PI * 2
-      building.scale.setScalar(0.8 + Math.random() * 0.5)
+      building.scale.setScalar(0.5 + Math.random() * 0.5)  // 下町は低め
+      scene.add(building)
+    }
+
+    // お台場・臨海副都心（南東、湾岸）
+    for (let i = 0; i < 20; i++) {
+      const x = 600 + (Math.random() - 0.5) * 400
+      const z = 1200 + (Math.random() - 0.5) * 400
+      const y = tokyoTerrainH(x, z)
+      if (y < WATER_LEVEL + 3) continue
+      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
+      const building = glb.clone()
+      building.position.set(x, y, z)
+      building.rotation.y = Math.random() * Math.PI * 2
+      building.scale.setScalar(0.6 + Math.random() * 0.6)
       scene.add(building)
     }
   }
@@ -2654,13 +2716,14 @@ function switchMap(map: GameMap) {
   // Original MAPの場合は既にbuildWorldStructures()で配置済み
 }
 
-// MAP選択イベント
-document.querySelectorAll<HTMLElement>('.map-card').forEach(card => {
-  card.addEventListener('click', () => {
-    currentMap = card.dataset.map as GameMap
-    document.getElementById('map-screen')!.style.display = 'none'
-    document.getElementById('mode-screen')!.style.display = 'flex'
-    // MAPに応じて地形・ランドマークを切り替え（後で実装）
+// MAP選択イベント（モード選択画面内）
+document.querySelectorAll<HTMLElement>('.map-select-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    // アクティブ状態の切り替え
+    document.querySelectorAll('.map-select-btn').forEach(b => b.classList.remove('active'))
+    btn.classList.add('active')
+    // MAP切り替え
+    currentMap = btn.dataset.map as GameMap
     switchMap(currentMap)
   })
 })
@@ -2669,7 +2732,11 @@ document.querySelectorAll<HTMLElement>('.map-card').forEach(card => {
 document.querySelectorAll<HTMLElement>('.ms-start').forEach(btn => {
   btn.addEventListener('click', () => startGame(btn.dataset.mode as GameMode))
 })
-document.getElementById('mc-back')!.addEventListener('click', returnToMapScreen)
+document.getElementById('mc-back')!.addEventListener('click', () => {
+  // ミッション完了画面からモード選択に戻る
+  document.getElementById('mission-complete')!.style.display = 'none'
+  document.getElementById('mode-screen')!.style.display = 'flex'
+})
 
 // ポーズ機能
 function togglePause() {
