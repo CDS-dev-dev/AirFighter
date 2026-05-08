@@ -2,10 +2,10 @@ import * as THREE from 'three'
 import { Sky } from 'three/addons/objects/Sky.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
-// import { TokyoMapSystem } from './tokyoMapSystem' // 一時的に無効化
+import { TokyoMapSystem } from './tokyoMapSystem'
 
 // ===== VERSION =====
-const VERSION = '3.2.3'
+const VERSION = '3.3.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -109,8 +109,8 @@ const radarDishes: THREE.Group[] = []  // 回転アニメ用
 
 // ===== MAP SYSTEM =====
 type GameMap = 'original' | 'tokyo'
-let currentMap: GameMap = 'original' as GameMap  // 一時的にオリジナルに戻す（デバッグ用）
-let tokyoMapSystem: any | null = null  // 東京MAPシステム（一時的に無効化）
+let currentMap: GameMap = 'original' as GameMap  // デフォルトMAP
+let tokyoMapSystem: TokyoMapSystem | null = null  // 東京MAPシステム
 
 // ===== TERRAIN =====
 const WATER_LEVEL = 1.8
@@ -2619,9 +2619,23 @@ async function switchMap(map: GameMap) {
   console.log(`🗺️ MAP切り替え開始: ${map}`)
 
   if (map === 'tokyo') {
-    // ===== 東京MAP（一時的に無効化） =====
-    console.warn('⚠️ 東京MAPは現在無効化されています')
-    // TODO: 東京MAPシステムを修正後に再有効化
+    // ===== 東京MAP（最小限バージョン）=====
+    console.log('🗺️ 東京MAPに切り替え（最小限バージョン）')
+
+    // 既存のオリジナルMAPをクリーンアップ
+    if (ground) {
+      scene.remove(ground)
+      ground.geometry.dispose()
+      ;(ground.material as THREE.Material).dispose()
+    }
+
+    // 東京MAPシステムを初期化
+    if (!tokyoMapSystem) {
+      tokyoMapSystem = new TokyoMapSystem(scene, gltfLoader)
+    }
+    await tokyoMapSystem.initialize()
+
+    console.log('✅ 東京MAP切り替え完了')
 
   } else {
     // ===== オリジナルMAP =====
@@ -3650,20 +3664,8 @@ function loop() {
   }
 }
 
-// ===== 東京MAP初期化（一時的に無効化 - デバッグ中） =====
-// ;(async () => {
-//   if (currentMap === 'tokyo') {
-//     console.log('🗼 東京MAP初期化開始...')
-//     tokyoMapSystem = new TokyoMapSystem(scene, gltfLoader)
-//     await tokyoMapSystem.initialize()
-//
-//     // プレースホルダー地形を削除
-//     scene.remove(ground)
-//     ground.geometry.dispose()
-//     ;(ground.material as THREE.Material).dispose()
-//
-//     console.log('✅ 東京MAP初期化完了')
-//   }
-// })()
+// ===== 東京MAP初期化（デフォルトは無効、MAP選択から選べる） =====
+// 初期状態ではオリジナルMAPなので何もしない
+// ユーザーがMAP選択で東京を選んだ時にswitchMap()が呼ばれる
 
 loop()

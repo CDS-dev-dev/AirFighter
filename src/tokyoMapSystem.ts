@@ -160,35 +160,28 @@ export class TokyoMapSystem {
 
   /**
    * 東京MAPを初期化（メインエントリーポイント）
+   * 段階的実装：まず最小限のバージョン
    */
   async initialize(): Promise<void> {
-    console.log('🗼 東京MAP初期化開始...')
+    console.log('🗼 東京MAP初期化開始（最小限バージョン）...')
 
-    // 1. ビルディングデータ生成（OpenStreetMapベース）
-    this.generateBuildingData()
-
-    // 2. 地形メッシュ生成（完全フラット）
+    // 1. 地形メッシュ生成（完全フラット）のみ
     this.createFlatTerrain()
 
-    // 3. 道路網生成
-    this.createRoadNetwork()
+    console.log('✅ 東京MAP初期化完了（地形のみ）')
 
-    // 4. 水域生成（東京湾・隅田川）
-    this.createWaterBodies()
-
-    // 5. ビル群生成
-    this.createBuildings()
-
-    // 6. ランドマーク配置（非同期）
-    await this.loadLandmarks()
-
-    console.log('✅ 東京MAP初期化完了')
+    // TODO: 段階的に追加
+    // - 道路網
+    // - 水域
+    // - ビル（少数）
+    // - ランドマーク
   }
 
   /**
    * 東京のビルディングデータを生成
    * OpenStreetMapの実データに基づく超高密度配置
    */
+  // @ts-ignore - 一時的に未使用
   private generateBuildingData(): void {
     this.buildings = []
 
@@ -459,6 +452,7 @@ export class TokyoMapSystem {
   /**
    * 道路網を生成
    */
+  // @ts-ignore - 一時的に未使用
   private createRoadNetwork(): void {
     this.roadMeshes = new THREE.Group()
     this.roadMeshes.name = 'TokyoRoads'
@@ -498,6 +492,7 @@ export class TokyoMapSystem {
   /**
    * 水域（東京湾・隅田川）を生成
    */
+  // @ts-ignore - 一時的に未使用
   private createWaterBodies(): void {
     this.waterMeshes = new THREE.Group()
     this.waterMeshes.name = 'TokyoWater'
@@ -558,6 +553,7 @@ export class TokyoMapSystem {
   /**
    * ビル群を生成
    */
+  // @ts-ignore - 一時的に未使用
   private createBuildings(): void {
     this.buildingMeshes = new THREE.Group()
     this.buildingMeshes.name = 'TokyoBuildings'
@@ -625,6 +621,7 @@ export class TokyoMapSystem {
   /**
    * ランドマークを読み込み
    */
+  // @ts-ignore - 一時的に未使用
   private async loadLandmarks(): Promise<void> {
     this.landmarkMeshes = new THREE.Group()
     this.landmarkMeshes.name = 'TokyoLandmarks'
