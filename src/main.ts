@@ -523,80 +523,72 @@ for (let i = 0; i < TREE_COUNT; i++) {
 trunkIM.instanceMatrix.needsUpdate = true; foliIM.instanceMatrix.needsUpdate = true; foli2IM.instanceMatrix.needsUpdate = true
 scene.add(trunkIM); scene.add(foliIM); scene.add(foli2IM)
 
-// ===== ROCK PILLARS =====
-const pillarMat    = new THREE.MeshStandardMaterial({ color: 0x7a6855, roughness: 0.96, metalness: 0 })
-const pillarCapMat = new THREE.MeshStandardMaterial({ color: 0x9a8870, roughness: 0.93, metalness: 0 })
-
-function makePillarGeometry(bottom: number, top: number, height: number, sides: number, seed: number): THREE.CylinderGeometry {
-  const geo = new THREE.CylinderGeometry(top, bottom, height, sides, 5)
-  const pos = geo.attributes.position as THREE.BufferAttribute
-  for (let i = 0; i < pos.count; i++) {
-    const px = pos.getX(i), py = pos.getY(i), pz = pos.getZ(i)
-    const angle = Math.atan2(pz, px)
-    const level = clamp01((py + height / 2) / height)
-    const rough = 1 + Math.sin(angle * 3.5 + seed + level * 1.7) * 0.16 + Math.sin(angle * 8.2 - seed) * 0.05
-    pos.setX(i, px * rough)
-    pos.setZ(i, pz * rough)
-  }
-  geo.computeVertexNormals()
-  return geo
-}
-
-const PILLAR_CLUSTERS: Array<{ cx:number; cz:number; n:number }> = [
-  { cx:  920, cz:  100, n: 12 },  // 東部峡谷 南部
-  { cx:  900, cz: -300, n: 10 },  // 東部峡谷 中部
-  { cx:  940, cz: -550, n:  8 },  // 東部峡谷 北端
-  { cx: -1080, cz: -720, n: 9 },  // 北西高地
-  { cx:  -620, cz:  720, n: 7 },  // 南西丘陵
+// ===== ROCK PILLARS (Blender GLB) =====
+// rock_pillar.glb: height=1.0, base_r≈0.26 (unit scale). Loaded async, placed at cluster positions.
+const PILLAR_SPECS: Array<{ cx:number; cz:number; n:number }> = [
+  { cx:  920, cz:  100, n: 12 },
+  { cx:  900, cz: -300, n: 10 },
+  { cx:  940, cz: -550, n:  8 },
+  { cx: -1080, cz: -720, n: 9 },
+  { cx:  -620, cz:  720, n: 7 },
 ]
-for (const cl of PILLAR_CLUSTERS) {
-  for (let j = 0; j < cl.n; j++) {
-    const px = cl.cx + (Math.random()-0.5) * 250
-    const pz = cl.cz + (Math.random()-0.5) * 250
-    const ph = terrainH(px, pz)
-    const ht = 40 + Math.random() * 70
-    const rb = 8 + Math.random() * 14
-    const rt = rb * (0.38 + Math.random() * 0.32)
-    const sides = 5 + Math.floor(Math.random() * 3)
-    const body = new THREE.Mesh(makePillarGeometry(rb, rt, ht, sides, px * 0.017 + pz * 0.011), pillarMat)
-    body.position.set(px, ph + ht/2, pz); body.rotation.y = Math.random()*Math.PI; body.castShadow = true; scene.add(body)
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(rt*0.45, rt*1.15, rb*0.55, sides), pillarCapMat)
-    cap.position.set(px, ph + ht + rb*0.28, pz); cap.rotation.y = Math.random()*Math.PI; cap.castShadow = true; scene.add(cap)
+const ISOLATED_TOWERS = [[920,300,130,13],[920,-600,115,11],[-1080,-720,125,12]] as const
+
+gltfLoader.load(import.meta.env.BASE_URL + 'models/rock_pillar.glb', (gltf) => {
+  const proto = gltf.scene
+  proto.traverse(c => { if ((c as THREE.Mesh).isMesh) { (c as THREE.Mesh).castShadow = true; (c as THREE.Mesh).receiveShadow = true } })
+
+  for (const cl of PILLAR_SPECS) {
+    for (let j = 0; j < cl.n; j++) {
+      const px = cl.cx + (Math.random()-0.5)*250
+      const pz = cl.cz + (Math.random()-0.5)*250
+      const ph = terrainH(px, pz)
+      const ht = 50 + Math.random()*90
+      const rb = 9 + Math.random()*16
+      const inst = proto.clone()
+      inst.position.set(px, ph, pz)
+      inst.scale.set(rb/0.26, ht, rb/0.26)
+      inst.rotation.y = Math.random()*Math.PI*2
+      scene.add(inst)
+    }
   }
-}
+  // 孤立高塔
+  for (const [px, pz, ht, rb] of ISOLATED_TOWERS) {
+    const ph = terrainH(px, pz)
+    const inst = proto.clone()
+    inst.position.set(px, ph, pz)
+    inst.scale.set(rb/0.26, ht, rb/0.26)
+    inst.rotation.y = Math.random()*Math.PI*2
+    scene.add(inst)
+  }
+}, undefined, () => { /* fallback: no pillars if GLB fails */ })
 
-// 孤立高塔（遠くから見えるランドマーク）
-;[[920,300,130,13],[920,-600,115,11],[-1080,-720,125,12]].forEach(([px,pz,ht,rb]) => {
-  const ph = terrainH(px, pz)
-  const body = new THREE.Mesh(makePillarGeometry(rb, rb * 0.3, ht, 6, px * 0.021 + pz * 0.017), pillarMat)
-  body.position.set(px, ph+ht/2, pz); body.castShadow=true; scene.add(body)
-})
+// ===== ARCHES (Blender GLB) =====
+// rock_arch.glb: half-span=1.0, height=0.62 (unit scale)
+const ARCH_SPECS = [
+  [920,   80, 100, 62,  0.0],
+  [905, -200,  92, 58,  0.06],
+  [935, -480,  85, 54, -0.05],
+  [820,  320,  78, 50,  1.4],
+  [1020, -350, 82, 52, -1.5],
+  [-1080,-720, 90, 58,  0.8],
+  [-80,  480,  72, 48,  2.1],
+] as const
 
-// ===== ARCHES =====
-const archMat = new THREE.MeshStandardMaterial({ color: 0x6a5848, roughness: 0.97, metalness: 0 })
-function mkArch(x: number, z: number, w: number, h: number, thick: number, rotY: number) {
-  const base = terrainH(x, z)
-  const g = new THREE.Group()
-  const pillarGeo = makePillarGeometry(thick * 0.72, thick * 0.45, h, 7, x * 0.01 + z * 0.02)
-  const lp = new THREE.Mesh(pillarGeo, archMat); lp.position.set(-w/2, h/2, 0); lp.castShadow=true; lp.receiveShadow=true; g.add(lp)
-  const rp = new THREE.Mesh(pillarGeo.clone(), archMat); rp.position.set(w/2, h/2, 0); rp.castShadow=true; rp.receiveShadow=true; g.add(rp)
-  const crown = new THREE.Mesh(new THREE.TorusGeometry(w * 0.5, thick * 0.42, 8, 32, Math.PI), archMat)
-  crown.position.set(0, h, 0)
-  crown.castShadow = true
-  crown.receiveShadow = true
-  g.add(crown)
-  g.position.set(x, base, z); g.rotation.y = rotY; scene.add(g)
-}
-// 東部大峡谷 (南北飛行で通過)
-mkArch( 920,   80, 100, 62, 18,  0.0)
-mkArch( 905, -200,  92, 58, 17,  0.06)
-mkArch( 935, -480,  85, 54, 16, -0.05)
-// 峡谷リム上のランドマーク
-mkArch( 820,  320,  78, 50, 15,  1.4)
-mkArch(1020, -350,  82, 52, 16, -1.5)
-// 北西高地・平原の孤立アーチ
-mkArch(-1080, -720,  90, 58, 17, 0.8)
-mkArch(  -80,  480,  72, 48, 14, 2.1)
+gltfLoader.load(import.meta.env.BASE_URL + 'models/rock_arch.glb', (gltf) => {
+  const proto = gltf.scene
+  proto.traverse(c => { if ((c as THREE.Mesh).isMesh) { (c as THREE.Mesh).castShadow = true; (c as THREE.Mesh).receiveShadow = true } })
+
+  for (const [x, z, w, h, rotY] of ARCH_SPECS) {
+    const base = terrainH(x, z)
+    const inst = proto.clone()
+    inst.position.set(x, base, z)
+    // half-span=1.0 → scale X by w/2, height=0.62 → scale Y by h/0.62
+    inst.scale.set(w / 2, h / 0.62, w / 4)
+    inst.rotation.y = rotY
+    scene.add(inst)
+  }
+}, undefined, () => { /* fallback: no arches if GLB fails */ })
 
 // ===== SURFACE DETAIL =====
 const BOULDER_COUNT = 420
@@ -654,11 +646,41 @@ SUPPLY_POSITIONS.forEach(pos => {
   light.position.copy(pos); scene.add(light)
 })
 
-// ===== WORLD STRUCTURES（全てfunction宣言でホイスト済み）=====
-buildAirBase(   0,  -60, 0,           'A')   // 中央基地 Alpha（プレイヤー出撃地点）
-buildAirBase(1100, -280, Math.PI*0.1, 'B')   // 東部高原基地 Bravo
-buildPort(   -130,  920, 0)                  // 南部湾 軍港
-buildBridge(   80, -185, 220, 0)             // 東西峡谷橋
+// ===== BUILDING GLB PROTOTYPES =====
+// Load building models; world structures built after all protos are ready
+let glbHangar: THREE.Group | null = null
+let glbControlTower: THREE.Group | null = null
+let glbRadarDish: THREE.Group | null = null
+let glbFuelTank: THREE.Group | null = null
+let glbWarehouse: THREE.Group | null = null
+
+let _bldgGLBsLoaded = 0
+function _onBuildingGLBLoaded() {
+  _bldgGLBsLoaded++
+  if (_bldgGLBsLoaded >= 5) buildWorldStructures()
+}
+function buildWorldStructures() {
+  buildBridge(   80, -185, 220, 0)             // 東西峡谷橋
+  buildAirBase(   0,  -60, 0,           'A')   // 中央基地 Alpha
+  buildAirBase(1100, -280, Math.PI*0.1, 'B')   // 東部高原基地 Bravo
+  buildPort(   -130,  920, 0)                  // 南部湾 軍港
+}
+
+function _glbSetShadow(g: THREE.Group) {
+  g.traverse(c => { if ((c as THREE.Mesh).isMesh) { (c as THREE.Mesh).castShadow = true; (c as THREE.Mesh).receiveShadow = true } })
+}
+;[
+  ['models/hangar.glb',        (g: THREE.Group) => { glbHangar        = g }],
+  ['models/control_tower.glb', (g: THREE.Group) => { glbControlTower  = g }],
+  ['models/radar_dish.glb',    (g: THREE.Group) => { glbRadarDish     = g }],
+  ['models/fuel_tank.glb',     (g: THREE.Group) => { glbFuelTank      = g }],
+  ['models/warehouse.glb',     (g: THREE.Group) => { glbWarehouse     = g }],
+].forEach(([url, setter]) => {
+  gltfLoader.load(import.meta.env.BASE_URL + (url as string), (gltf) => {
+    const g = gltf.scene; _glbSetShadow(g); (setter as (g: THREE.Group) => void)(g)
+    _onBuildingGLBLoaded()
+  }, undefined, () => _onBuildingGLBLoaded())
+})
 
 // ===== FACTORIES =====
 function createAircraft(bodyColor: number, darkColor: number): THREE.Group {
@@ -1305,16 +1327,22 @@ function addRunway(cx: number, cz: number, length: number, rotY: number): void {
 }
 
 function addHangar(cx: number, cz: number, w: number, h: number, d: number, rotY: number, baseY: number): void {
+  if (glbHangar) {
+    // GLB hangar: W≈38, D≈28, arch height≈20m
+    const inst = glbHangar.clone()
+    inst.scale.set(w / 38, h / 20, d / 28)
+    inst.position.set(cx, baseY, cz)
+    inst.rotation.y = rotY
+    scene.add(inst)
+    return
+  }
   const g2 = new THREE.Group()
-  // 側壁
   const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h * 0.58, d), milGreen)
   wall.position.y = h * 0.29; wall.castShadow = true; wall.receiveShadow = true; g2.add(wall)
-  // 半円筒屋根
   const roofGeo = new THREE.CylinderGeometry(w * 0.52, w * 0.52, d, 14, 1, false, 0, Math.PI)
   roofGeo.rotateZ(Math.PI / 2)
   const roof = new THREE.Mesh(roofGeo, steelMat)
   roof.position.y = h * 0.56; roof.castShadow = true; g2.add(roof)
-  // 正面扉枠
   const frame = new THREE.Mesh(new THREE.BoxGeometry(w * 0.68, h * 0.52, 1.2),
     new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.8, metalness: 0.5 }))
   frame.position.set(0, h * 0.26, -d / 2); g2.add(frame)
@@ -1322,6 +1350,18 @@ function addHangar(cx: number, cz: number, w: number, h: number, d: number, rotY
 }
 
 function addControlTower(cx: number, cz: number, baseY: number): void {
+  if (glbControlTower) {
+    // GLB tower: H_BASE=22 + H_CAB=5 = 27m, antenna adds ~8m → ~35m total
+    const inst = glbControlTower.clone()
+    inst.scale.setScalar(1.5)  // scale up to match procedural proportions
+    inst.position.set(cx, baseY, cz)
+    scene.add(inst)
+    // Navigation light on top
+    const navL = new THREE.Mesh(new THREE.SphereGeometry(0.4, 6, 6),
+      new THREE.MeshStandardMaterial({ color: 0xff1100, emissive: 0xff1100, emissiveIntensity: 14 }))
+    navL.position.set(cx, baseY + 54, cz); scene.add(navL)
+    return
+  }
   const g2 = new THREE.Group()
   const base2 = new THREE.Mesh(new THREE.BoxGeometry(9, 5, 9), concMat)
   base2.position.y = 2.5; base2.castShadow = true; g2.add(base2)
@@ -1344,6 +1384,15 @@ function addControlTower(cx: number, cz: number, baseY: number): void {
 }
 
 function addRadarDish(cx: number, cz: number, baseY: number): void {
+  if (glbRadarDish) {
+    const inst = glbRadarDish.clone()
+    inst.scale.setScalar(1.4)
+    inst.position.set(cx, baseY, cz)
+    scene.add(inst)
+    // Keep a spinning group reference (GLB dish root rotates in updateRadarDishes)
+    radarDishes.push(inst)
+    return
+  }
   const g2 = new THREE.Group()
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.8, 15, 8), steelMat)
   mast.position.y = 7.5; mast.castShadow = true; g2.add(mast)
@@ -1361,6 +1410,19 @@ function addRadarDish(cx: number, cz: number, baseY: number): void {
 }
 
 function addFuelTanks(cx: number, cz: number, baseY: number, count: number): void {
+  const offsets = [[-18,0],[18,0],[0,-18],[0,18],[-18,-18],[18,18]].slice(0, count)
+  if (glbFuelTank) {
+    // GLB fuel tank: horizontal cylinder R=4.5, L=14m. Scale to look large.
+    offsets.forEach(([ox, oz], i) => {
+      const inst = glbFuelTank!.clone()
+      const sc = 1.2 + (i % 3) * 0.15
+      inst.scale.setScalar(sc)
+      inst.position.set(cx + ox, baseY, cz + oz)
+      inst.rotation.y = (i * Math.PI) / 3
+      scene.add(inst)
+    })
+    return
+  }
   const specs = [{r:9,h:16},{r:11,h:20},{r:8,h:13},{r:10,h:17},{r:7,h:11},{r:9,h:14}].slice(0, count)
   const tankMat2 = new THREE.MeshStandardMaterial({ color: 0x8a929e, roughness: 0.32, metalness: 0.82, envMapIntensity: 1.8 })
   const bermMat  = new THREE.MeshStandardMaterial({ color: 0x606248, roughness: 0.96, metalness: 0 })
@@ -1463,6 +1525,15 @@ function addCrane(cx: number, cz: number, baseY: number, rotY: number): void {
 }
 
 function addWarehouse(cx: number, cz: number, w: number, h: number, d: number, rotY: number, baseY: number): void {
+  if (glbWarehouse) {
+    // GLB warehouse: W=32, D=20, H=9
+    const inst = glbWarehouse.clone()
+    inst.scale.set(w / 32, h / 9, d / 20)
+    inst.position.set(cx, baseY, cz)
+    inst.rotation.y = rotY
+    scene.add(inst)
+    return
+  }
   const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), milGreen)
   body.position.set(cx, baseY + h/2, cz); body.rotation.y = rotY
   body.castShadow = true; body.receiveShadow = true; scene.add(body)
@@ -1823,8 +1894,8 @@ function startGame(mode: GameMode) {
       break
     }
     case 'souryokusen':
-      modeObjectiveTotal = 16  // 3艦船 + 4戦車 + 2爆撃機 + 4SAM + 3ヘリ
-      setObjective(`地上目標を破壊 0 / 16`)
+      modeObjectiveTotal = 17  // 3艦船 + 4戦車 + 2爆撃機 + 4SAM + 3ヘリ + 浮遊空母1
+      setObjective(`地上目標を破壊 0 / 17`)
       spawnSouryokusen()
       break
     case 'free':
@@ -1891,6 +1962,39 @@ function spawnSouryokusen() {
       patrolCenter: new THREE.Vector3(hx, baseY, hz)
     })
   }
+
+  // 浮遊空母（BOSS）- GLBロード
+  gltfLoader.load(import.meta.env.BASE_URL + 'models/carrier.glb', (gltf) => {
+    if (currentMode !== 'souryokusen') return  // モード変更済みなら無視
+    const carrierGroup = gltf.scene
+    carrierGroup.traverse(c => {
+      if ((c as THREE.Mesh).isMesh) {
+        (c as THREE.Mesh).castShadow = true
+        ;(c as THREE.Mesh).receiveShadow = true
+      }
+    })
+    // 北西の高空に浮遊（X=-900, Y=420, Z=-700）
+    carrierGroup.position.set(-900, 420, -700)
+    carrierGroup.rotation.y = Math.PI * 0.15
+    carrierGroup.scale.setScalar(1.0)
+    scene.add(carrierGroup)
+    // エンジンポッドのグロー照明
+    const glowL = new THREE.PointLight(0x66aaff, 6, 120)
+    glowL.position.set(0, 0, 70)
+    carrierGroup.add(glowL)
+    const glowR = new THREE.PointLight(0x66aaff, 6, 120)
+    glowR.position.set(0, 0, -70)
+    carrierGroup.add(glowR)
+    groundTargets.push({
+      group: carrierGroup,
+      health: 200, maxHealth: 200,
+      vel: new THREE.Vector3(4, 0, 2),  // ゆっくり漂流
+      type: 'ship'
+    })
+  }, undefined, () => {
+    // GLBロード失敗時は目標数を1減らす
+    modeObjectiveTotal = Math.max(1, modeObjectiveTotal - 1)
+  })
 }
 
 function updateGroundTargets(dt: number) {
@@ -2289,6 +2393,8 @@ const hpFill  = document.getElementById('hp-fill') as HTMLDivElement
 const hpText  = document.getElementById('hp-text')!
 const radarCanvas = document.getElementById('radar') as HTMLCanvasElement
 const radarCtx = radarCanvas.getContext('2d')!
+const overlayCanvas = document.getElementById('enemy-overlay') as HTMLCanvasElement
+const overlayCtx = overlayCanvas.getContext('2d')!
 
 // ピップ初期化
 function initPips(el: HTMLElement, count: number, cls: string) {
@@ -2327,6 +2433,73 @@ function updateWarning() {
     warningEl.style.textShadow = `0 0 ${12 + urgency * 20}px ${urgency > 0.6 ? '#ff0000' : '#ff6600'}`
   } else {
     warningEl.style.display = 'none'
+  }
+}
+
+// ミサイル射程内の敵に赤い[]ブラケットを表示
+const MISSILE_LOCK_RANGE = 750
+function drawEnemyBrackets() {
+  const { w, h } = getEffectiveSize()
+  if (overlayCanvas.width !== w || overlayCanvas.height !== h) {
+    overlayCanvas.width = w; overlayCanvas.height = h
+  }
+  const ctx = overlayCtx
+  ctx.clearRect(0, 0, w, h)
+  if (!currentMode) return
+
+  const camFwd = _fwd.clone().applyQuaternion(camera.quaternion)
+
+  function projectToScreen(pos: THREE.Vector3): [number, number, boolean] {
+    const toPos = pos.clone().sub(camera.position)
+    if (toPos.dot(camFwd) < 0) return [0, 0, false]  // behind camera
+    const ndc = pos.clone().project(camera)
+    return [(ndc.x + 1) / 2 * w, (-ndc.y + 1) / 2 * h, true]
+  }
+
+  const allTargets: { pos: THREE.Vector3; isGround: boolean; label: string }[] = []
+
+  // 飛行機の敵
+  for (const e of enemies) {
+    const dist = e.group.position.distanceTo(player.position)
+    if (dist < MISSILE_LOCK_RANGE) allTargets.push({ pos: e.group.position, isGround: false, label: `${Math.round(dist)}m` })
+  }
+  // 地上目標（総力戦のみ）
+  if (currentMode === 'souryokusen') {
+    for (const gt of groundTargets) {
+      const dist = gt.group.position.distanceTo(player.position)
+      if (dist < MISSILE_LOCK_RANGE) allTargets.push({ pos: gt.group.position, isGround: true, label: `${Math.round(dist)}m` })
+    }
+  }
+
+  const SZ = 24  // bracket size
+  const ARM = 7  // bracket arm length
+  ctx.lineWidth = 1.5
+
+  for (const { pos, isGround, label } of allTargets) {
+    const [sx, sy, visible] = projectToScreen(pos)
+    if (!visible) continue
+
+    ctx.strokeStyle = isGround ? 'rgba(255,160,40,0.85)' : 'rgba(255,50,50,0.9)'
+    ctx.fillStyle   = isGround ? 'rgba(255,180,60,0.9)' : 'rgba(255,80,80,0.95)'
+
+    // Four corner brackets forming [ ]
+    for (const [cx2, cy2, dx, dy] of [
+      [sx - SZ, sy - SZ,  1,  1],
+      [sx + SZ, sy - SZ, -1,  1],
+      [sx - SZ, sy + SZ,  1, -1],
+      [sx + SZ, sy + SZ, -1, -1],
+    ] as [number, number, number, number][]) {
+      ctx.beginPath()
+      ctx.moveTo(cx2 + dx * ARM, cy2)
+      ctx.lineTo(cx2, cy2)
+      ctx.lineTo(cx2, cy2 + dy * ARM)
+      ctx.stroke()
+    }
+
+    // Distance label
+    ctx.font = '9px monospace'
+    ctx.textAlign = 'center'
+    ctx.fillText(label, sx, sy + SZ + 14)
   }
 }
 
@@ -2457,6 +2630,17 @@ function drawRadar() {
     ctx.beginPath(); ctx.arc(px, py, 3.5, 0, Math.PI * 2); ctx.fill()
   }
 
+  // 地上目標（総力戦モード時: 橙の四角）
+  if (currentMode === 'souryokusen') {
+    for (const gt of groundTargets) {
+      if (gt.group.position.distanceTo(player.position) > RADAR_RANGE * 1.2) continue
+      const [px, py] = worldToRadar(gt.group.position)
+      const col = gt.type === 'ship' ? '#f84' : gt.type === 'heli' ? '#fa0' : '#f62'
+      ctx.fillStyle = col
+      ctx.fillRect(px - 3, py - 3, 6, 6)
+    }
+  }
+
   // 敵ミサイル（オレンジ三角）
   for (const m of enemyMissiles) {
     if (m.mesh.position.distanceTo(player.position) > RADAR_RANGE) continue
@@ -2493,15 +2677,15 @@ function loop() {
   const pitchInput = keyPitch || tPitch
   const rollInput  = keyYaw   || tYaw
 
-  // ピッチ：機体ローカル軸で前後
+  // ピッチ：機体ローカル軸で前後（旋回能力を抑えて位置取り重視）
   if (pitchInput !== 0)
     player.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(1, 0, 0), pitchInput * 2.8 * dt))
+      new THREE.Vector3(1, 0, 0), pitchInput * 1.9 * dt))
 
-  // ヨー：世界Y軸基準（premultiply）→ 機体の傾きに関係なく画面左右に動く
+  // ヨー：世界Y軸基準（旋回能力を抑えて位置取り重視）
   if (rollInput !== 0)
     player.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 1, 0), -rollInput * 2.2 * dt))
+      new THREE.Vector3(0, 1, 0), -rollInput * 1.5 * dt))
 
   // ロール自動水平復帰：ピッチ入力中はループを妨げないよう無効化
   if (pitchInput === 0) {
@@ -2608,6 +2792,7 @@ function loop() {
   boostFill.style.width = `${Math.min(100, (speed / 58) * 100)}%`
   updateReticle()
   updateWarning()
+  drawEnemyBrackets()
   drawRadar()
 
   waterUniforms.time.value += dt

@@ -379,6 +379,11 @@
         #hud-score { top: 76px; }
       }
 
+      /* ── 敵ブラケット（射程内敵表示キャンバス）── */
+      #enemy-overlay {
+        position: fixed; inset: 0; pointer-events: none; z-index: 50;
+      }
+
       /* 縦画面：回転促進オーバーレイ */
       #rotate-hint {
         display: none; position: fixed; inset: 0;
@@ -496,6 +501,9 @@
       <div class="ri-icon">&#8635;</div>
       <div class="ri-text">横画面にしてください</div>
     </div>
+
+    <!-- 敵ブラケットオーバーレイ -->
+    <canvas id="enemy-overlay"></canvas>
 
     <!-- レーダー -->
     <div id="radar-wrap">
