@@ -1163,8 +1163,10 @@ renderer.domElement.addEventListener('contextmenu', e => e.preventDefault())
 renderer.domElement.addEventListener('wheel', (e) => {
   // ホイール前（上スクロール）= deltaY < 0 → 加速
   // ホイール後ろ（下スクロール）= deltaY > 0 → 減速
-  const delta = -e.deltaY * 0.05
-  wheelSpeedTarget = Math.max(8, Math.min(600, wheelSpeedTarget + delta))  // 上限を90→600に拡大
+  // 現在速度の±10%を変化量とする（相対値）
+  const changeRate = -e.deltaY * 0.0001  // deltaY=-100で0.01（1%）の変化
+  const delta = wheelSpeedTarget * changeRate
+  wheelSpeedTarget = Math.max(8, Math.min(600, wheelSpeedTarget + delta))
 }, { passive: true })
 
 // ===== TOUCH INPUT =====
