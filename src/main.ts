@@ -5,7 +5,7 @@ import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.
 import { TokyoMapSystem } from './tokyoMapSystem'
 
 // ===== VERSION =====
-const VERSION = '3.2.1'
+const VERSION = '3.2.2'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -109,7 +109,7 @@ const radarDishes: THREE.Group[] = []  // 回転アニメ用
 
 // ===== MAP SYSTEM =====
 type GameMap = 'original' | 'tokyo'
-let currentMap: GameMap = 'tokyo'  // デフォルトMAP
+let currentMap: GameMap = 'original' as GameMap  // 一時的にオリジナルに戻す（デバッグ用）
 let tokyoMapSystem: TokyoMapSystem | null = null  // 東京MAPシステム（完全独立）
 
 // ===== TERRAIN =====
