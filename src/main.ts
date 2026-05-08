@@ -2650,42 +2650,31 @@ async function switchMap(map: GameMap) {
       console.log('🗑️ オリジナル地形（GLB）削除')
     }
 
-    // オリジナルマップの全構造物とterrain.glbを削除
-    const objectsToRemove: THREE.Object3D[] = []
-    scene.traverse((obj) => {
-      // terrain.glb（GLTFScene）とオリジナルマップのオブジェクトを識別
-      const isTerrainGLB = obj.type === 'Group' && obj.children.some(c =>
-        c instanceof THREE.Mesh && c.geometry && c.geometry.attributes.position
-      )
+    // 水面を非表示
+    waterMesh.visible = false
+    console.log('🗑️ 水面非表示')
 
-      if (isTerrainGLB || (obj.name && (
-        obj.name.includes('Bridge') ||
-        obj.name.includes('Base') ||
-        obj.name.includes('Port') ||
-        obj.name.includes('Dam') ||
-        obj.name.includes('City') ||
-        obj.name.includes('Radar') ||
-        obj.name.includes('Defense') ||
-        obj.name.includes('Boulder') ||
-        obj.name.includes('Rock') ||
-        obj.name.includes('Pillar') ||
-        obj.name.includes('Arch') ||
-        obj.parent === originalMapGroup
-      ))) {
-        objectsToRemove.push(obj)
-      }
+    // オリジナルマップの全オブジェクトを削除（カメラ、ライト、プレイヤー、敵以外すべて）
+    const objectsToRemove: THREE.Object3D[] = []
+    const protectedObjects = new Set<THREE.Object3D>([scene, camera, player, waterMesh])
+
+    // 敵機も保護（ゲームプレイ継続のため）
+    enemies.forEach(e => protectedObjects.add(e.group))
+
+    scene.children.forEach((obj) => {
+      // 保護対象をスキップ
+      if (protectedObjects.has(obj)) return
+      if (obj.type.includes('Light')) return  // 全ライトを保護
+      if (obj.parent === player) return  // プレイヤーの子オブジェクト
+      if (obj.name?.includes('Tokyo')) return  // 東京MAPオブジェクト
+
+      // それ以外はすべて削除対象
+      objectsToRemove.push(obj)
     })
+
     objectsToRemove.forEach(obj => {
-      if (obj.parent) obj.parent.remove(obj)
-      if (obj instanceof THREE.Mesh) {
-        obj.geometry?.dispose()
-        if (Array.isArray(obj.material)) {
-          obj.material.forEach(mat => mat.dispose())
-        } else {
-          obj.material?.dispose()
-        }
-      }
-      // Groupの場合は子要素も再帰的にdispose
+      scene.remove(obj)
+      // メモリ解放
       obj.traverse(child => {
         if (child instanceof THREE.Mesh) {
           child.geometry?.dispose()
@@ -2697,13 +2686,18 @@ async function switchMap(map: GameMap) {
         }
       })
     })
-    console.log(`🗑️ オリジナル構造物削除: ${objectsToRemove.length}個`)
+    console.log(`🗑️ オリジナルオブジェクト削除: ${objectsToRemove.length}個`)
 
     // 東京MAPシステムを初期化
     if (!tokyoMapSystem) {
       tokyoMapSystem = new TokyoMapSystem(scene, gltfLoader)
     }
     await tokyoMapSystem.initialize()
+
+    // プレイヤー位置を東京MAP用に設定（渋谷上空500m）
+    player.position.set(0, 500, 0)
+    player.rotation.set(0, 0, 0)
+    console.log('✈️ プレイヤーを東京上空に配置 (0, 500, 0)')
 
     console.log('✅ 東京MAP切り替え完了')
 
@@ -2733,8 +2727,16 @@ async function switchMap(map: GameMap) {
     ground = generateTerrainMesh()
     scene.add(ground)
 
+    // 水面を再表示
+    waterMesh.visible = true
+    console.log('💧 水面再表示')
+
     // オリジナルMAPの構造物を再構築
     buildWorldStructures()
+
+    // プレイヤー位置をオリジナルMAP用に設定
+    player.position.set(0, terrainH(0, 0) + 150, 0)
+    console.log('✈️ プレイヤーをオリジナルMAP上空に配置')
 
     console.log('✅ オリジナルMAP切り替え完了')
   }
