@@ -5,7 +5,7 @@ import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.
 import { TokyoMapSystem } from './tokyoMapSystem'
 
 // ===== VERSION =====
-const VERSION = '3.3.3'
+const VERSION = '3.3.4'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -1136,7 +1136,7 @@ renderer.domElement.addEventListener('mouseup', (e) => {
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault())
 renderer.domElement.addEventListener('wheel', (e) => {
   // ホイール前（上）→ 加速、ホイール後ろ（下）→ 減速
-  const delta = e.deltaY > 0 ? 5 : -5  // 方向を反転（自然な操作感）
+  const delta = e.deltaY > 0 ? -5 : 5  // deltaY>0は下（減速）、deltaY<0は上（加速）
   wheelSpeedTarget = Math.max(8, Math.min(90, wheelSpeedTarget + delta))
 }, { passive: true })
 

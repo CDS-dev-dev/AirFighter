@@ -732,16 +732,16 @@
 
     <!-- ゲームモード＆MAP選択 -->
     <div id="mode-screen">
-      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v3.3.3</span></div>
+      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v3.3.4</span></div>
       <div class="ms-sub">SELECT MAP & MISSION MODE</div>
 
       <!-- MAP選択 -->
       <div style="display: flex; gap: 15px; margin-bottom: 20px;">
-        <button class="map-select-btn active" data-map="original">
+        <button class="map-select-btn active" data-map="original" onclick="console.log('✅ ORIGINALボタン直接クリック')">
           <span style="font-size: 24px;">🏔️</span>
           <span>ORIGINAL MAP</span>
         </button>
-        <button class="map-select-btn" data-map="tokyo">
+        <button class="map-select-btn" data-map="tokyo" onclick="console.log('✅ TOKYOボタン直接クリック')">
           <span style="font-size: 24px;">🗼</span>
           <span>TOKYO MAP</span>
         </button>
