@@ -192,49 +192,49 @@ export class TokyoMapSystem {
   private generateBuildingData(): void {
     this.buildings = []
 
-    // ===== 都心部：超高層ビル密集地 =====
-    this.addDistrictBuildings('新宿西口', -2500, 500, 800, 800, 120, 250, 180)  // 超高層ビル街
-    this.addDistrictBuildings('新宿東口', -1800, 500, 600, 600, 100, 150, 100)  // 歌舞伎町
-    this.addDistrictBuildings('渋谷駅前', 0, 0, 400, 400, 80, 230, 150)  // 渋谷スクランブル周辺
-    this.addDistrictBuildings('渋谷南', 200, -300, 600, 600, 70, 180, 120)
-    this.addDistrictBuildings('六本木', 1800, -500, 800, 800, 60, 240, 150)  // 六本木ヒルズ周辺
-    this.addDistrictBuildings('赤坂', 1200, 200, 600, 600, 50, 180, 120)
-    this.addDistrictBuildings('品川駅前', 2500, -1800, 800, 800, 50, 160, 110)
+    // ===== 都心部：超高層ビル密集地（パフォーマンス重視で削減） =====
+    this.addDistrictBuildings('新宿西口', -2500, 500, 800, 800, 30, 250, 180)
+    this.addDistrictBuildings('新宿東口', -1800, 500, 600, 600, 25, 150, 100)
+    this.addDistrictBuildings('渋谷駅前', 0, 0, 400, 400, 20, 230, 150)
+    this.addDistrictBuildings('渋谷南', 200, -300, 600, 600, 18, 180, 120)
+    this.addDistrictBuildings('六本木', 1800, -500, 800, 800, 15, 240, 150)
+    this.addDistrictBuildings('赤坂', 1200, 200, 600, 600, 12, 180, 120)
+    this.addDistrictBuildings('品川駅前', 2500, -1800, 800, 800, 12, 160, 110)
 
     // ===== 大規模ビジネス地区 =====
-    this.addDistrictBuildings('丸の内', 800, 800, 800, 600, 70, 200, 150)  // 大企業本社街
-    this.addDistrictBuildings('大手町', 1000, 1200, 600, 500, 60, 180, 140)
-    this.addDistrictBuildings('日本橋', 1500, 1000, 700, 700, 80, 150, 100)
-    this.addDistrictBuildings('銀座', 1200, 500, 800, 600, 90, 120, 80)  // 高級商業地
+    this.addDistrictBuildings('丸の内', 800, 800, 800, 600, 18, 200, 150)
+    this.addDistrictBuildings('大手町', 1000, 1200, 600, 500, 15, 180, 140)
+    this.addDistrictBuildings('日本橋', 1500, 1000, 700, 700, 20, 150, 100)
+    this.addDistrictBuildings('銀座', 1200, 500, 800, 600, 22, 120, 80)
 
     // ===== 副都心 =====
-    this.addDistrictBuildings('池袋東口', -1500, 2500, 700, 700, 80, 180, 120)
-    this.addDistrictBuildings('池袋西口', -2000, 2500, 600, 600, 70, 150, 100)
-    this.addDistrictBuildings('上野駅前', 3000, 2000, 600, 600, 60, 100, 70)
-    this.addDistrictBuildings('秋葉原', 2500, 1000, 700, 700, 100, 100, 60)  // 電気街
+    this.addDistrictBuildings('池袋東口', -1500, 2500, 700, 700, 20, 180, 120)
+    this.addDistrictBuildings('池袋西口', -2000, 2500, 600, 600, 18, 150, 100)
+    this.addDistrictBuildings('上野駅前', 3000, 2000, 600, 600, 15, 100, 70)
+    this.addDistrictBuildings('秋葉原', 2500, 1000, 700, 700, 25, 100, 60)
 
     // ===== 臨海部・湾岸エリア =====
-    this.addDistrictBuildings('お台場', 4500, -3500, 1200, 1200, 40, 150, 80)
-    this.addDistrictBuildings('豊洲', 4000, -1500, 1000, 1000, 50, 140, 90)
-    this.addDistrictBuildings('有明', 5000, -2500, 800, 800, 35, 120, 70)
+    this.addDistrictBuildings('お台場', 4500, -3500, 1200, 1200, 10, 150, 80)
+    this.addDistrictBuildings('豊洲', 4000, -1500, 1000, 1000, 12, 140, 90)
+    this.addDistrictBuildings('有明', 5000, -2500, 800, 800, 8, 120, 70)
 
-    // ===== 住宅・商業混在地区（中密度） =====
-    this.addDistrictBuildings('恵比寿', 500, -800, 600, 600, 90, 120, 70)
-    this.addDistrictBuildings('代官山', -200, -600, 500, 500, 70, 80, 50)
-    this.addDistrictBuildings('目黒', 800, -1500, 700, 700, 80, 100, 60)
-    this.addDistrictBuildings('中野', -3500, 1000, 900, 900, 120, 80, 50)
-    this.addDistrictBuildings('高円寺', -4000, 500, 700, 700, 100, 60, 40)
-    this.addDistrictBuildings('吉祥寺', -5000, 1500, 800, 800, 90, 70, 45)
+    // ===== 住宅・商業混在地区（低密度） =====
+    this.addDistrictBuildings('恵比寿', 500, -800, 600, 600, 22, 120, 70)
+    this.addDistrictBuildings('代官山', -200, -600, 500, 500, 18, 80, 50)
+    this.addDistrictBuildings('目黒', 800, -1500, 700, 700, 20, 100, 60)
+    this.addDistrictBuildings('中野', -3500, 1000, 900, 900, 30, 80, 50)
+    this.addDistrictBuildings('高円寺', -4000, 500, 700, 700, 25, 60, 40)
+    this.addDistrictBuildings('吉祥寺', -5000, 1500, 800, 800, 22, 70, 45)
 
     // ===== 下町エリア（低層密集） =====
-    this.addDistrictBuildings('浅草', 4500, 2500, 800, 800, 150, 50, 25)
-    this.addDistrictBuildings('押上', 5200, 1200, 600, 600, 120, 60, 30)  // スカイツリー周辺
-    this.addDistrictBuildings('両国', 3500, 1500, 600, 600, 100, 55, 30)
-    this.addDistrictBuildings('錦糸町', 4000, 800, 700, 700, 110, 80, 50)
+    this.addDistrictBuildings('浅草', 4500, 2500, 800, 800, 38, 50, 25)
+    this.addDistrictBuildings('押上', 5200, 1200, 600, 600, 30, 60, 30)
+    this.addDistrictBuildings('両国', 3500, 1500, 600, 600, 25, 55, 30)
+    this.addDistrictBuildings('錦糸町', 4000, 800, 700, 700, 28, 80, 50)
 
-    // ===== 広域分散ビル群（23区全体に3000棟以上） =====
-    // 環状7号線内側：高密度
-    for (let i = 0; i < 800; i++) {
+    // ===== 広域分散ビル群（パフォーマンス重視で削減） =====
+    // 環状7号線内側：中密度
+    for (let i = 0; i < 200; i++) {
       const angle = Math.random() * Math.PI * 2
       const radius = 1000 + Math.random() * 3000
       const x = Math.cos(angle) * radius
@@ -250,8 +250,8 @@ export class TokyoMapSystem {
       this.buildings.push({ x, z, width, depth, height, rotation, district: '23区内' })
     }
 
-    // 環状7号線外側：中密度
-    for (let i = 0; i < 500; i++) {
+    // 環状7号線外側：低密度
+    for (let i = 0; i < 150; i++) {
       const angle = Math.random() * Math.PI * 2
       const radius = 4000 + Math.random() * 2000
       const x = Math.cos(angle) * radius
@@ -341,7 +341,7 @@ export class TokyoMapSystem {
    */
   private createFlatTerrain(): void {
     const size = 12000 // 12km x 12km
-    const segments = 256
+    const segments = 128 // パフォーマンス重視で削減
 
     const geometry = new THREE.PlaneGeometry(size, size, segments, segments)
     geometry.rotateX(-Math.PI / 2)
@@ -403,52 +403,12 @@ export class TokyoMapSystem {
 
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
 
-    // プロシージャルグラウンドテクスチャ
-    const createGroundTexture = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = 512
-      canvas.height = 512
-      const ctx = canvas.getContext('2d')!
-
-      // アスファルトのベース
-      ctx.fillStyle = '#4a4a4a'
-      ctx.fillRect(0, 0, 512, 512)
-
-      // ノイズでリアルな質感
-      for (let i = 0; i < 8000; i++) {
-        const x = Math.random() * 512
-        const y = Math.random() * 512
-        const brightness = Math.random() * 30 + 50
-        ctx.fillStyle = `rgba(${brightness}, ${brightness}, ${brightness}, 0.15)`
-        ctx.fillRect(x, y, 2, 2)
-      }
-
-      // 道路のひび割れ
-      for (let i = 0; i < 30; i++) {
-        const x1 = Math.random() * 512
-        const y1 = Math.random() * 512
-        const x2 = x1 + (Math.random() - 0.5) * 100
-        const y2 = y1 + (Math.random() - 0.5) * 100
-        ctx.strokeStyle = 'rgba(30, 30, 30, 0.3)'
-        ctx.lineWidth = 1
-        ctx.beginPath()
-        ctx.moveTo(x1, y1)
-        ctx.lineTo(x2, y2)
-        ctx.stroke()
-      }
-
-      const texture = new THREE.CanvasTexture(canvas)
-      texture.wrapS = texture.wrapT = THREE.RepeatWrapping
-      texture.repeat.set(50, 50)
-      return texture
-    }
-
+    // シンプルなマテリアル（パフォーマンス重視）
     const material = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      map: createGroundTexture(),
-      roughness: 0.95,
-      metalness: 0.02,
-      envMapIntensity: 0.2
+      roughness: 0.85,
+      metalness: 0.05,
+      envMapIntensity: 0.3
     })
 
     this.terrainMesh = new THREE.Mesh(geometry, material)
@@ -625,97 +585,37 @@ export class TokyoMapSystem {
    * ビルマテリアル群を生成（リアルなテクスチャ）
    */
   private createBuildingMaterials(): THREE.Material[] {
-    // プロシージャルテクスチャ生成（窓パターン）
-    const createWindowTexture = (windowColor: number, wallColor: number) => {
-      const canvas = document.createElement('canvas')
-      canvas.width = 256
-      canvas.height = 256
-      const ctx = canvas.getContext('2d')!
-
-      // 壁の基本色
-      ctx.fillStyle = `#${wallColor.toString(16).padStart(6, '0')}`
-      ctx.fillRect(0, 0, 256, 256)
-
-      // 窓のグリッド（8x8）
-      ctx.fillStyle = `#${windowColor.toString(16).padStart(6, '0')}`
-      for (let y = 0; y < 8; y++) {
-        for (let x = 0; x < 8; x++) {
-          // ランダムに照明あり/なし
-          if (Math.random() > 0.3) {
-            const wx = x * 32 + 4
-            const wy = y * 32 + 4
-            ctx.fillRect(wx, wy, 24, 24)
-          }
-        }
-      }
-
-      const texture = new THREE.CanvasTexture(canvas)
-      texture.wrapS = texture.wrapT = THREE.RepeatWrapping
-      texture.repeat.set(1, 3) // 縦に3回繰り返し
-      return texture
-    }
-
-    // 法線マップ生成（凹凸感）
-    const createNormalMap = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = 256
-      canvas.height = 256
-      const ctx = canvas.getContext('2d')!
-
-      // 基本色（法線マップの中立色）
-      ctx.fillStyle = '#8080ff'
-      ctx.fillRect(0, 0, 256, 256)
-
-      // わずかなノイズで凹凸感
-      for (let i = 0; i < 500; i++) {
-        const x = Math.random() * 256
-        const y = Math.random() * 256
-        const r = Math.random() * 3
-        ctx.fillStyle = `rgba(${128 + Math.random() * 20}, ${128 + Math.random() * 20}, 255, 0.3)`
-        ctx.fillRect(x, y, r, r)
-      }
-
-      const texture = new THREE.CanvasTexture(canvas)
-      return texture
-    }
-
-    const normalMap = createNormalMap()
-
+    // シンプルなマテリアル（パフォーマンス重視）
     return [
       // モダンガラスビル
       new THREE.MeshStandardMaterial({
-        map: createWindowTexture(0x99ccff, 0x5a6a7a),
-        normalMap,
-        roughness: 0.15,
-        metalness: 0.85,
-        envMapIntensity: 2.0
+        color: 0x6a7a8a,
+        roughness: 0.2,
+        metalness: 0.8,
+        envMapIntensity: 1.5
       }),
       // コンクリートビル
       new THREE.MeshStandardMaterial({
-        map: createWindowTexture(0xffffcc, 0x707070),
-        normalMap,
-        roughness: 0.85,
+        color: 0x888888,
+        roughness: 0.9,
         metalness: 0.1
       }),
       // 高層オフィスビル
       new THREE.MeshStandardMaterial({
-        map: createWindowTexture(0xffffff, 0x3a4a5a),
-        normalMap,
-        roughness: 0.2,
+        color: 0xa0b0c0,
+        roughness: 0.15,
         metalness: 0.9,
-        envMapIntensity: 1.8
+        envMapIntensity: 2.0
       }),
       // 古いビル
       new THREE.MeshStandardMaterial({
-        map: createWindowTexture(0xffeecc, 0x6a5a4a),
-        normalMap,
-        roughness: 0.9,
+        color: 0x7a6a5a,
+        roughness: 0.85,
         metalness: 0.05
       }),
       // 住宅ビル
       new THREE.MeshStandardMaterial({
-        map: createWindowTexture(0xffffdd, 0x8a8a8a),
-        normalMap,
+        color: 0x9a9a9a,
         roughness: 0.7,
         metalness: 0.2
       })

@@ -5,7 +5,7 @@ import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.
 import { TokyoMapSystem } from './tokyoMapSystem'
 
 // ===== VERSION =====
-const VERSION = '3.2.0'
+const VERSION = '3.2.1'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
