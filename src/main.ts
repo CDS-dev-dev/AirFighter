@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 
 // ===== VERSION =====
-const VERSION = '1.0.0'
+const VERSION = '1.1.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -1460,6 +1460,26 @@ function updateAllies(dt: number) {
 // 敵はstartGame()で生成される
 
 // ===== WEAPONS =====
+// マシンガン予測照準：敵の移動先を先読みして照準
+function calculateGunLeadPosition(target: { group: THREE.Group }): THREE.Vector3 | null {
+  const bulletSpeed = 230  // マシンガン弾速
+  const targetPos = target.group.position.clone()
+  const toTarget = targetPos.clone().sub(player.position)
+  const dist = toTarget.length()
+  const timeToHit = dist / bulletSpeed
+
+  // 敵の速度を推定（前フレームとの位置差から）
+  // 簡易版：敵は約180m/sで旋回移動と仮定
+  const enemyVel = new THREE.Vector3(
+    Math.sin(Date.now() * 0.0001) * 180,
+    Math.sin(Date.now() * 0.00015) * 50,
+    Math.cos(Date.now() * 0.0001) * 180
+  )
+
+  // 予測位置 = 現在位置 + 速度 * 到達時間
+  return targetPos.add(enemyVel.multiplyScalar(timeToHit))
+}
+
 function fireGun() {
   if (gunCooldown > 0) return
   gunCooldown = 0.08
@@ -1467,9 +1487,17 @@ function fireGun() {
 
   const fwd = _fwd.clone().applyQuaternion(player.quaternion)
   let aimDir = fwd.clone()
+
+  // ロック中は予測位置に照準
   if (lockedTarget) {
-    const toT = lockedTarget.group.position.clone().sub(player.position).normalize()
-    if (fwd.angleTo(toT) < Math.PI / 6) aimDir = toT
+    const leadPos = calculateGunLeadPosition(lockedTarget)
+    if (leadPos) {
+      const toLeadPos = leadPos.clone().sub(player.position).normalize()
+      // 前方60度以内なら予測照準を適用
+      if (fwd.angleTo(toLeadPos) < Math.PI / 3) {
+        aimDir = toLeadPos
+      }
+    }
   }
 
   for (const side of [-0.7, 0.7]) {
@@ -1482,10 +1510,10 @@ function fireGun() {
   if (gunSoundCooldown <= 0) { playGunSound(); gunSoundCooldown = 0.06 }
   // 砲口フラッシュ（パフォーマンス最適化：2発に1回のみ表示）
   if (Math.random() < 0.5) {
-    const mFlash = new THREE.PointLight(0xffee00, 6, 20)  // 強度10→6、範囲30→20に削減
+    const mFlash = new THREE.PointLight(0xffee00, 6, 20)
     mFlash.position.copy(player.position).add(new THREE.Vector3(0, 0, -3.5).applyQuaternion(player.quaternion))
     scene.add(mFlash)
-    setTimeout(() => scene.remove(mFlash), 40)  // 表示時間55ms→40msに短縮
+    setTimeout(() => scene.remove(mFlash), 40)
   }
 }
 
@@ -3103,6 +3131,7 @@ const respawnOverlay = document.getElementById('respawn-overlay') as HTMLDivElem
 const supplyIndicator = document.getElementById('supply-indicator') as HTMLDivElement
 const warningEl  = document.getElementById('warning') as HTMLDivElement
 const reticleEl  = document.getElementById('reticle') as HTMLDivElement
+const gunLeadReticleEl = document.getElementById('gun-lead-reticle') as HTMLDivElement
 const boostFill  = document.getElementById('boost-fill') as HTMLDivElement
 const missilePips = document.getElementById('missile-pips')!
 const flarePips   = document.getElementById('flare-pips')!
@@ -3130,14 +3159,41 @@ function updatePips(el: HTMLElement, current: number, cls: string) {
 }
 
 function updateReticle() {
-  if (!lockedTarget) { reticleEl.style.display = 'none'; return }
+  if (!lockedTarget) {
+    reticleEl.style.display = 'none'
+    gunLeadReticleEl.style.display = 'none'
+    return
+  }
+
+  // 通常のロックオンレティクル（敵本体位置）
   const pos = lockedTarget.group.position.clone()
-  if (pos.clone().sub(camera.position).dot(_fwd.clone().applyQuaternion(camera.quaternion)) < 0) { reticleEl.style.display = 'none'; return }
+  if (pos.clone().sub(camera.position).dot(_fwd.clone().applyQuaternion(camera.quaternion)) < 0) {
+    reticleEl.style.display = 'none'
+    gunLeadReticleEl.style.display = 'none'
+    return
+  }
   pos.project(camera)
   const { w: rW, h: rH } = getEffectiveSize()
   reticleEl.style.display = 'block'
   reticleEl.style.left = ((pos.x + 1) / 2 * rW) + 'px'
   reticleEl.style.top = ((-pos.y + 1) / 2 * rH) + 'px'
+
+  // マシンガン予測照準レティクル
+  const leadPos = calculateGunLeadPosition(lockedTarget)
+  if (leadPos) {
+    const leadPosCam = leadPos.clone().sub(camera.position)
+    const fwd = _fwd.clone().applyQuaternion(camera.quaternion)
+    if (leadPosCam.dot(fwd) > 0) {
+      leadPos.project(camera)
+      gunLeadReticleEl.style.display = 'block'
+      gunLeadReticleEl.style.left = ((leadPos.x + 1) / 2 * rW - 12) + 'px'  // -12: 中心調整
+      gunLeadReticleEl.style.top = ((-leadPos.y + 1) / 2 * rH - 12) + 'px'
+    } else {
+      gunLeadReticleEl.style.display = 'none'
+    }
+  } else {
+    gunLeadReticleEl.style.display = 'none'
+  }
 }
 
 function updateWarning() {
