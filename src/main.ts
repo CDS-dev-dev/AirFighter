@@ -682,8 +682,54 @@ function _glbSetShadow(g: THREE.Group) {
   }, undefined, () => _onBuildingGLBLoaded())
 })
 
+// ===== AIRCRAFT GLB PROTOTYPES =====
+// Blender Z-axis → GLTF Y-axis after export_yup; apply rotation.x=π/2 to orient correctly
+let glbFighter: THREE.Group | null = null
+let glbHeli: THREE.Group | null = null
+let glbBomber: THREE.Group | null = null
+
+gltfLoader.load(import.meta.env.BASE_URL + 'models/fighter.glb', (gltf) => {
+  glbFighter = gltf.scene
+  _glbSetShadow(glbFighter)
+  // Replace player visuals with GLB model
+  while (player.children.length > 0) player.remove(player.children[0])
+  const pi = glbFighter.clone()
+  pi.rotation.x = Math.PI / 2  // Blender Z-forward → Three.js -Z-forward
+  pi.scale.setScalar(0.70)
+  player.add(pi)
+}, undefined, () => { /* keep procedural player on error */ })
+
+gltfLoader.load(import.meta.env.BASE_URL + 'models/heli.glb', (gltf) => {
+  glbHeli = gltf.scene
+  _glbSetShadow(glbHeli)
+}, undefined, () => { })
+
+gltfLoader.load(import.meta.env.BASE_URL + 'models/bomber.glb', (gltf) => {
+  glbBomber = gltf.scene
+  _glbSetShadow(glbBomber)
+}, undefined, () => { })
+
 // ===== FACTORIES =====
 function createAircraft(bodyColor: number, darkColor: number): THREE.Group {
+  if (glbFighter) {
+    const g = new THREE.Group()
+    const inst = glbFighter.clone()
+    inst.rotation.x = Math.PI / 2
+    inst.scale.setScalar(0.70)
+    const teamCol = new THREE.Color(bodyColor)
+    inst.traverse(c => {
+      if ((c as THREE.Mesh).isMesh) {
+        const m = (c as THREE.Mesh).material as THREE.MeshStandardMaterial
+        if (m && m.isMeshStandardMaterial && (m.emissive.r + m.emissive.g + m.emissive.b) < 0.01) {
+          const tm = m.clone()
+          tm.color.lerp(teamCol, 0.45)
+          ;(c as THREE.Mesh).material = tm
+        }
+      }
+    })
+    g.add(inst)
+    return g
+  }
   const g = new THREE.Group()
   const mat = new THREE.MeshPhysicalMaterial({
     color: bodyColor, roughness: 0.06, metalness: 0.94,
@@ -1642,6 +1688,18 @@ function updateSmoke(dt: number): void {
 
 // ===== HELICOPTER TARGET =====
 function createHelicopterTarget(): THREE.Group {
+  if (glbHeli) {
+    const g = new THREE.Group()
+    const inst = glbHeli.clone()
+    inst.rotation.x = Math.PI / 2
+    inst.scale.setScalar(1.0)
+    // Find and register rotor group for spinning animation
+    inst.traverse(c => {
+      if (c.name === 'MainRotor') heliBlades.push(c as THREE.Group)
+    })
+    g.add(inst)
+    return g
+  }
   const g = new THREE.Group()
   const mat = new THREE.MeshStandardMaterial({ color: 0x4a5a38, roughness: 0.86, metalness: 0.22 })
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x2a3820, roughness: 0.90, metalness: 0.15 })
@@ -1818,6 +1876,14 @@ function createTankTarget(): THREE.Group {
 }
 
 function createBomberModel(): THREE.Group {
+  if (glbBomber) {
+    const g = new THREE.Group()
+    const inst = glbBomber.clone()
+    inst.rotation.x = Math.PI / 2
+    inst.scale.setScalar(1.0)
+    g.add(inst)
+    return g
+  }
   const g = new THREE.Group()
   const mat = new THREE.MeshPhysicalMaterial({ color: 0x667788, roughness: 0.14, metalness: 0.88, clearcoat: 0.8 })
   const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.6, 18, 12), mat)
