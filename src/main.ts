@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 
 // ===== VERSION =====
-const VERSION = '1.2.0'
+const VERSION = '1.2.1'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -809,7 +809,12 @@ let _bldgGLBsLoaded = 0
 const _totalBuildingGLBs = 13  // 5 original + 8 new
 function _onBuildingGLBLoaded() {
   _bldgGLBsLoaded++
-  if (_bldgGLBsLoaded >= _totalBuildingGLBs) buildWorldStructures()
+  if (_bldgGLBsLoaded >= _totalBuildingGLBs) {
+    // オリジナルマップのみワールド構造物を配置
+    if (currentMap === 'original') {
+      buildWorldStructures()
+    }
+  }
 }
 function buildWorldStructures() {
   // ===== 橋梁 =====
@@ -2622,6 +2627,11 @@ function completeMission() {
 // 東京ランドマーク・ビルを管理する配列
 const tokyoObjects: THREE.Object3D[] = []
 
+// オリジナルマップの構造物を管理するグループ
+const originalMapGroup = new THREE.Group()
+originalMapGroup.name = 'OriginalMapStructures'
+scene.add(originalMapGroup)
+
 // Tokyo MAP用のランドマーク配置関数
 // 新宿駅を原点(0,0)として実際の東京を再現
 // スケール: 1unit = 10m
@@ -2849,6 +2859,35 @@ function switchMap(map: GameMap) {
   ground = generateTerrainMesh()
   scene.add(ground)
 
+  // 全ての既存マップオブジェクトをクリア
+  // オリジナルマップの構造物を削除
+  const objectsToRemove: THREE.Object3D[] = []
+  scene.traverse((obj) => {
+    if (obj.name && (
+      obj.name.includes('Bridge') ||
+      obj.name.includes('Base') ||
+      obj.name.includes('Port') ||
+      obj.name.includes('Dam') ||
+      obj.name.includes('City') ||
+      obj.name.includes('Radar') ||
+      obj.name.includes('Defense') ||
+      obj.parent === originalMapGroup
+    )) {
+      objectsToRemove.push(obj)
+    }
+  })
+  objectsToRemove.forEach(obj => {
+    if (obj.parent) obj.parent.remove(obj)
+    if (obj instanceof THREE.Mesh) {
+      obj.geometry?.dispose()
+      if (Array.isArray(obj.material)) {
+        obj.material.forEach(mat => mat.dispose())
+      } else {
+        obj.material?.dispose()
+      }
+    }
+  })
+
   // 東京オブジェクトをクリア
   tokyoObjects.forEach(obj => {
     scene.remove(obj)
@@ -2864,10 +2903,12 @@ function switchMap(map: GameMap) {
   tokyoObjects.length = 0
 
   if (map === 'tokyo') {
-    // Tokyo MAPのランドマーク配置
+    // Tokyo MAPのランドマーク配置（完全0ベース）
     buildTokyoLandmarks()
+  } else {
+    // Original MAPの構造物を再構築
+    buildWorldStructures()
   }
-  // Original MAPの場合は既にbuildWorldStructures()で配置済み
 }
 
 // MAP選択イベント（モード選択画面内）
