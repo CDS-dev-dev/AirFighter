@@ -1072,11 +1072,11 @@ player.position.set(0, terrainH(0, 0) + 90, 0)
 scene.add(player)
 let cameraOffset = new THREE.Vector3(0, 5, 20)
 const camQuat = new THREE.Quaternion()
-let speed = 30
+let speed = 200  // 初期速度 200 m/s（720 km/h）
 
 // ===== MOUSE / ADVANCED INPUT STATE =====
 const mouseState = { nx: 0, ny: 0, leftDown: false, leftHoldTime: 0 }
-let wheelSpeedTarget = 30
+let wheelSpeedTarget = 200  // 巡航速度 200 m/s
 let camShakeAmt = 0
 let decelerateMode = false
 let lastSpaceTime = 0
@@ -1427,7 +1427,7 @@ function updateAllies(dt: number) {
     const dir = new THREE.Vector3(tx - ally.group.position.x, ty - ally.group.position.y, tz - ally.group.position.z)
     if (dir.length() > 0.5) {
       dir.normalize()
-      ally.group.position.addScaledVector(dir, 36 * dt)
+      ally.group.position.addScaledVector(dir, 190 * dt)  // 味方機も190m/s（684km/h）で移動
       ally.group.position.y = Math.max(terrainH(ally.group.position.x, ally.group.position.z) + 12, ally.group.position.y)
       const flat = new THREE.Vector3(dir.x, 0, dir.z)
       if (flat.lengthSq() > 0.01) ally.group.quaternion.slerp(
@@ -2339,7 +2339,7 @@ function startGame(mode: GameMode) {
       player.position.set(dfSpawnX, terrainH(dfSpawnX, dfSpawnZ) + 110, dfSpawnZ)
       player.quaternion.identity()
       camQuat.identity()
-      speed = 35
+      speed = 200  // ゲーム開始時も巡航速度
       break
     }
     case 'souryokusen':
@@ -2961,7 +2961,7 @@ function updateEnemies(dt: number) {
     const dir = new THREE.Vector3(tx - enemy.group.position.x, ty - enemy.group.position.y, tz - enemy.group.position.z)
     if (dir.length() > 0.5) {
       dir.normalize()
-      enemy.group.position.addScaledVector(dir, 30 * dt)
+      enemy.group.position.addScaledVector(dir, 180 * dt)  // 敵機も180m/s（648km/h）で移動
       const flat = new THREE.Vector3(dir.x, 0, dir.z)
       if (flat.lengthSq() > 0.01) enemy.group.quaternion.slerp(
         new THREE.Quaternion().setFromUnitVectors(_fwd, flat.normalize()), 0.055
@@ -2983,7 +2983,7 @@ function updateExplosions(dt: number) {
 }
 
 function updateContrails() {
-  if (++trailFrame % 2 !== 0 || speed < 5) return
+  if (++trailFrame % 2 !== 0 || speed < 150) return  // 150m/s（540km/h）以上で飛行機雲生成
   for (const wo of [new THREE.Vector3(-2.8, 0, 2.1), new THREE.Vector3(2.8, 0, 2.1)]) {
     const p = wo.clone().applyQuaternion(player.quaternion).add(player.position)
     if (trailSize < TRAIL_CAP) {
@@ -3309,7 +3309,7 @@ function respawnPlayer() {
   player.position.set(rx, terrainH(rx, rz) + 110, rz)
   player.quaternion.identity()
   camQuat.identity()
-  speed = 30
+  speed = 200  // リスポーン時も巡航速度
   invincibleTimer = 3.0
   respawnFlash = 0.8
   // 近くの敵ミサイルを除去
@@ -3462,9 +3462,9 @@ function loop() {
     lastSpaceTime = now2
   }
   const boost = (!!keys['Space'] || touchState.boost) && !decelerateMode
-  const boostTarget = decelerateMode ? 8 : (boost ? 75 : wheelSpeedTarget)
+  const boostTarget = decelerateMode ? 50 : (boost ? 550 : wheelSpeedTarget)  // 減速50m/s、ブースト550m/s（1,980km/h）
   speed += (boostTarget - speed) * dt * 2.2
-  if (!boost && !decelerateMode) wheelSpeedTarget += (30 - wheelSpeedTarget) * dt * 0.4
+  if (!boost && !decelerateMode) wheelSpeedTarget += (200 - wheelSpeedTarget) * dt * 0.4  // 巡航速度に自動復帰
 
   // === MOUSE HOLD TIMER ===
   if (mouseState.leftDown) mouseState.leftHoldTime += dt
@@ -3577,8 +3577,8 @@ function loop() {
   respawnOverlay.style.opacity = respawnFlash.toString()
 
   // Camera – quaternion slerp でジンバルロック解消
-  // 速度連動プルバック
-  const targetCamZ = 18 + (speed / 75) * 14
+  // 速度連動プルバック（高速時はカメラを遠ざける）
+  const targetCamZ = 18 + (speed / 550) * 28  // 最高速時+28m引く
   cameraOffset.z += (targetCamZ - cameraOffset.z) * dt * 3
   // カメラシェイク
   camShakeAmt *= Math.exp(-dt * 8)
@@ -3594,8 +3594,8 @@ function loop() {
   camQuat.slerp(tQ, 0.12)
   camera.quaternion.copy(camQuat)
 
-  // 速度によるFOV拡大
-  const targetFOV = 62 + (speed / 75) * 24 + (boost ? 6 : 0)
+  // 速度によるFOV拡大（高速時の視野拡大）
+  const targetFOV = 62 + (speed / 550) * 32 + (boost ? 8 : 0)  // 最高速時+40度まで拡大
   camera.fov += (targetFOV - camera.fov) * dt * 4
   camera.updateProjectionMatrix()
   centerXhairEl.style.display = (currentMode && !missionComplete) ? 'block' : 'none'
@@ -3607,7 +3607,7 @@ function loop() {
 
   speedEl.textContent = Math.round(speed * 3.6).toString()
   altEl.textContent = Math.round(player.position.y).toString()
-  boostFill.style.width = `${Math.min(100, (speed / 58) * 100)}%`
+  boostFill.style.width = `${Math.min(100, (speed / 550) * 100)}%`  // 最高速550m/sで100%
   updateReticle()
   updateWarning()
   drawEnemyBrackets()
