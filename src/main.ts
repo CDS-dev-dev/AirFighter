@@ -2,10 +2,10 @@ import * as THREE from 'three'
 import { Sky } from 'three/addons/objects/Sky.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
-import { TokyoMapSystem } from './tokyoMapSystem'
+// import { TokyoMapSystem } from './tokyoMapSystem' // 一時的に無効化
 
 // ===== VERSION =====
-const VERSION = '3.2.2'
+const VERSION = '3.2.3'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -110,7 +110,7 @@ const radarDishes: THREE.Group[] = []  // 回転アニメ用
 // ===== MAP SYSTEM =====
 type GameMap = 'original' | 'tokyo'
 let currentMap: GameMap = 'original' as GameMap  // 一時的にオリジナルに戻す（デバッグ用）
-let tokyoMapSystem: TokyoMapSystem | null = null  // 東京MAPシステム（完全独立）
+let tokyoMapSystem: any | null = null  // 東京MAPシステム（一時的に無効化）
 
 // ===== TERRAIN =====
 const WATER_LEVEL = 1.8
@@ -2619,49 +2619,9 @@ async function switchMap(map: GameMap) {
   console.log(`🗺️ MAP切り替え開始: ${map}`)
 
   if (map === 'tokyo') {
-    // ===== 東京MAP（完全独立システム）=====
-    // 既存のオリジナルMAPをクリーンアップ
-    if (ground) {
-      scene.remove(ground)
-      ground.geometry.dispose()
-      ;(ground.material as THREE.Material).dispose()
-    }
-
-    // オリジナルマップの構造物を削除
-    const objectsToRemove: THREE.Object3D[] = []
-    scene.traverse((obj) => {
-      if (obj.name && (
-        obj.name.includes('Bridge') ||
-        obj.name.includes('Base') ||
-        obj.name.includes('Port') ||
-        obj.name.includes('Dam') ||
-        obj.name.includes('City') ||
-        obj.name.includes('Radar') ||
-        obj.name.includes('Defense') ||
-        obj.parent === originalMapGroup
-      )) {
-        objectsToRemove.push(obj)
-      }
-    })
-    objectsToRemove.forEach(obj => {
-      if (obj.parent) obj.parent.remove(obj)
-      if (obj instanceof THREE.Mesh) {
-        obj.geometry?.dispose()
-        if (Array.isArray(obj.material)) {
-          obj.material.forEach(mat => mat.dispose())
-        } else {
-          obj.material?.dispose()
-        }
-      }
-    })
-
-    // 東京MAPシステムを初期化
-    if (!tokyoMapSystem) {
-      tokyoMapSystem = new TokyoMapSystem(scene, gltfLoader)
-    }
-    await tokyoMapSystem.initialize()
-
-    console.log('✅ 東京MAP切り替え完了')
+    // ===== 東京MAP（一時的に無効化） =====
+    console.warn('⚠️ 東京MAPは現在無効化されています')
+    // TODO: 東京MAPシステムを修正後に再有効化
 
   } else {
     // ===== オリジナルMAP =====
@@ -3690,20 +3650,20 @@ function loop() {
   }
 }
 
-// ===== 東京MAP初期化（非同期） =====
-;(async () => {
-  if (currentMap === 'tokyo') {
-    console.log('🗼 東京MAP初期化開始...')
-    tokyoMapSystem = new TokyoMapSystem(scene, gltfLoader)
-    await tokyoMapSystem.initialize()
-
-    // プレースホルダー地形を削除
-    scene.remove(ground)
-    ground.geometry.dispose()
-    ;(ground.material as THREE.Material).dispose()
-
-    console.log('✅ 東京MAP初期化完了')
-  }
-})()
+// ===== 東京MAP初期化（一時的に無効化 - デバッグ中） =====
+// ;(async () => {
+//   if (currentMap === 'tokyo') {
+//     console.log('🗼 東京MAP初期化開始...')
+//     tokyoMapSystem = new TokyoMapSystem(scene, gltfLoader)
+//     await tokyoMapSystem.initialize()
+//
+//     // プレースホルダー地形を削除
+//     scene.remove(ground)
+//     ground.geometry.dispose()
+//     ;(ground.material as THREE.Material).dispose()
+//
+//     console.log('✅ 東京MAP初期化完了')
+//   }
+// })()
 
 loop()
