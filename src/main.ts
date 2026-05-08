@@ -2517,14 +2517,6 @@ function returnToMapScreen() {
   updatePips(flarePips, flareAmmo, 'flare-on')
 }
 
-function returnToModeScreen() {
-  // ミッション完了画面からモード選択へ
-  document.getElementById('mission-complete')!.style.display = 'none'
-  document.getElementById('mode-screen')!.style.display = 'flex'
-  currentMode = null
-  missionComplete = false
-}
-
 // Tokyo MAP用のランドマーク配置関数
 function buildTokyoLandmarks() {
   // 渋谷駅を原点(0,0)として、実際の相対位置に配置
