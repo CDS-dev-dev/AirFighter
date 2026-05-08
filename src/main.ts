@@ -2,9 +2,10 @@ import * as THREE from 'three'
 import { Sky } from 'three/addons/objects/Sky.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { TokyoMapSystem } from './tokyoMapSystem'
 
 // ===== VERSION =====
-const VERSION = '2.0.0'
+const VERSION = '3.0.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -206,7 +207,8 @@ function tokyoTerrainH(x: number, z: number): number {
 // MAP別地形関数の切り替え
 function terrainH(x: number, z: number): number {
   if (currentMap === 'tokyo') {
-    return tokyoTerrainH(x, z)
+    // 東京MAPシステムを使用（完全独立）
+    return tokyoMapSystem ? tokyoMapSystem.getTerrainHeight(x, z) : 0
   }
   // Original MAP
   // ── ベース: 平野部を広く確保（基地配置用）─────────────────
@@ -805,17 +807,10 @@ let glbCityBuilding04: THREE.Group | null = null
 let glbCityBuilding05: THREE.Group | null = null
 let glbDefenseBunker: THREE.Group | null = null
 let glbMountainRadarBase: THREE.Group | null = null
-// Tokyo MAP用
-let glbTokyoTower: THREE.Group | null = null
-let glbTokyoSkytree: THREE.Group | null = null
-let glbRoppongiHills: THREE.Group | null = null
-let glbTokyoGovernment: THREE.Group | null = null
-let glbTokyoDome: THREE.Group | null = null
-let glbRainbowBridge: THREE.Group | null = null
-let glbShibuyaScramble: THREE.Group | null = null
+// Tokyo MAP用のGLBはTokyoMapSystemが管理するため、ここでは不要
 
 let _bldgGLBsLoaded = 0
-const _totalBuildingGLBs = 13  // 5 original + 8 new
+const _totalBuildingGLBs = 13  // オリジナルMAP用のビルディングGLB数
 function _onBuildingGLBLoaded() {
   _bldgGLBsLoaded++
   if (_bldgGLBsLoaded >= _totalBuildingGLBs) {
@@ -882,21 +877,7 @@ function _glbSetShadow(g: THREE.Group) {
   }, undefined, () => _onBuildingGLBLoaded())
 })
 
-// Tokyo MAP用GLBロード（バックグラウンド、エラーでもゲーム起動）
-;[
-  ['models/tokyo_tower.glb',       (g: THREE.Group) => { glbTokyoTower       = g }],
-  ['models/tokyo_skytree.glb',     (g: THREE.Group) => { glbTokyoSkytree     = g }],
-  ['models/roppongi_hills.glb',    (g: THREE.Group) => { glbRoppongiHills    = g }],
-  ['models/tokyo_government.glb',  (g: THREE.Group) => { glbTokyoGovernment  = g }],
-  ['models/tokyo_dome.glb',        (g: THREE.Group) => { glbTokyoDome        = g }],
-  ['models/rainbow_bridge.glb',    (g: THREE.Group) => { glbRainbowBridge    = g }],
-  ['models/shibuya_scramble.glb',  (g: THREE.Group) => { glbShibuyaScramble  = g }],
-].forEach(([url, setter]) => {
-  gltfLoader.load(import.meta.env.BASE_URL + (url as string), (gltf) => {
-    const g = gltf.scene; _glbSetShadow(g); (setter as (g: THREE.Group) => void)(g)
-    console.log(`[Tokyo] Loaded ${url}`)
-  }, undefined, (err) => console.warn(`[Tokyo] Failed to load ${url}:`, err))
-})
+// Tokyo MAP用のGLBロードはTokyoMapSystemが管理するため、ここでは不要
 
 // ===== AIRCRAFT GLB PROTOTYPES =====
 // Blender Z-axis → GLTF Y-axis after export_yup; apply rotation.x=π/2 to orient correctly
@@ -1343,6 +1324,7 @@ type GameMode = 'dogfight' | 'souryokusen' | 'free'
 let currentMap: GameMap = 'original'  // デフォルトMAP
 let currentMode: GameMode | null = null
 let isPaused = false  // ポーズ状態
+let tokyoMapSystem: TokyoMapSystem | null = null  // 東京MAPシステム（完全独立）
 // dogfight: player spawn position (ally side)
 let dfSpawnX = 0, dfSpawnZ = 0
 let missionComplete = false
@@ -2420,9 +2402,16 @@ function startGame(mode: GameMode) {
         spawnAlly(Math.cos(a) * r, Math.sin(a) * r)
       }
       // プレイヤーも味方側（北）にスポーン
-      dfSpawnX = (Math.random() - 0.5) * 120
-      dfSpawnZ = -(200 + Math.random() * 150)
-      player.position.set(dfSpawnX, terrainH(dfSpawnX, dfSpawnZ) + 200, dfSpawnZ)  // 高度を上げて安全に（110→200m）
+      if (currentMap === 'tokyo' && tokyoMapSystem) {
+        const safePos = tokyoMapSystem.getSafeSpawnPosition()
+        dfSpawnX = safePos.x
+        dfSpawnZ = safePos.z
+        player.position.set(safePos.x, safePos.y, safePos.z)
+      } else {
+        dfSpawnX = (Math.random() - 0.5) * 120
+        dfSpawnZ = -(200 + Math.random() * 150)
+        player.position.set(dfSpawnX, terrainH(dfSpawnX, dfSpawnZ) + 200, dfSpawnZ)
+      }
       player.quaternion.identity()
       camQuat.identity()
       speed = 200  // ゲーム開始時も巡航速度
@@ -2644,291 +2633,98 @@ scene.add(originalMapGroup)
 // Tokyo MAP用のランドマーク配置関数
 // 新宿駅を原点(0,0)として実際の東京を再現
 // スケール: 1unit = 10m
-function buildTokyoLandmarks() {
-  // 東京都庁（新宿駅西口、原点から西へ800m）
-  if (glbTokyoGovernment) {
-    const tocho = glbTokyoGovernment.clone()
-    tocho.position.set(-80, tokyoTerrainH(-80, 0), 0)
-    tocho.scale.setScalar(1.0)
-    scene.add(tocho)
-    tokyoObjects.push(tocho)
-  }
+// buildTokyoLandmarks関数は削除 - TokyoMapSystemが完全に独立して管理
 
-  // 渋谷スクランブルスクエア（新宿から南西3.5km）
-  if (glbShibuyaScramble) {
-    const scramble = glbShibuyaScramble.clone()
-    scramble.position.set(-250, tokyoTerrainH(-250, 350), 350)
-    scramble.scale.setScalar(1.0)
-    scene.add(scramble)
-    tokyoObjects.push(scramble)
-  }
-
-  // 六本木ヒルズ（新宿から南東5km）
-  if (glbRoppongiHills) {
-    const roppongi = glbRoppongiHills.clone()
-    roppongi.position.set(200, tokyoTerrainH(200, 500), 500)
-    roppongi.scale.setScalar(1.0)
-    scene.add(roppongi)
-    tokyoObjects.push(roppongi)
-  }
-
-  // 東京タワー（新宿から南東7km）
-  if (glbTokyoTower) {
-    const tower = glbTokyoTower.clone()
-    tower.position.set(300, tokyoTerrainH(300, 700), 700)
-    tower.scale.setScalar(1.0)
-    scene.add(tower)
-    tokyoObjects.push(tower)
-  }
-
-  // 東京ドーム（新宿から北東5km）
-  if (glbTokyoDome) {
-    const dome = glbTokyoDome.clone()
-    dome.position.set(400, tokyoTerrainH(400, -500), -500)
-    dome.scale.setScalar(1.0)
-    scene.add(dome)
-    tokyoObjects.push(dome)
-  }
-
-  // 東京スカイツリー（新宿から東12km）
-  if (glbTokyoSkytree) {
-    const skytree = glbTokyoSkytree.clone()
-    skytree.position.set(1200, tokyoTerrainH(1200, 0), 0)
-    skytree.scale.setScalar(1.0)
-    scene.add(skytree)
-    tokyoObjects.push(skytree)
-  }
-
-  // レインボーブリッジ（新宿から南東10km、東京湾）
-  if (glbRainbowBridge) {
-    const bridge = glbRainbowBridge.clone()
-    bridge.position.set(800, tokyoTerrainH(800, 1000) + 45, 1000)
-    bridge.rotation.y = Math.PI * 0.15
-    bridge.scale.setScalar(1.0)
-    scene.add(bridge)
-    tokyoObjects.push(bridge)
-  }
-
-  // 都市ビル群を実際の東京に合わせて配置
-  const glbBuildings = [glbCityBuilding01, glbCityBuilding02, glbCityBuilding03, glbCityBuilding04, glbCityBuilding05]
-  const availableGLBs = glbBuildings.filter(g => g !== null)
-
-  if (availableGLBs.length > 0) {
-    // 新宿西口超高層ビル街（原点周辺、西側）
-    for (let i = 0; i < 60; i++) {  // 超高層ビル密集地帯
-      const x = -150 + (Math.random() - 0.5) * 300
-      const z = -100 + (Math.random() - 0.5) * 200
-      const y = tokyoTerrainH(x, z)
-      if (y < WATER_LEVEL + 3) continue
-      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
-      const building = glb.clone()
-      building.position.set(x, y, z)
-      building.rotation.y = Math.random() * Math.PI * 2
-      building.scale.setScalar(0.9 + Math.random() * 0.6)  // 大きめ
-      scene.add(building)
-      tokyoObjects.push(building)
-    }
-
-    // 新宿東口・歌舞伎町（原点の東側）
-    for (let i = 0; i < 40; i++) {  // 歓楽街密集
-      const x = 50 + (Math.random() - 0.5) * 200
-      const z = -50 + (Math.random() - 0.5) * 250
-      const y = tokyoTerrainH(x, z)
-      if (y < WATER_LEVEL + 3) continue
-      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
-      const building = glb.clone()
-      building.position.set(x, y, z)
-      building.rotation.y = Math.random() * Math.PI * 2
-      building.scale.setScalar(0.6 + Math.random() * 0.7)
-      scene.add(building)
-      tokyoObjects.push(building)
-    }
-
-    // 渋谷エリア（南西）
-    for (let i = 0; i < 50; i++) {  // 若者の街、ビル密集
-      const x = -250 + (Math.random() - 0.5) * 300
-      const z = 350 + (Math.random() - 0.5) * 300
-      const y = tokyoTerrainH(x, z)
-      if (y < WATER_LEVEL + 3) continue
-      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
-      const building = glb.clone()
-      building.position.set(x, y, z)
-      building.rotation.y = Math.random() * Math.PI * 2
-      building.scale.setScalar(0.7 + Math.random() * 0.8)
-      scene.add(building)
-      tokyoObjects.push(building)
-    }
-
-    // 六本木・赤坂エリア（南東）
-    for (let i = 0; i < 45; i++) {  // 高級オフィス街
-      const x = 200 + (Math.random() - 0.5) * 400
-      const z = 500 + (Math.random() - 0.5) * 400
-      const y = tokyoTerrainH(x, z)
-      if (y < WATER_LEVEL + 3) continue
-      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
-      const building = glb.clone()
-      building.position.set(x, y, z)
-      building.rotation.y = Math.random() * Math.PI * 2
-      building.scale.setScalar(0.8 + Math.random() * 0.7)
-      scene.add(building)
-      tokyoObjects.push(building)
-    }
-
-    // 皇居周辺・丸の内オフィス街（南）
-    for (let i = 0; i < 35; i++) {  // 大企業本社密集
-      const x = -200 + (Math.random() - 0.5) * 400
-      const z = -200 + (Math.random() - 0.5) * 300
-      const y = tokyoTerrainH(x, z)
-      if (y < WATER_LEVEL + 3 || Math.hypot(x + 400, z + 200) < 300) continue  // 皇居内を避ける
-      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
-      const building = glb.clone()
-      building.position.set(x, y, z)
-      building.rotation.y = Math.random() * Math.PI * 2
-      building.scale.setScalar(0.7 + Math.random() * 0.6)
-      scene.add(building)
-      tokyoObjects.push(building)
-    }
-
-    // 上野・秋葉原エリア（北東）
-    for (let i = 0; i < 30; i++) {  // 電気街・観光地
-      const x = 200 + (Math.random() - 0.5) * 400
-      const z = -600 + (Math.random() - 0.5) * 400
-      const y = tokyoTerrainH(x, z)
-      if (y < WATER_LEVEL + 3) continue
-      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
-      const building = glb.clone()
-      building.position.set(x, y, z)
-      building.rotation.y = Math.random() * Math.PI * 2
-      building.scale.setScalar(0.6 + Math.random() * 0.6)
-      scene.add(building)
-      tokyoObjects.push(building)
-    }
-
-    // 押上・スカイツリー周辺（東）
-    for (let i = 0; i < 25; i++) {  // 下町エリア
-      const x = 1200 + (Math.random() - 0.5) * 300
-      const z = -100 + (Math.random() - 0.5) * 300
-      const y = tokyoTerrainH(x, z)
-      if (y < WATER_LEVEL + 3) continue
-      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
-      const building = glb.clone()
-      building.position.set(x, y, z)
-      building.rotation.y = Math.random() * Math.PI * 2
-      building.scale.setScalar(0.5 + Math.random() * 0.5)  // 下町は低め
-      scene.add(building)
-      tokyoObjects.push(building)
-    }
-
-    // お台場・臨海副都心（南東、湾岸）
-    for (let i = 0; i < 20; i++) {  // 湾岸エリア
-      const x = 600 + (Math.random() - 0.5) * 400
-      const z = 1200 + (Math.random() - 0.5) * 400
-      const y = tokyoTerrainH(x, z)
-      if (y < WATER_LEVEL + 3) continue
-      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
-      const building = glb.clone()
-      building.position.set(x, y, z)
-      building.rotation.y = Math.random() * Math.PI * 2
-      building.scale.setScalar(0.6 + Math.random() * 0.6)
-      scene.add(building)
-      tokyoObjects.push(building)
-    }
-
-    // 広域ビル群（23区全体に配置）
-    for (let i = 0; i < 150; i++) {
-      const x = (Math.random() - 0.5) * 4000  // -2000〜2000
-      const z = (Math.random() - 0.5) * 4000
-      const y = tokyoTerrainH(x, z)
-      if (y < WATER_LEVEL + 3) continue
-
-      // 皇居・公園エリアを避ける
-      const toPalace = Math.hypot(x + 400, z + 200)
-      if (toPalace < 300) continue
-
-      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
-      const building = glb.clone()
-      building.position.set(x, y, z)
-      building.rotation.y = Math.random() * Math.PI * 2
-      building.scale.setScalar(0.4 + Math.random() * 0.5)  // 中〜低層ビル
-      scene.add(building)
-      tokyoObjects.push(building)
-    }
-  }
-
-  console.log('[Tokyo] Landmarks and buildings placed')
-}
-
-function switchMap(map: GameMap) {
-  console.log(`Switched to ${map} map`)
-
-  // 地形メッシュの再生成
-  scene.remove(ground)
-  ground.geometry.dispose()
-  ;(ground.material as THREE.Material).dispose()
-  ground = generateTerrainMesh()
-  scene.add(ground)
-
-  // 全ての既存マップオブジェクトをクリア
-  // オリジナルマップの構造物を削除
-  const objectsToRemove: THREE.Object3D[] = []
-  scene.traverse((obj) => {
-    if (obj.name && (
-      obj.name.includes('Bridge') ||
-      obj.name.includes('Base') ||
-      obj.name.includes('Port') ||
-      obj.name.includes('Dam') ||
-      obj.name.includes('City') ||
-      obj.name.includes('Radar') ||
-      obj.name.includes('Defense') ||
-      obj.parent === originalMapGroup
-    )) {
-      objectsToRemove.push(obj)
-    }
-  })
-  objectsToRemove.forEach(obj => {
-    if (obj.parent) obj.parent.remove(obj)
-    if (obj instanceof THREE.Mesh) {
-      obj.geometry?.dispose()
-      if (Array.isArray(obj.material)) {
-        obj.material.forEach(mat => mat.dispose())
-      } else {
-        obj.material?.dispose()
-      }
-    }
-  })
-
-  // 東京オブジェクトをクリア
-  tokyoObjects.forEach(obj => {
-    scene.remove(obj)
-    if (obj instanceof THREE.Mesh) {
-      obj.geometry.dispose()
-      if (Array.isArray(obj.material)) {
-        obj.material.forEach(mat => mat.dispose())
-      } else {
-        obj.material.dispose()
-      }
-    }
-  })
-  tokyoObjects.length = 0
+async function switchMap(map: GameMap) {
+  console.log(`🗺️ MAP切り替え開始: ${map}`)
 
   if (map === 'tokyo') {
-    // Tokyo MAPのランドマーク配置（完全0ベース）
-    buildTokyoLandmarks()
+    // ===== 東京MAP（完全独立システム）=====
+    // 既存のオリジナルMAPをクリーンアップ
+    if (ground) {
+      scene.remove(ground)
+      ground.geometry.dispose()
+      ;(ground.material as THREE.Material).dispose()
+    }
+
+    // オリジナルマップの構造物を削除
+    const objectsToRemove: THREE.Object3D[] = []
+    scene.traverse((obj) => {
+      if (obj.name && (
+        obj.name.includes('Bridge') ||
+        obj.name.includes('Base') ||
+        obj.name.includes('Port') ||
+        obj.name.includes('Dam') ||
+        obj.name.includes('City') ||
+        obj.name.includes('Radar') ||
+        obj.name.includes('Defense') ||
+        obj.parent === originalMapGroup
+      )) {
+        objectsToRemove.push(obj)
+      }
+    })
+    objectsToRemove.forEach(obj => {
+      if (obj.parent) obj.parent.remove(obj)
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry?.dispose()
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach(mat => mat.dispose())
+        } else {
+          obj.material?.dispose()
+        }
+      }
+    })
+
+    // 東京MAPシステムを初期化
+    if (!tokyoMapSystem) {
+      tokyoMapSystem = new TokyoMapSystem(scene, gltfLoader)
+    }
+    await tokyoMapSystem.initialize()
+
+    console.log('✅ 東京MAP切り替え完了')
+
   } else {
-    // Original MAPの構造物を再構築
+    // ===== オリジナルMAP =====
+    // 東京MAPシステムをクリーンアップ
+    if (tokyoMapSystem) {
+      tokyoMapSystem.dispose()
+      tokyoMapSystem = null
+    }
+
+    // 東京オブジェクトをクリア
+    tokyoObjects.forEach(obj => {
+      scene.remove(obj)
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry.dispose()
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach(mat => mat.dispose())
+        } else {
+          obj.material.dispose()
+        }
+      }
+    })
+    tokyoObjects.length = 0
+
+    // オリジナル地形を再生成
+    ground = generateTerrainMesh()
+    scene.add(ground)
+
+    // オリジナルMAPの構造物を再構築
     buildWorldStructures()
+
+    console.log('✅ オリジナルMAP切り替え完了')
   }
 }
 
 // MAP選択イベント（モード選択画面内）
 document.querySelectorAll<HTMLElement>('.map-select-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
     // アクティブ状態の切り替え
     document.querySelectorAll('.map-select-btn').forEach(b => b.classList.remove('active'))
     btn.classList.add('active')
-    // MAP切り替え
+    // MAP切り替え（非同期）
     currentMap = btn.dataset.map as GameMap
-    switchMap(currentMap)
+    await switchMap(currentMap)
   })
 })
 
@@ -3360,8 +3156,16 @@ function drawEnemyBrackets() {
     // 地形遮蔽チェック
     raycaster.set(player.position, toENorm)
     raycaster.far = dist - 5
-    const intersects = raycaster.intersectObject(ground, false)
-    const blockedByTerrain = intersects.length > 0
+    let blockedByTerrain = false
+    if (currentMap === 'tokyo' && tokyoMapSystem) {
+      // 東京MAP: ビル・ランドマークによる遮蔽判定
+      const intersects = raycaster.intersectObjects(tokyoMapSystem.getCollisionObjects(), true)
+      blockedByTerrain = intersects.length > 0
+    } else {
+      // オリジナルMAP: 地形による遮蔽判定
+      const intersects = raycaster.intersectObject(ground, false)
+      blockedByTerrain = intersects.length > 0
+    }
 
     const [sx, sy, vis] = projectToScreen(e.group.position)
     const isLocked = e === lockedTarget
@@ -3474,9 +3278,21 @@ function updateHPDisplay() {
 
 function respawnPlayer() {
   playerHP = MAX_HP
-  const rx = currentMode === 'dogfight' ? dfSpawnX : 0
-  const rz = currentMode === 'dogfight' ? dfSpawnZ : 0
-  player.position.set(rx, terrainH(rx, rz) + 200, rz)  // リスポーン高度を上げて安全に（110→200m）
+  let rx = currentMode === 'dogfight' ? dfSpawnX : 0
+  let rz = currentMode === 'dogfight' ? dfSpawnZ : 0
+  let ry = 200
+
+  // 東京MAPの場合は安全なスポーン位置を使用
+  if (currentMap === 'tokyo' && tokyoMapSystem) {
+    const safePos = tokyoMapSystem.getSafeSpawnPosition()
+    rx = safePos.x
+    ry = safePos.y
+    rz = safePos.z
+  } else {
+    ry = terrainH(rx, rz) + 200  // オリジナルMAP: 地形+200m
+  }
+
+  player.position.set(rx, ry, rz)
   player.quaternion.identity()
   camQuat.identity()
   speed = 200  // リスポーン時も巡航速度
@@ -3694,23 +3510,54 @@ function loop() {
   // 衝突判定：構造物との衝突（建物、地上目標）
   const collisionRadius = 8  // プレイヤーの衝突半径
 
-  // 東京の建物との衝突
-  for (const obj of tokyoObjects) {
-    const dx = player.position.x - obj.position.x
-    const dz = player.position.z - obj.position.z
-    const distXZ = Math.sqrt(dx * dx + dz * dz)
+  // 東京MAPの建物・ランドマークとの衝突
+  if (currentMap === 'tokyo' && tokyoMapSystem) {
+    const collisionObjects = tokyoMapSystem.getCollisionObjects()
+    for (const obj of collisionObjects) {
+      if (!(obj as any).isMesh) continue
+      const mesh = obj as THREE.Mesh
+      const box = new THREE.Box3().setFromObject(mesh)
+      const center = box.getCenter(new THREE.Vector3())
+      const size = box.getSize(new THREE.Vector3())
 
-    if (distXZ < collisionRadius + 15) {
-      const buildingHeight = obj.scale.y * 40
-      if (player.position.y < obj.position.y + buildingHeight) {
+      const dx = player.position.x - center.x
+      const dy = player.position.y - center.y
+      const dz = player.position.z - center.z
+      const distXZ = Math.sqrt(dx * dx + dz * dz)
+
+      if (distXZ < collisionRadius + size.x / 2 && Math.abs(dy) < size.y / 2) {
         const pushDir = new THREE.Vector3(dx, 0, dz).normalize()
-        player.position.x = obj.position.x + pushDir.x * (collisionRadius + 15)
-        player.position.z = obj.position.z + pushDir.z * (collisionRadius + 15)
+        player.position.x = center.x + pushDir.x * (collisionRadius + size.x / 2)
+        player.position.z = center.z + pushDir.z * (collisionRadius + size.z / 2)
         playerHP -= 20
         updateHPDisplay()
         hitFlashTimer = 0.5
         camShakeAmt = Math.max(camShakeAmt, 0.8)
         if (playerHP <= 0) respawnPlayer()
+        break
+      }
+    }
+  }
+
+  // オリジナルMAPの建物との衝突
+  if (currentMap === 'original') {
+    for (const obj of tokyoObjects) {
+      const dx = player.position.x - obj.position.x
+      const dz = player.position.z - obj.position.z
+      const distXZ = Math.sqrt(dx * dx + dz * dz)
+
+      if (distXZ < collisionRadius + 15) {
+        const buildingHeight = obj.scale.y * 40
+        if (player.position.y < obj.position.y + buildingHeight) {
+          const pushDir = new THREE.Vector3(dx, 0, dz).normalize()
+          player.position.x = obj.position.x + pushDir.x * (collisionRadius + 15)
+          player.position.z = obj.position.z + pushDir.z * (collisionRadius + 15)
+          playerHP -= 20
+          updateHPDisplay()
+          hitFlashTimer = 0.5
+          camShakeAmt = Math.max(camShakeAmt, 0.8)
+          if (playerHP <= 0) respawnPlayer()
+        }
       }
     }
   }
