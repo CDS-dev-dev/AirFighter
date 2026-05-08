@@ -515,16 +515,22 @@ gltfLoader.load(
       }
     })
     // プロシージャル地形を非表示にして GLB 地形に切り替え
-    scene.remove(ground)
-    terrainGLB = gltf.scene  // グローバル変数に保存
-    terrainGLB.name = 'OriginalTerrainGLB'
-    terrainGLB.traverse(child => {
-      if (child.name) {
-        child.name = 'Original_' + child.name
-      }
-    })
-    scene.add(terrainGLB)
-    console.log('[Terrain] GLB loaded — procedural terrain replaced')
+    // ただし東京MAPの場合は追加しない
+    if (currentMap !== 'tokyo') {
+      scene.remove(ground)
+      terrainGLB = gltf.scene  // グローバル変数に保存
+      terrainGLB.name = 'OriginalTerrainGLB'
+      terrainGLB.traverse(child => {
+        if (child.name) {
+          child.name = 'Original_' + child.name
+        }
+      })
+      scene.add(terrainGLB)
+      console.log('[Terrain] GLB loaded — procedural terrain replaced')
+    } else {
+      terrainGLB = gltf.scene
+      console.log('[Terrain] GLB loaded but not added (Tokyo MAP active)')
+    }
   },
   undefined,
   (err) => {
@@ -1155,11 +1161,15 @@ renderer.domElement.addEventListener('mouseup', (e) => {
 })
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault())
 renderer.domElement.addEventListener('wheel', (e) => {
-  // ホイール前（上スクロール）= deltaY < 0 → 加速にするため、正の値を加算
-  // ホイール後ろ（下スクロール）= deltaY > 0 → 減速にするため、負の値を加算
-  // deltaYの符号をそのまま使う（deltaY < 0なら負なので、-deltaYで正になる）
-  const delta = -e.deltaY * 0.05  // deltaYを反転して使用
+  // ホイール操作のデバッグログ
+  console.log(`🎡 Wheel: deltaY=${e.deltaY}, direction=${e.deltaY < 0 ? '↑上/前' : '↓下/後ろ'}`)
+
+  // ホイール前（上スクロール）= deltaY < 0 → 加速
+  // ホイール後ろ（下スクロール）= deltaY > 0 → 減速
+  const delta = -e.deltaY * 0.05
+  const oldSpeed = wheelSpeedTarget
   wheelSpeedTarget = Math.max(8, Math.min(90, wheelSpeedTarget + delta))
+  console.log(`  速度: ${oldSpeed.toFixed(0)} → ${wheelSpeedTarget.toFixed(0)} (delta=${delta.toFixed(1)})`)
 }, { passive: true })
 
 // ===== TOUCH INPUT =====
