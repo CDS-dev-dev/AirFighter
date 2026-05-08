@@ -111,6 +111,7 @@ const radarDishes: THREE.Group[] = []  // 回転アニメ用
 type GameMap = 'original' | 'tokyo'
 let currentMap: GameMap = 'original' as GameMap  // デフォルトMAP
 let tokyoMapSystem: TokyoMapSystem | null = null  // 東京MAPシステム
+let terrainGLB: THREE.Group | null = null  // terrain.glbのシーン参照
 
 // ===== TERRAIN =====
 const WATER_LEVEL = 1.8
@@ -514,7 +515,8 @@ gltfLoader.load(
     })
     // プロシージャル地形を非表示にして GLB 地形に切り替え
     scene.remove(ground)
-    scene.add(gltf.scene)
+    terrainGLB = gltf.scene  // グローバル変数に保存
+    scene.add(terrainGLB)
     console.log('[Terrain] GLB loaded — procedural terrain replaced')
   },
   undefined,
@@ -1135,8 +1137,8 @@ renderer.domElement.addEventListener('mouseup', (e) => {
 })
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault())
 renderer.domElement.addEventListener('wheel', (e) => {
-  // ホイール前（上）→ 加速、ホイール後ろ（下）→ 減速
-  const delta = e.deltaY > 0 ? -5 : 5  // deltaY>0は下（減速）、deltaY<0は上（加速）
+  // ホイール前（上に回す）→ 加速、ホイール後ろ（下に回す）→ 減速
+  const delta = e.deltaY > 0 ? -5 : 5  // deltaY > 0 は下/後ろ → 減速、deltaY < 0 は上/前 → 加速
   wheelSpeedTarget = Math.max(8, Math.min(90, wheelSpeedTarget + delta))
 }, { passive: true })
 
@@ -2628,14 +2630,35 @@ async function switchMap(map: GameMap) {
       scene.remove(ground)
       ground.geometry.dispose()
       ;(ground.material as THREE.Material).dispose()
-      console.log('🗑️ オリジナル地形削除')
+      console.log('🗑️ オリジナル地形（プロシージャル）削除')
     }
 
-    // オリジナルマップの全構造物を削除
+    // terrain.glbを削除
+    if (terrainGLB) {
+      scene.remove(terrainGLB)
+      terrainGLB.traverse(child => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry?.dispose()
+          if (Array.isArray(child.material)) {
+            child.material.forEach(mat => mat.dispose())
+          } else {
+            child.material?.dispose()
+          }
+        }
+      })
+      terrainGLB = null
+      console.log('🗑️ オリジナル地形（GLB）削除')
+    }
+
+    // オリジナルマップの全構造物とterrain.glbを削除
     const objectsToRemove: THREE.Object3D[] = []
     scene.traverse((obj) => {
-      // オリジナルマップのオブジェクトを識別
-      if (obj.name && (
+      // terrain.glb（GLTFScene）とオリジナルマップのオブジェクトを識別
+      const isTerrainGLB = obj.type === 'Group' && obj.children.some(c =>
+        c instanceof THREE.Mesh && c.geometry && c.geometry.attributes.position
+      )
+
+      if (isTerrainGLB || (obj.name && (
         obj.name.includes('Bridge') ||
         obj.name.includes('Base') ||
         obj.name.includes('Port') ||
@@ -2648,7 +2671,7 @@ async function switchMap(map: GameMap) {
         obj.name.includes('Pillar') ||
         obj.name.includes('Arch') ||
         obj.parent === originalMapGroup
-      )) {
+      ))) {
         objectsToRemove.push(obj)
       }
     })
@@ -2662,6 +2685,17 @@ async function switchMap(map: GameMap) {
           obj.material?.dispose()
         }
       }
+      // Groupの場合は子要素も再帰的にdispose
+      obj.traverse(child => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry?.dispose()
+          if (Array.isArray(child.material)) {
+            child.material.forEach(mat => mat.dispose())
+          } else {
+            child.material?.dispose()
+          }
+        }
+      })
     })
     console.log(`🗑️ オリジナル構造物削除: ${objectsToRemove.length}個`)
 
