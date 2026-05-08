@@ -1693,11 +1693,17 @@ function createHelicopterTarget(): THREE.Group {
     const inst = glbHeli.clone()
     inst.rotation.x = Math.PI / 2
     inst.scale.setScalar(1.0)
-    // Find and register rotor group for spinning animation
-    inst.traverse(c => {
-      if (c.name === 'MainRotor') heliBlades.push(c as THREE.Group)
-    })
     g.add(inst)
+    // Add a world-space rotor disc that spins around world Y
+    const rotorDisc = new THREE.Group()
+    rotorDisc.position.set(0, 2.2, 0)
+    const bladeMat = new THREE.MeshStandardMaterial({ color: 0x2a3020, roughness: 0.6, metalness: 0.5, transparent: true, opacity: 0.72 })
+    for (let bi = 0; bi < 4; bi++) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.08, 0.7), bladeMat)
+      b.rotation.y = bi * Math.PI / 2; rotorDisc.add(b)
+    }
+    g.add(rotorDisc)
+    heliBlades.push(rotorDisc)
     return g
   }
   const g = new THREE.Group()
