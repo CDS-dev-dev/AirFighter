@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 
 // ===== VERSION =====
-const VERSION = '1.2.1'
+const VERSION = '2.0.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -164,51 +164,40 @@ function gauss2d(x: number, z: number, ax: number, az: number, rx: number, rz: n
 //    南  — 南山地 (350-650m) + 湾 + 半島
 //    ※ 山は高く、谷は深く、30秒飛ぶたびに景観が変わる
 // ═══════════════════════════════════════════════════════
-// Tokyo MAP用の地形関数（完全平坦な都市、OpenStreetMap参照）
+// ═══════════════════════════════════════════════════════
+// 東京MAP専用システム（完全0ベース、OpenStreetMap参照）
+// ═══════════════════════════════════════════════════════
+
+// 東京MAP: 完全平坦な都市地形
 function tokyoTerrainH(x: number, z: number): number {
-  // 完全平坦な都市地形（標高5-15m）
-  // スケール: 1unit = 10m, 新宿駅を原点(0,0)
-  // 範囲: -3000〜3000 (60km四方)
+  // 基本標高: 完全平坦10m（起伏なし）
+  let h = 10
 
-  let h = 10  // 基本標高10m（完全平坦）
-
-  // 隅田川（北から南へ、x=500±60m）
-  const toSumida = Math.abs(x - 500)
-  if (toSumida < 60 && Math.abs(z) < 2000) {
-    h = WATER_LEVEL - 2  // 川（水面下）
+  // 水域のみ標高を下げる
+  // 隅田川（x=500, 幅120m）
+  if (Math.abs(x - 500) < 60 && Math.abs(z) < 2500) {
+    return WATER_LEVEL - 3
   }
 
-  // 荒川（東部、x=1200±80m）
-  const toArakawa = Math.abs(x - 1200)
-  if (toArakawa < 80 && z > -1500 && z < 1500) {
-    h = WATER_LEVEL - 2  // 川（水面下）
+  // 荒川（x=1200, 幅160m）
+  if (Math.abs(x - 1200) < 80 && z > -2000 && z < 2000) {
+    return WATER_LEVEL - 3
   }
 
-  // 多摩川（西部、z=1500±100m）
-  const toTamagawa = Math.abs(z - 1500)
-  if (toTamagawa < 100 && x > -1500 && x < 500) {
-    h = WATER_LEVEL - 2  // 川（水面下）
+  // 多摩川（z=1500, 幅200m）
+  if (Math.abs(z - 1500) < 100 && x > -2000 && x < 1000) {
+    return WATER_LEVEL - 3
   }
 
-  // 東京湾（南東、x>400 && z>1000）
-  if (x > 400 && z > 1000) {
-    const toBay = Math.min(x - 400, z - 1000)
-    if (toBay > 0) {
-      h = WATER_LEVEL - 5 - toBay * 0.01  // 湾（徐々に深く）
-    }
+  // 東京湾（南東部、広大）
+  if (x > 500 && z > 1200) {
+    return WATER_LEVEL - 8
   }
 
-  // 皇居（緑地、水濠あり、x=-200〜-600, z=-400〜0）
-  const palaceX = (x + 400)
-  const palaceZ = (z + 200)
-  if (Math.abs(palaceX) < 300 && Math.abs(palaceZ) < 300) {
-    // 皇居周辺の濠
-    const distFromCenter = Math.hypot(palaceX, palaceZ)
-    if (distFromCenter > 250 && distFromCenter < 300) {
-      h = WATER_LEVEL - 1  // 濠
-    } else {
-      h = 12  // 皇居内はわずかに高い
-    }
+  // 皇居の濠
+  const toPalace = Math.hypot(x + 400, z + 200)
+  if (toPalace > 250 && toPalace < 290) {
+    return WATER_LEVEL - 2
   }
 
   return h
@@ -378,15 +367,81 @@ function mkGroundTex(): THREE.CanvasTexture {
   return t
 }
 
-// ===== 地形メッシュ生成関数 =====
-function generateTerrainMesh(): THREE.Mesh {
-  const resolution = currentMap === 'tokyo' ? 64 : 128  // 東京MAPは更に軽量化
-  const terrainGeo = new THREE.PlaneGeometry(9000, 9000, resolution, resolution)
+// ===== 東京MAP専用地形メッシュ生成（完全独立） =====
+function generateTokyoTerrainMesh(): THREE.Mesh {
+  const terrainGeo = new THREE.PlaneGeometry(9000, 9000, 128, 128)
   terrainGeo.rotateX(-Math.PI / 2)
   const tPos = terrainGeo.attributes.position as THREE.BufferAttribute
   const tCol = new Float32Array(tPos.count * 3)
 
-  const isTokyo = currentMap === 'tokyo'
+  for (let i = 0; i < tPos.count; i++) {
+    const x = tPos.getX(i), z = tPos.getZ(i)
+    const h = tokyoTerrainH(x, z)
+    tPos.setY(i, h)
+
+    let r: number, g: number, b: number
+    const noise = (Math.sin(x * 0.03) * Math.cos(z * 0.03)) * 0.04
+
+    if (h < WATER_LEVEL) {
+      // 水域（川・湾）: 深い青
+      r = 0.10 + noise; g = 0.22 + noise; b = 0.40 + noise
+    } else {
+      // 道路判定（OpenStreetMap風）
+      const isMainRoad = (
+        Math.abs(x + 800) < 18 ||  // 環七
+        Math.abs(x + 1200) < 18 || // 環八
+        Math.abs(x) < 15 ||         // 山手通り
+        Math.abs(z) < 15 ||         // 中央通り
+        Math.abs(z - 300) < 15 ||   // 青山通り
+        Math.abs(z + 300) < 15      // 靖国通り
+      )
+
+      const isSmallRoad = (
+        Math.abs(x % 150) < 6 || Math.abs(z % 150) < 6
+      )
+
+      // 公園判定
+      const toPalace = Math.hypot(x + 400, z + 200)
+      const toMeiji = Math.hypot(x + 700, z + 50)
+      const toYoyogi = Math.hypot(x + 500, z + 200)
+      const toUeno = Math.hypot(x + 100, z + 800)
+      const isPark = (toPalace < 250) || (toMeiji < 180) || (toYoyogi < 120) || (toUeno < 150)
+
+      if (isPark) {
+        // 公園: 濃い緑
+        r = 0.20 + noise; g = 0.36 + noise; b = 0.18 + noise
+      } else if (isMainRoad) {
+        // 主要道路: 濃いグレー（アスファルト）
+        r = 0.26 + noise; g = 0.25 + noise; b = 0.24 + noise
+      } else if (isSmallRoad) {
+        // 細街路: 中間グレー
+        r = 0.38 + noise; g = 0.37 + noise; b = 0.36 + noise
+      } else {
+        // ビル街: 明るいコンクリート
+        r = 0.56 + noise; g = 0.54 + noise; b = 0.52 + noise
+      }
+    }
+
+    tCol[i*3]   = Math.max(0, Math.min(1, r))
+    tCol[i*3+1] = Math.max(0, Math.min(1, g))
+    tCol[i*3+2] = Math.max(0, Math.min(1, b))
+  }
+
+  terrainGeo.setAttribute('color', new THREE.BufferAttribute(tCol, 3))
+  terrainGeo.computeVertexNormals()
+  const mesh = new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 0.85, metalness: 0.05
+  }))
+  mesh.receiveShadow = true
+  return mesh
+}
+
+// ===== オリジナルMAP地形メッシュ生成 =====
+function generateOriginalTerrainMesh(): THREE.Mesh {
+  const terrainGeo = new THREE.PlaneGeometry(9000, 9000, 128, 128)
+  terrainGeo.rotateX(-Math.PI / 2)
+  const tPos = terrainGeo.attributes.position as THREE.BufferAttribute
+  const tCol = new Float32Array(tPos.count * 3)
 
   for (let i = 0; i < tPos.count; i++) {
     const x = tPos.getX(i), z = tPos.getZ(i)
@@ -394,62 +449,7 @@ function generateTerrainMesh(): THREE.Mesh {
     const y = tPos.getY(i)
     let r: number, g: number, b: number
 
-    if (isTokyo) {
-      // ===== 東京MAP: 完全都市カラーリング（OpenStreetMap参照） =====
-      const noise = (fbm(x * 0.03, z * 0.03, 2) - 0.5) * 0.05
-
-      if (y < WATER_LEVEL) {
-        // 東京湾・川（濃い青）
-        r = 0.12 + noise; g = 0.25 + noise; b = 0.42 + noise
-      } else {
-        // 道路グリッド（東京の実際の道路網を模倣）
-        const isMainRoad = (
-          // 環七通り（外環、x=-800）
-          (Math.abs(x + 800) < 15) ||
-          // 環八通り（x=-1200）
-          (Math.abs(x + 1200) < 15) ||
-          // 山手通り（内環、x=0）
-          (Math.abs(x) < 12) ||
-          // 中央通り・明治通り（z=0）
-          (Math.abs(z) < 12) ||
-          // 青山通り・国道246（z=200）
-          (Math.abs(z - 200) < 12) ||
-          // 靖国通り（z=-200）
-          (Math.abs(z + 200) < 12) ||
-          // 甲州街道（z=400）
-          (Math.abs(z - 400) < 12)
-        )
-
-        const isSubRoad = (
-          // 100mグリッド（細い道路）
-          (Math.abs(x % 100) < 4) || (Math.abs(z % 100) < 4)
-        )
-
-        // 皇居（大きな緑地、x=-400, z=-200）
-        const toPalace = Math.hypot(x + 400, z + 200)
-        const isPalace = toPalace < 280
-
-        // 公園（明治神宮、代々木、上野など）
-        const toMeiji = Math.hypot(x + 700, z + 50)
-        const toYoyogi = Math.hypot(x + 500, z + 150)
-        const toUeno = Math.hypot(x + 100, z + 800)
-        const isPark = (toMeiji < 150) || (toYoyogi < 100) || (toUeno < 120)
-
-        if (isPalace || isPark) {
-          // 公園・皇居（緑）
-          r = 0.22 + noise; g = 0.38 + noise; b = 0.20 + noise
-        } else if (isMainRoad) {
-          // 主要道路（濃いグレー）
-          r = 0.28 + noise; g = 0.27 + noise; b = 0.26 + noise
-        } else if (isSubRoad) {
-          // 細街路（薄いグレー）
-          r = 0.40 + noise; g = 0.39 + noise; b = 0.38 + noise
-        } else {
-          // ビル街・住宅地（コンクリート）
-          r = 0.52 + noise; g = 0.50 + noise; b = 0.48 + noise
-        }
-      }
-    } else {
+    {
       // ===== ORIGINAL MAP: 自然カラーリング =====
       const freckles = (fbm(x * 0.018 + 7, z * 0.018 - 11, 3) - 0.5) * 0.14
       const microNoise = (fbm(x * 0.08 + 13, z * 0.08 - 7, 2) - 0.5) * 0.06
@@ -496,6 +496,15 @@ function generateTerrainMesh(): THREE.Mesh {
   }))
   mesh.receiveShadow = true
   return mesh
+}
+
+// ===== 統合地形生成関数（マップに応じて呼び分け） =====
+function generateTerrainMesh(): THREE.Mesh {
+  if (currentMap === 'tokyo') {
+    return generateTokyoTerrainMesh()
+  } else {
+    return generateOriginalTerrainMesh()
+  }
 }
 
 let ground = generateTerrainMesh()
