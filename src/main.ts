@@ -1161,15 +1161,10 @@ renderer.domElement.addEventListener('mouseup', (e) => {
 })
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault())
 renderer.domElement.addEventListener('wheel', (e) => {
-  // ホイール操作のデバッグログ
-  console.log(`🎡 Wheel: deltaY=${e.deltaY}, direction=${e.deltaY < 0 ? '↑上/前' : '↓下/後ろ'}`)
-
   // ホイール前（上スクロール）= deltaY < 0 → 加速
   // ホイール後ろ（下スクロール）= deltaY > 0 → 減速
   const delta = -e.deltaY * 0.05
-  const oldSpeed = wheelSpeedTarget
-  wheelSpeedTarget = Math.max(8, Math.min(90, wheelSpeedTarget + delta))
-  console.log(`  速度: ${oldSpeed.toFixed(0)} → ${wheelSpeedTarget.toFixed(0)} (delta=${delta.toFixed(1)})`)
+  wheelSpeedTarget = Math.max(8, Math.min(600, wheelSpeedTarget + delta))  // 上限を90→600に拡大
 }, { passive: true })
 
 // ===== TOUCH INPUT =====
