@@ -147,113 +147,123 @@ function gauss2d(x: number, z: number, ax: number, az: number, rx: number, rz: n
 }
 
 // ═══════════════════════════════════════════════════════
-//  人設計地形 v2: 全域に高低差・峡谷を入り組ませる
+//  人設計地形 v3: 3倍縦方向スケール・劇的高低差
 //
 //  地理:
-//    北  — 大山脈 (Peak A〜D, 300-570m)
-//    中央北 — 高地帯 (100-160m) + 東西峡谷が横断
-//    中央  — 起伏丘陵 (50-120m) + 南北渓谷
-//    東  — 東部プラトー + 南北大峡谷
-//    西  — 断崖海岸 → 海 → 孤島群
-//    南  — 南山地 + 湾 + 半島
-//    ※ 平地は最小化。どこでも高低差あり
+//    北  — 大山脈 (Peak A〜D, 900-1400m)
+//    中央 — 孤立中央スパイア (~650m, ランドマーク)
+//    中西 — メサ (平頂山, ~350m)
+//    東  — 東部プラトー + 南北大峡谷 (~-300m)
+//    西  — 断崖海岸 + 海食柱 → 孤島群
+//    南  — 南山地 (350-650m) + 湾 + 半島
+//    ※ 山は高く、谷は深く、30秒飛ぶたびに景観が変わる
 // ═══════════════════════════════════════════════════════
 function terrainH(x: number, z: number): number {
-  // ── ベース: 長波うねりで全域に基本起伏 ──────────────────
-  let h = 60
-    + Math.sin(x * 0.00055 + 0.8) * 32
-    + Math.sin(z * 0.00070 + 0.3) * 28
-    + Math.sin((x - z) * 0.00042 + 1.1) * 20
-    + Math.sin((x + z * 0.6) * 0.00028) * 15
+  // ── ベース: 長波うねり (平野 ≈ 40-200m) ─────────────────
+  let h = 75
+    + Math.sin(x * 0.00055 + 0.8) * 45
+    + Math.sin(z * 0.00070 + 0.3) * 38
+    + Math.sin((x - z) * 0.00042 + 1.1) * 27
+    + Math.sin((x + z * 0.6) * 0.00028) * 18
 
   // ── 北部山脈 メインリッジ (z≈-1400) ──────────────────
   const mdt = (z + 1400) / 680
-  h += Math.max(0, 1 - mdt * mdt) * (260 + Math.sin(x * 0.0022 + 0.7) * 72 + Math.sin(x * 0.006) * 38)
+  h += Math.max(0, 1 - mdt * mdt) * (780 + Math.sin(x * 0.0022 + 0.7) * 215 + Math.sin(x * 0.006) * 115)
 
   // ── 主要峰 ───────────────────────────────────────────
-  h += gauss2d(x, z,  200, -1820, 340, 360, 390)  // Peak A 最高峰
-  h += gauss2d(x, z, -720, -1570, 310, 320, 340)  // Peak B 北西峰
-  h += gauss2d(x, z,  980, -1350, 280, 295, 270)  // Peak C 北東峰
-  h += gauss2d(x, z,   60, -1060, 255, 245, 185)  // Peak D 前衛峰
+  h += gauss2d(x, z,  200, -1820, 340, 360, 1150)  // Peak A 最高峰 (~1400m)
+  h += gauss2d(x, z, -720, -1570, 310, 320, 1000)  // Peak B 北西峰 (~1200m)
+  h += gauss2d(x, z,  980, -1350, 280, 295,  800)  // Peak C 北東峰 (~1000m)
+  h += gauss2d(x, z,   60, -1060, 255, 245,  550)  // Peak D 前衛峰 (~700m)
 
-  // ── 中央北部高地 (z:-800〜-300, 広い高台) ─────────────
-  h += gauss2d(x, z, -180, -640, 900, 520, 130)   // 中央北高地
-  h += gauss2d(x, z,  620, -520, 440, 400,  95)   // 東部中央丘陵
+  // ── 中央孤立スパイア（全方向から見えるランドマーク）────
+  h += gauss2d(x, z,   80,  -30, 160, 160, 560)
 
-  // ── 南部山地 (南にも山を配置) ────────────────────────
-  h += gauss2d(x, z, -720,  480, 520, 440, 115)   // 南西山地
-  h += gauss2d(x, z,  380,  580, 360, 320,  80)   // 南東丘陵
-  h += gauss2d(x, z, -160,  920, 320, 280,  65)   // 南部内陸丘
+  // ── メサ（平頂山: 上部を 320m でクリップして平坦化）──
+  h += Math.min(gauss2d(x, z, -480, 280, 280, 260, 420), 320)
 
-  // ── 東部プラトー (x:400-2000, z:-800-0) ───────────────
-  h += gauss2d(x, z, 1100, -380, 680, 520, 80)
+  // ── 中央北部高地 ────────────────────────────────────
+  h += gauss2d(x, z, -180, -640, 900, 520, 380)
+  h += gauss2d(x, z,  620, -520, 440, 400, 265)
 
-  // ── 北西高地 ─────────────────────────────────────────
-  h += gauss2d(x, z, -1080, -720, 480, 560, 92)
+  // ── 南部山地 ────────────────────────────────────────
+  h += gauss2d(x, z, -720,  480, 520, 440, 340)   // 南西山地
+  h += gauss2d(x, z,  380,  580, 360, 320, 235)   // 南東丘陵
+  h += gauss2d(x, z, -160,  920, 320, 280, 190)   // 南部内陸丘
 
-  // ── 南西丘陵（強化）──────────────────────────────────
-  h += gauss2d(x, z, -580, 720, 580, 490, 75)
+  // ── 東部プラトー ────────────────────────────────────
+  h += gauss2d(x, z, 1100, -380, 680, 520, 235)
 
-  // ── 東西横断峡谷 (z≈-220、マップを東西に切る) ──────────
+  // ── 北西高地 ────────────────────────────────────────
+  h += gauss2d(x, z, -1080, -720, 480, 560, 270)
+
+  // ── 南西丘陵 ────────────────────────────────────────
+  h += gauss2d(x, z, -580, 720, 580, 490, 220)
+
+  // ── 西部海食柱（断崖外の細い岩塔）────────────────────
+  h += gauss2d(x, z, -1900,  200,  60,  55, 180)
+  h += gauss2d(x, z, -1750, -100,  45,  40, 150)
+
+  // ── 東西横断峡谷 (z≈-220、深さ ~350m) ──────────────
   const ewZ = -220 + Math.sin(x * 0.00085) * 150 + Math.sin(x * 0.0022 + 0.6) * 65
   const ewD = Math.abs(z - ewZ)
   const ewA = clamp01((x + 900) / 350) * clamp01((900 - x) / 350)
-  h -= Math.exp(-(ewD / 80) * (ewD / 80)) * 160 * ewA
-  h += Math.exp(-((ewD - 170) / 55) * ((ewD - 170) / 55)) * 38 * ewA  // リム
+  h -= Math.exp(-(ewD / 80) * (ewD / 80)) * 440 * ewA
+  h += Math.exp(-((ewD - 170) / 55) * ((ewD - 170) / 55)) * 110 * ewA  // 峡谷リム
 
-  // ── 中央南北渓谷 (x≈-350、南北に走る) ──────────────────
+  // ── 中央南北渓谷 (x≈-350、深さ ~280m) ──────────────
   const nsX = -350 + Math.sin(z * 0.0007) * 140 + Math.sin(z * 0.0019 + 1.2) * 55
   const nsD = Math.abs(x - nsX)
   const nsA = clamp01((z + 1100) / 400) * clamp01((1100 - z) / 400)
-  h -= Math.exp(-(nsD / 70) * (nsD / 70)) * 110 * nsA
+  h -= Math.exp(-(nsD / 70) * (nsD / 70)) * 300 * nsA
 
-  // ── 東部大峡谷 (x≈920、南北280m×深さ100-180m) ─────────
+  // ── 東部大峡谷 (x≈920、深さ ~400m) ──────────────────
   const cxC = 920 + Math.sin(z * 0.0008) * 120 + Math.sin(z * 0.002 + 0.5) * 48
   const cxD = Math.abs(x - cxC)
   const cxA = clamp01((x - 350) / 320)
            * clamp01((z + 700) / 380)
            * clamp01(1 - (z - 700) / 380)
   const cxW = Math.max(0, cxD - 130)
-  h -= Math.exp(-(cxW / 62) * (cxW / 62)) * 162 * cxA
-  h += Math.exp(-((cxD - 205) / 65) * ((cxD - 205) / 65)) * 42 * cxA  // 峡谷リム
+  h -= Math.exp(-(cxW / 62) * (cxW / 62)) * 445 * cxA
+  h += Math.exp(-((cxD - 205) / 65) * ((cxD - 205) / 65)) * 120 * cxA  // 峡谷リム
 
-  // ── 斜行渓谷 SW→NE (x=-600〜200, z=200〜800) ─────────
+  // ── 斜行渓谷 SW→NE ──────────────────────────────────
   const diagT = ((x - z) + 400) / 160
   const diagA = clamp01((x + 700) / 500) * clamp01((300 - x) / 500)
              * clamp01((z - 100) / 300) * clamp01((900 - z) / 300)
-  h -= Math.exp(-(diagT * diagT)) * 95 * diagA
+  h -= Math.exp(-(diagT * diagT)) * 260 * diagA
 
   // ── 河川 (南北方向, x≈120) ───────────────────────────
   const rvX = 120 + Math.sin(z * 0.0009) * 175 + Math.sin(z * 0.0025 + 1) * 55
   const rvD = Math.abs(x - rvX)
   const rvA = clamp01((z + 1300) / 350) * clamp01(1 - (z - 1400) / 350)
-  h -= Math.exp(-(rvD / 105) * (rvD / 105)) * 60 * rvA
+  h -= Math.exp(-(rvD / 105) * (rvD / 105)) * 165 * rvA
 
   // ── 西部断崖・海岸 (x<-1100 で海へ急降下) ─────────────
   if (x < -1100) {
     const cliffX = -1650 + Math.sin(z * 0.0006) * 185 + Math.sin(z * 0.0018) * 65
     const dfc = -(x - cliffX)
-    h -= clamp01(dfc / 360) * 260
+    h -= clamp01(dfc / 360) * 720
   }
 
   // ── 南部湾 (x≈0, z=700-1700) ─────────────────────────
   const bayX = Math.exp(-(x / 660) * (x / 660))
   const bayZ = clamp01((z - 660) / 340) * clamp01(1 - (z - 1700) / 320)
-  h -= bayX * bayZ * 80
+  h -= bayX * bayZ * 220
 
-  // ── 南部半島 (湾の中央を突く陸地) ────────────────────
+  // ── 南部半島 ────────────────────────────────────────
   const penX = Math.exp(-(x / 155) * (x / 155))
   const penZ = clamp01((z - 860) / 260) * clamp01(1 - (z - 1720) / 340)
-  h += penX * penZ * 86
+  h += penX * penZ * 240
 
   // ── 西部孤島群 ───────────────────────────────────────
-  h += gauss2d(x, z, -2180,  -150, 145, 130, 52)
-  h += gauss2d(x, z, -2480,   320, 120, 108, 44)
-  h += gauss2d(x, z, -2090,  -640,  95,  88, 40)
-  h += gauss2d(x, z, -2700,   100, 100,  92, 27)
+  h += gauss2d(x, z, -2180,  -150, 145, 130, 145)
+  h += gauss2d(x, z, -2480,   320, 120, 108, 125)
+  h += gauss2d(x, z, -2090,  -640,  95,  88, 115)
+  h += gauss2d(x, z, -2700,   100, 100,  92,  75)
 
-  // ── テクスチャノイズ (振幅アップで凹凸感を強化) ───────────
-  h += (fbm(x * 0.006 + 5.1, z * 0.006 - 3.8, 4) - 0.5) * 38
+  // ── テクスチャノイズ ─────────────────────────────────
+  h += (fbm(x * 0.006 + 5.1, z * 0.006 - 3.8, 4) - 0.5) * 105
 
   return h
 }
@@ -307,16 +317,16 @@ for (let i = 0; i < tPos.count; i++) {
   const y = tPos.getY(i)
   const v = Math.sin(x * 0.042 + z * 0.063) * 0.06 + Math.sin(x * 0.11 - z * 0.09) * 0.04
   let r: number, g: number, b: number
-  // Pass 1: 高度別ベースカラー (新高度範囲 -160〜+570m)
-  if (y < -60)      { r=0.26+v; g=0.21+v; b=0.19 }   // 深谷岩盤・海底
-  else if (y < -5)  { r=0.22+v; g=0.40+v; b=0.28 }   // 峡谷壁・湿岩
-  else if (y < 12)  { r=0.28+v; g=0.70+v; b=0.22 }   // 低地草原
-  else if (y < 40)  { r=0.24+v; g=0.60+v; b=0.17 }   // 平原
-  else if (y < 80)  { r=0.25+v; g=0.53+v; b=0.14+v } // 丘陵
-  else if (y < 140) { r=0.40+v; g=0.46+v; b=0.22+v } // 高地
-  else if (y < 230) { r=0.52+v; g=0.44+v; b=0.28 }   // 山岳麓
-  else if (y < 360) { r=0.66+v; g=0.60+v; b=0.52 }   // 高山岩
-  else              { r=0.88+v; g=0.87+v; b=0.92 }    // 雪頂
+  // Pass 1: 高度別ベースカラー (高度範囲 -400〜+1400m)
+  if (y < -180)      { r=0.26+v; g=0.21+v; b=0.19 }   // 深谷岩盤・海底
+  else if (y < -15)  { r=0.22+v; g=0.40+v; b=0.28 }   // 峡谷壁・湿岩
+  else if (y < 36)   { r=0.28+v; g=0.70+v; b=0.22 }   // 低地草原
+  else if (y < 120)  { r=0.24+v; g=0.60+v; b=0.17 }   // 平原
+  else if (y < 240)  { r=0.25+v; g=0.53+v; b=0.14+v } // 丘陵
+  else if (y < 420)  { r=0.40+v; g=0.46+v; b=0.22+v } // 高地
+  else if (y < 690)  { r=0.52+v; g=0.44+v; b=0.28 }   // 山岳麓
+  else if (y < 1080) { r=0.66+v; g=0.60+v; b=0.52 }   // 高山岩
+  else               { r=0.88+v; g=0.87+v; b=0.92 }    // 雪頂
   tCol[i*3]   = Math.max(0, Math.min(1, r))
   tCol[i*3+1] = Math.max(0, Math.min(1, g))
   tCol[i*3+2] = Math.max(0, Math.min(1, b))
@@ -324,26 +334,26 @@ for (let i = 0; i < tPos.count; i++) {
   // Pass 2: スロープ・詳細テクスチャ
   const gradX = terrainH(x + 18, z) - terrainH(x - 18, z)
   const gradZ = terrainH(x, z + 18) - terrainH(x, z - 18)
-  const slope = clamp01(Math.hypot(gradX, gradZ) / 56)
+  const slope = clamp01(Math.hypot(gradX, gradZ) / 165)
   const freckles = (fbm(x * 0.018 + 7, z * 0.018 - 11, 3) - 0.5) * 0.12
   if (y < WATER_LEVEL + 2.5) {
     r = 0.58 + freckles; g = 0.52 + freckles * 0.6; b = 0.34  // 砂浜
-  } else if (y < 20) {
+  } else if (y < 60) {
     r = 0.44 + freckles; g = 0.68 + freckles; b = 0.28         // 低地草
-  } else if (y < 55) {
+  } else if (y < 165) {
     r = 0.28 + freckles; g = 0.58 + freckles; b = 0.22         // 平野草
-  } else if (y < 115) {
+  } else if (y < 345) {
     r = 0.34 + freckles; g = 0.50 + freckles * 0.8; b = 0.22  // 高地草
-  } else if (y < 200) {
+  } else if (y < 600) {
     r = 0.50 + freckles; g = 0.46 + freckles; b = 0.30         // 茶草
   } else {
     r = 0.72 + freckles * 0.5; g = 0.64 + freckles * 0.5; b = 0.52  // 岩石
   }
-  const rock = clamp01(slope * 1.45 + smoothstep(130, 260, y) * 0.5)
+  const rock = clamp01(slope * 1.45 + smoothstep(390, 780, y) * 0.5)
   r = THREE.MathUtils.lerp(r, 0.48 + freckles, rock)
   g = THREE.MathUtils.lerp(g, 0.43 + freckles, rock)
   b = THREE.MathUtils.lerp(b, 0.37 + freckles, rock)
-  const snow = smoothstep(310, 430, y)
+  const snow = smoothstep(900, 1200, y)
   tCol[i*3]   = clamp01(THREE.MathUtils.lerp(r, 0.93, snow))
   tCol[i*3+1] = clamp01(THREE.MathUtils.lerp(g, 0.94, snow))
   tCol[i*3+2] = clamp01(THREE.MathUtils.lerp(b, 0.97, snow))
@@ -500,7 +510,7 @@ for (let i = 0; i < TREE_COUNT; i++) {
   const tx = (Math.random()-0.5)*5600, tz = (Math.random()-0.5)*5600
   const ty = terrainH(tx, tz)
   const treeSlope = Math.hypot(terrainH(tx + 16, tz) - terrainH(tx - 16, tz), terrainH(tx, tz + 16) - terrainH(tx, tz - 16)) / 32
-  if (ty > 270 || treeSlope > 2.2 || (fbm(tx * 0.0015 + 8, tz * 0.0015 - 4, 3) < 0.34 && Math.random() < 0.75)) { i--; continue }
+  if (ty > 800 || treeSlope > 6.0 || (fbm(tx * 0.0015 + 8, tz * 0.0015 - 4, 3) < 0.34 && Math.random() < 0.75)) { i--; continue }
   if (ty < 4) { i--; continue }  // 水面下・峡谷底には植樹しない
   const s = 0.7 + Math.random()*0.7
   _d.position.set(tx, ty+2*s, tz); _d.scale.setScalar(s); _d.rotation.y = Math.random()*Math.PI*2; _d.updateMatrix()
@@ -602,7 +612,7 @@ for (let i = 0; i < BOULDER_COUNT; i++) {
   const bz = (Math.random() - 0.5) * 6200
   const by = terrainH(bx, bz)
   const slope = Math.hypot(terrainH(bx + 14, bz) - terrainH(bx - 14, bz), terrainH(bx, bz + 14) - terrainH(bx, bz - 14)) / 28
-  if (by < WATER_LEVEL + 5 || by > 300 || slope > 3.1) { i--; continue }
+  if (by < WATER_LEVEL + 5 || by > 900 || slope > 9.0) { i--; continue }
   const s = 2.4 + Math.random() * 8
   _d.position.set(bx, by + s * 0.45, bz)
   _d.scale.set(s * (0.8 + Math.random() * 0.6), s * (0.45 + Math.random() * 0.45), s * (0.7 + Math.random() * 0.7))
@@ -755,22 +765,52 @@ function createMissileModel(mat: THREE.Material): THREE.Group {
   }, undefined, (err) => console.warn('GLB load failed:', err))
 }
 
-// ===== CLOUDS (volumetric-ish) =====
-const cloudMat    = new THREE.MeshStandardMaterial({ color: 0xf2f8ff, roughness: 1, transparent: true, opacity: 0.78 })
-const cloudMatLit = new THREE.MeshStandardMaterial({ color: 0xffeedd, roughness: 1, transparent: true, opacity: 0.56 })
-for (let i = 0; i < 130; i++) {
-  const cg = new THREE.Group()
-  const count = 5 + Math.floor(Math.random() * 7)
-  const useWarm = Math.random() < 0.25
-  for (let j = 0; j < count; j++) {
-    const r = 9 + Math.random() * 21
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(r, 9, 9), useWarm ? cloudMatLit : cloudMat)
-    puff.position.set(j * 11 - count * 5.5 + (Math.random()-0.5)*8, (Math.random()-0.5)*8, (Math.random()-0.5)*14)
-    puff.scale.set(1, 0.55, 1)
-    cg.add(puff)
+// ===== CLOUDS (billboard sprites — always face camera, no sphere geometry) =====
+function makeCloudTex(warm: boolean): THREE.CanvasTexture {
+  const sz = 128
+  const c = document.createElement('canvas'); c.width = c.height = sz
+  const ctx = c.getContext('2d')!
+  const puffs: [number, number, number][] = [[64,64,48],[42,62,32],[86,60,30],[62,42,24],[65,82,22],[32,52,18],[95,70,16]]
+  for (const [cx, cy, r] of puffs) {
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r)
+    if (warm) {
+      g.addColorStop(0,   'rgba(255,238,210,0.92)')
+      g.addColorStop(0.5, 'rgba(255,225,185,0.50)')
+      g.addColorStop(1,   'rgba(255,230,200,0)')
+    } else {
+      g.addColorStop(0,   'rgba(248,253,255,0.94)')
+      g.addColorStop(0.5, 'rgba(232,246,255,0.52)')
+      g.addColorStop(1,   'rgba(220,240,255,0)')
+    }
+    ctx.fillStyle = g; ctx.fillRect(0, 0, sz, sz)
   }
-  cg.position.set((Math.random()-0.5)*5200, 230 + Math.random()*470, (Math.random()-0.5)*5200)
-  scene.add(cg)
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
+}
+const cloudTexCool = makeCloudTex(false)
+const cloudTexWarm = makeCloudTex(true)
+const cloudMatCool = new THREE.SpriteMaterial({ map: cloudTexCool, transparent: true, opacity: 0.82, depthWrite: false })
+const cloudMatWarm = new THREE.SpriteMaterial({ map: cloudTexWarm, transparent: true, opacity: 0.65, depthWrite: false })
+
+for (let i = 0; i < 160; i++) {
+  const warm = Math.random() < 0.22
+  const mat = warm ? cloudMatWarm : cloudMatCool
+  const cx = (Math.random() - 0.5) * 7000
+  const cz = (Math.random() - 0.5) * 7000
+  const baseY = 500 + Math.random() * 1200
+  const puffs = 2 + Math.floor(Math.random() * 5)
+  for (let j = 0; j < puffs; j++) {
+    const sp = new THREE.Sprite(mat)
+    const w = 200 + Math.random() * 450
+    sp.scale.set(w, w * (0.36 + Math.random() * 0.22), 1)
+    sp.position.set(
+      cx + (Math.random() - 0.5) * 550,
+      baseY + (Math.random() - 0.5) * 130,
+      cz + (Math.random() - 0.5) * 220
+    )
+    scene.add(sp)
+  }
 }
 
 // ===== CONTRAILS =====
@@ -981,6 +1021,8 @@ function playExplosionSound(scale = 1.0) {
 // ===== GAME OBJECTS =====
 type GameMode = 'dogfight' | 'souryokusen' | 'free'
 let currentMode: GameMode | null = null
+// dogfight: player spawn position (ally side)
+let dfSpawnX = 0, dfSpawnZ = 0
 let missionComplete = false
 let modeObjectiveTotal = 0
 let modeObjectiveKilled = 0
@@ -1185,10 +1227,15 @@ function fireEnemyMissile(enemy: Enemy) {
   enemy.missileAmmo--
   const mesh = createMissileModel(enemyMissileMat)
   mesh.position.copy(enemy.group.position)
-  const toPlayer = player.position.clone().sub(enemy.group.position).normalize()
-  mesh.quaternion.setFromUnitVectors(_fwd, toPlayer)
+  // 味方がいる場合、40%の確率で味方を狙う（チーム戦らしさ）
+  let target: THREE.Object3D = player
+  if (currentMode === 'dogfight' && allies.length > 0 && Math.random() < 0.40) {
+    target = allies[Math.floor(Math.random() * allies.length)].group
+  }
+  const toTarget = target.position.clone().sub(enemy.group.position).normalize()
+  mesh.quaternion.setFromUnitVectors(_fwd, toTarget)
   scene.add(mesh)
-  enemyMissiles.push({ mesh, vel: toPlayer.clone().multiplyScalar(65), life: 15, target: player, diverted: false, spd: 70, turnRate: 0.85, light: null })
+  enemyMissiles.push({ mesh, vel: toTarget.clone().multiplyScalar(65), life: 15, target, diverted: false, spd: 70, turnRate: 0.85, light: null })
 }
 
 function dropFlare() {
@@ -1755,7 +1802,7 @@ function startGame(mode: GameMode) {
     case 'dogfight': {
       modeObjectiveTotal = 0
       setObjective('敵機を撃墜せよ — SCORE: 0')
-      // 敵は南側・味方は北側に離れてスポーン
+      // 敵は南側、味方・プレイヤーは北側にスポーン
       for (let i = 0; i < dfEnemyCount; i++) {
         const a = Math.PI + (Math.random() - 0.5) * 1.2
         const r = 550 + Math.random() * 350
@@ -1766,6 +1813,13 @@ function startGame(mode: GameMode) {
         const r = 550 + Math.random() * 350
         spawnAlly(Math.cos(a) * r, Math.sin(a) * r)
       }
+      // プレイヤーも味方側（北）にスポーン
+      dfSpawnX = (Math.random() - 0.5) * 120
+      dfSpawnZ = -(200 + Math.random() * 150)
+      player.position.set(dfSpawnX, terrainH(dfSpawnX, dfSpawnZ) + 110, dfSpawnZ)
+      player.quaternion.identity()
+      camQuat.identity()
+      speed = 35
       break
     }
     case 'souryokusen':
@@ -2086,9 +2140,13 @@ function updateEnemies(dt: number) {
     } else {
       enemy.orbitAngle += dt * 0.22
       const r = 110 + i * 25
-      tx = player.position.x + Math.cos(enemy.orbitAngle) * r
-      tz = player.position.z + Math.sin(enemy.orbitAngle) * r
-      ty = player.position.y + 8 + Math.sin(enemy.orbitAngle * 0.6) * 20
+      // 味方がいる場合、一部の敵は味方を狙う（チーム戦AI）
+      const orbitBase = (currentMode === 'dogfight' && allies.length > 0 && i % 3 === 2)
+        ? allies[i % allies.length].group.position
+        : player.position
+      tx = orbitBase.x + Math.cos(enemy.orbitAngle) * r
+      tz = orbitBase.z + Math.sin(enemy.orbitAngle) * r
+      ty = orbitBase.y + 8 + Math.sin(enemy.orbitAngle * 0.6) * 20
 
       enemy.fireCooldown -= dt
       if (enemy.fireCooldown <= 0) {
@@ -2293,7 +2351,9 @@ function updateHPDisplay() {
 
 function respawnPlayer() {
   playerHP = MAX_HP
-  player.position.set(0, terrainH(0, 0) + 90, 0)
+  const rx = currentMode === 'dogfight' ? dfSpawnX : 0
+  const rz = currentMode === 'dogfight' ? dfSpawnZ : 0
+  player.position.set(rx, terrainH(rx, rz) + 110, rz)
   player.quaternion.identity()
   camQuat.identity()
   speed = 30
