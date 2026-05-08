@@ -159,12 +159,13 @@ function gauss2d(x: number, z: number, ax: number, az: number, rx: number, rz: n
 //    ※ 山は高く、谷は深く、30秒飛ぶたびに景観が変わる
 // ═══════════════════════════════════════════════════════
 function terrainH(x: number, z: number): number {
-  // ── ベース: 長波うねり (平野 ≈ 40-200m) ─────────────────
-  let h = 75
-    + Math.sin(x * 0.00055 + 0.8) * 45
-    + Math.sin(z * 0.00070 + 0.3) * 38
-    + Math.sin((x - z) * 0.00042 + 1.1) * 27
-    + Math.sin((x + z * 0.6) * 0.00028) * 18
+  // ── ベース: 平野部を広く確保（基地配置用）─────────────────
+  // 中央〜東部に広大な平地（高度 50-80m）
+  let h = 65
+    + Math.sin(x * 0.00035 + 0.8) * 22
+    + Math.sin(z * 0.00045 + 0.3) * 18
+    + Math.sin((x - z) * 0.00028 + 1.1) * 15
+    + Math.sin((x + z * 0.6) * 0.00018) * 12
 
   // ── 北部山脈 メインリッジ (z≈-1400) ──────────────────
   const mdt = (z + 1400) / 680
@@ -177,10 +178,19 @@ function terrainH(x: number, z: number): number {
   h += gauss2d(x, z,   60, -1060, 255, 245,  550)  // Peak D 前衛峰 (~700m)
 
   // ── 中央孤立スパイア（全方向から見えるランドマーク）────
-  h += gauss2d(x, z,   80,  -30, 160, 160, 560)
+  h += gauss2d(x, z,   80,  -30, 160, 160, 680)  // より高く（ランドマーク強調）
 
   // ── メサ（平頂山: 上部を 320m でクリップして平坦化）──
   h += Math.min(gauss2d(x, z, -480, 280, 280, 260, 420), 320)
+
+  // ── 中央東部大平原（基地・戦闘エリア確保）────────────────
+  const plainCX = 400, plainCZ = 200
+  const plainDist = Math.hypot(x - plainCX, z - plainCZ)
+  if (plainDist < 800) {
+    const flatFactor = Math.cos((plainDist / 800) * Math.PI * 0.5)
+    h *= (1 - flatFactor * 0.6)  // 平坦化
+    h += 55 * flatFactor  // 基準高度に引き寄せる
+  }
 
   // ── 中央北部高地 ────────────────────────────────────
   h += gauss2d(x, z, -180, -640, 900, 520, 380)
@@ -246,10 +256,10 @@ function terrainH(x: number, z: number): number {
     h -= clamp01(dfc / 360) * 720
   }
 
-  // ── 南部湾 (x≈0, z=700-1700) ─────────────────────────
-  const bayX = Math.exp(-(x / 660) * (x / 660))
-  const bayZ = clamp01((z - 660) / 340) * clamp01(1 - (z - 1700) / 320)
-  h -= bayX * bayZ * 220
+  // ── 南部湾（縮小：陸地を増やす）─────────────────────────
+  const bayX = Math.exp(-(x / 420) * (x / 420))  // 幅を縮小
+  const bayZ = clamp01((z - 900) / 280) * clamp01(1 - (z - 1500) / 280)  // 奥行きも縮小
+  h -= bayX * bayZ * 180  // 深さも浅く
 
   // ── 南部半島 ────────────────────────────────────────
   const penX = Math.exp(-(x / 155) * (x / 155))
@@ -331,32 +341,44 @@ for (let i = 0; i < tPos.count; i++) {
   tCol[i*3+1] = Math.max(0, Math.min(1, g))
   tCol[i*3+2] = Math.max(0, Math.min(1, b))
 
-  // Pass 2: スロープ・詳細テクスチャ
+  // Pass 2: スロープ・詳細テクスチャ（高周波ノイズ強化）
   const gradX = terrainH(x + 18, z) - terrainH(x - 18, z)
   const gradZ = terrainH(x, z + 18) - terrainH(x, z - 18)
   const slope = clamp01(Math.hypot(gradX, gradZ) / 165)
-  const freckles = (fbm(x * 0.018 + 7, z * 0.018 - 11, 3) - 0.5) * 0.12
+  const freckles = (fbm(x * 0.018 + 7, z * 0.018 - 11, 3) - 0.5) * 0.14
+  const microNoise = (fbm(x * 0.08 + 13, z * 0.08 - 7, 2) - 0.5) * 0.06  // 細かいバリエーション
+
+  // 地形タイプ別ベースカラー
   if (y < WATER_LEVEL + 2.5) {
-    r = 0.58 + freckles; g = 0.52 + freckles * 0.6; b = 0.34  // 砂浜
-  } else if (y < 60) {
-    r = 0.44 + freckles; g = 0.68 + freckles; b = 0.28         // 低地草
-  } else if (y < 165) {
-    r = 0.28 + freckles; g = 0.58 + freckles; b = 0.22         // 平野草
-  } else if (y < 345) {
-    r = 0.34 + freckles; g = 0.50 + freckles * 0.8; b = 0.22  // 高地草
-  } else if (y < 600) {
-    r = 0.50 + freckles; g = 0.46 + freckles; b = 0.30         // 茶草
+    r = 0.64 + freckles; g = 0.56 + freckles * 0.6; b = 0.38  // 砂浜（明るく）
+  } else if (y < 50) {
+    r = 0.38 + freckles; g = 0.72 + freckles; b = 0.26         // 低地草原（鮮やか）
+  } else if (y < 120) {
+    r = 0.32 + freckles; g = 0.62 + freckles; b = 0.24         // 平野草
+  } else if (y < 280) {
+    r = 0.36 + freckles; g = 0.54 + freckles * 0.8; b = 0.22  // 高地草
+  } else if (y < 520) {
+    r = 0.48 + freckles; g = 0.44 + freckles; b = 0.28         // 茶土
   } else {
-    r = 0.72 + freckles * 0.5; g = 0.64 + freckles * 0.5; b = 0.52  // 岩石
+    r = 0.68 + freckles * 0.5; g = 0.60 + freckles * 0.5; b = 0.48  // 岩石
   }
-  const rock = clamp01(slope * 1.45 + smoothstep(390, 780, y) * 0.5)
-  r = THREE.MathUtils.lerp(r, 0.48 + freckles, rock)
-  g = THREE.MathUtils.lerp(g, 0.43 + freckles, rock)
-  b = THREE.MathUtils.lerp(b, 0.37 + freckles, rock)
-  const snow = smoothstep(900, 1200, y)
-  tCol[i*3]   = clamp01(THREE.MathUtils.lerp(r, 0.93, snow))
-  tCol[i*3+1] = clamp01(THREE.MathUtils.lerp(g, 0.94, snow))
-  tCol[i*3+2] = clamp01(THREE.MathUtils.lerp(b, 0.97, snow))
+
+  // スロープで岩肌露出
+  const rock = clamp01(slope * 1.6 + smoothstep(380, 720, y) * 0.4)
+  r = THREE.MathUtils.lerp(r, 0.52 + freckles, rock)
+  g = THREE.MathUtils.lerp(g, 0.46 + freckles, rock)
+  b = THREE.MathUtils.lerp(b, 0.40 + freckles, rock)
+
+  // 雪頂
+  const snow = smoothstep(880, 1150, y)
+  r = THREE.MathUtils.lerp(r, 0.95, snow)
+  g = THREE.MathUtils.lerp(g, 0.96, snow)
+  b = THREE.MathUtils.lerp(b, 0.98, snow)
+
+  // 最終出力（マイクロノイズ追加）
+  tCol[i*3]   = clamp01(r + microNoise)
+  tCol[i*3+1] = clamp01(g + microNoise)
+  tCol[i*3+2] = clamp01(b + microNoise)
 }
 terrainGeo.setAttribute('color', new THREE.BufferAttribute(tCol, 3))
 terrainGeo.computeVertexNormals()
@@ -660,10 +682,36 @@ function _onBuildingGLBLoaded() {
   if (_bldgGLBsLoaded >= 5) buildWorldStructures()
 }
 function buildWorldStructures() {
+  // ===== 橋梁 =====
   buildBridge(   80, -185, 220, 0)             // 東西峡谷橋
+  buildBridge( -350,  400, 180, Math.PI/2)     // 南北渓谷橋
+  buildBridge(  920,  100, 260, Math.PI/2)     // 東部大峡谷橋
+
+  // ===== 空軍基地 =====
   buildAirBase(   0,  -60, 0,           'A')   // 中央基地 Alpha
   buildAirBase(1100, -280, Math.PI*0.1, 'B')   // 東部高原基地 Bravo
+  buildAirBase( 400,  200, Math.PI*0.25,'C')   // 中央東部平原基地 Charlie（新規）
+
+  // ===== 港湾 =====
   buildPort(   -130,  920, 0)                  // 南部湾 軍港
+  buildPort(  -1600,  350, Math.PI*0.3)        // 西部沿岸港（新規）
+
+  // ===== ダム =====
+  addDam(  120, -800, 180, Math.PI/2)          // 北部渓谷ダム
+  addDam( -350,  600, 140, Math.PI/2)          // 南部渓谷ダム
+
+  // ===== 都市エリア =====
+  addCityArea( -600,  100, 150, 25)            // 西部都市
+  addCityArea(  650,  450, 120, 18)            // 東部都市
+
+  // ===== 山岳レーダー基地 =====
+  addMountainRadarBase(  200, -1820)           // Peak A 最高峰
+  addMountainRadarBase( -720, -1570)           // Peak B 北西峰
+  addMountainRadarBase(  980, -1350)           // Peak C 北東峰
+
+  // ===== 防空陣地 =====
+  addDefensePosition( -180, -640, 4)           // 中央北部高地防空陣地
+  addDefensePosition( 1100, -380, 3)           // 東部プラトー防空陣地
 }
 
 function _glbSetShadow(g: THREE.Group) {
@@ -938,7 +986,7 @@ window.addEventListener('keyup', e => { keys[e.code] = false })
 renderer.domElement.addEventListener('mousemove', (e) => {
   const { w, h } = getEffectiveSize()
   mouseState.nx = (e.clientX / w - 0.5) * 2
-  mouseState.ny = (e.clientY / h - 0.5) * 2
+  mouseState.ny = -((e.clientY / h - 0.5) * 2) // 上下反転：マウスを上に動かすと機体が上昇
 })
 renderer.domElement.addEventListener('mousedown', (e) => {
   if (e.button === 0) { mouseState.leftDown = true; mouseState.leftHoldTime = 0 }
@@ -1163,7 +1211,7 @@ let dfEnemyCount = 3
 let missileAmmo = 6, flareAmmo = 8, score = 0
 let gunCooldown = 0, pMissileCooldown = 0, flareCooldown = 0
 let hitFlashTimer = 0, gunSoundCooldown = 0, trailFrame = 0
-let lockedEnemy: Enemy | null = null
+let lockedTarget: { group: THREE.Group } | null = null  // Enemy | GroundTarget どちらもロック可能
 let playerHP = 3, invincibleTimer = 0, respawnFlash = 0, respawnTimer = 0
 const MAX_HP = 3
 
@@ -1175,14 +1223,15 @@ const _fwd = new THREE.Vector3(0, 0, -1)
 
 // ===== LOCK-ON =====
 function cycleLock() {
-  if (!enemies.length) { lockedEnemy = null; return }
-  if (!lockedEnemy || !enemies.includes(lockedEnemy)) {
-    lockedEnemy = enemies.reduce((n, e) =>
-      e.group.position.distanceTo(player.position) < n.group.position.distanceTo(player.position) ? e : n)
+  const allTargets: Array<{ group: THREE.Group }> = [...enemies, ...groundTargets]
+  if (!allTargets.length) { lockedTarget = null; return }
+  if (!lockedTarget || !allTargets.includes(lockedTarget)) {
+    lockedTarget = allTargets.reduce((n, t) =>
+      t.group.position.distanceTo(player.position) < n.group.position.distanceTo(player.position) ? t : n)
     return
   }
-  const idx = enemies.indexOf(lockedEnemy)
-  lockedEnemy = idx >= enemies.length - 1 ? null : enemies[idx + 1]
+  const idx = allTargets.indexOf(lockedTarget)
+  lockedTarget = idx >= allTargets.length - 1 ? null : allTargets[idx + 1]
 }
 
 // ===== ENEMIES =====
@@ -1217,7 +1266,7 @@ function fireAllyMissile(ally: Ally, target: Enemy) {
 
 function killEnemy(ei: number) {
   const dead = enemies[ei]
-  if (lockedEnemy === dead) lockedEnemy = null
+  if (lockedTarget === dead) lockedTarget = null
   const mli = multiLockTargets.indexOf(dead)
   if (mli !== -1) multiLockTargets.splice(mli, 1)
   createExplosion(dead.group.position.clone(), 2.0)
@@ -1283,8 +1332,8 @@ function fireGun() {
 
   const fwd = _fwd.clone().applyQuaternion(player.quaternion)
   let aimDir = fwd.clone()
-  if (lockedEnemy) {
-    const toT = lockedEnemy.group.position.clone().sub(player.position).normalize()
+  if (lockedTarget) {
+    const toT = lockedTarget.group.position.clone().sub(player.position).normalize()
     if (fwd.angleTo(toT) < Math.PI / 6) aimDir = toT
   }
 
@@ -1310,7 +1359,7 @@ function firePlayerMissile() {
   missileEl.textContent = missileAmmo.toString()
   updatePips(missilePips, missileAmmo, 'on')
 
-  const target: THREE.Object3D | null = lockedEnemy?.group ?? (() => {
+  const target: THREE.Object3D | null = lockedTarget?.group ?? (() => {
     let nearest: THREE.Object3D | null = null, minD = Infinity
     for (const e of enemies) { const d = e.group.position.distanceTo(player.position); if (d < minD) { minD = d; nearest = e.group } }
     for (const gt of groundTargets) { const d = gt.group.position.distanceTo(player.position); if (d < minD) { minD = d; nearest = gt.group } }
@@ -1373,20 +1422,21 @@ function triggerFlareBurst() {
 
 function handleRightLock() {
   if (!currentMode || missionComplete) return
-  if (lockedEnemy) { lockedEnemy = null; return }
+  if (lockedTarget) { lockedTarget = null; return }
   const fwdWorld = _fwd.clone().applyQuaternion(player.quaternion)
-  let best: Enemy | null = null, bestScore = -Infinity
-  for (const e of enemies) {
-    const toE = e.group.position.clone().sub(player.position)
-    const dist = toE.length()
+  let best: { group: THREE.Group } | null = null, bestScore = -Infinity
+  const allTargets: Array<{ group: THREE.Group }> = [...enemies, ...groundTargets]
+  for (const t of allTargets) {
+    const toT = t.group.position.clone().sub(player.position)
+    const dist = toT.length()
     if (dist > MISSILE_LOCK_RANGE * 1.2) continue
-    const dot = toE.normalize().dot(fwdWorld)
+    const dot = toT.normalize().dot(fwdWorld)
     if (dot > 0.3) {
       const sc = dot - dist / MISSILE_LOCK_RANGE * 0.25
-      if (sc > bestScore) { bestScore = sc; best = e }
+      if (sc > bestScore) { bestScore = sc; best = t }
     }
   }
-  lockedEnemy = best
+  lockedTarget = best
 }
 
 function handleLeftRelease(holdTime: number) {
@@ -1598,7 +1648,7 @@ function addPerimeterWall(cx: number, cz: number, baseY: number, rx: number, rz:
   })
 }
 
-function buildAirBase(cx: number, cz: number, rotY: number, label: 'A' | 'B'): void {
+function buildAirBase(cx: number, cz: number, rotY: number, label: 'A' | 'B' | 'C'): void {
   const baseY = terrainH(cx, cz)
   // エプロン（コンクリート舗装）
   const apron = new THREE.Mesh(new THREE.PlaneGeometry(135, 110), concMat)
@@ -1736,6 +1786,136 @@ function buildBridge(cx: number, cz: number, span: number, rotY: number): void {
     const rlx = cx + (rotY===0 ? side : 0), rlz = cz + (rotY===0 ? 0 : side)
     const rail = new THREE.Mesh(new THREE.BoxGeometry(0.45, 1.6, span), steelMat)
     rail.position.set(rlx, bY + 1.8, rlz); scene.add(rail)
+  }
+}
+
+// ===== DAM =====
+function addDam(cx: number, cz: number, width: number, rotY: number): void {
+  const baseY = terrainH(cx, cz)
+  const damH = 35
+  const damT = 6
+
+  // ダム本体
+  const damMat = new THREE.MeshStandardMaterial({ color: 0x8a8a8a, roughness: 0.75, metalness: 0.15 })
+  const damBody = new THREE.Mesh(new THREE.BoxGeometry(width, damH, damT), damMat)
+  damBody.position.set(cx, baseY + damH / 2, cz)
+  damBody.rotation.y = rotY
+  damBody.castShadow = true
+  damBody.receiveShadow = true
+  scene.add(damBody)
+
+  // 天板
+  const top = new THREE.Mesh(new THREE.BoxGeometry(width + 4, 2, damT + 6), concMat)
+  top.position.set(cx, baseY + damH + 1, cz)
+  top.rotation.y = rotY
+  top.castShadow = true
+  scene.add(top)
+
+  // 水面エフェクト（下流側）
+  const waterSurf = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, 30),
+    new THREE.MeshStandardMaterial({ color: 0x1a4d6f, transparent: true, opacity: 0.6, roughness: 0.2, metalness: 0.3 })
+  )
+  waterSurf.rotation.x = -Math.PI / 2
+  waterSurf.position.set(cx, baseY - 5, cz + (rotY === 0 ? damT / 2 + 15 : 0))
+  waterSurf.rotation.z = rotY
+  scene.add(waterSurf)
+}
+
+// ===== CITY AREA =====
+function addCityArea(cx: number, cz: number, radius: number, buildingCount: number): void {
+  for (let i = 0; i < buildingCount; i++) {
+    const angle = Math.random() * Math.PI * 2
+    const dist = Math.random() * radius
+    const bx = cx + Math.cos(angle) * dist
+    const bz = cz + Math.sin(angle) * dist
+    const by = terrainH(bx, bz)
+
+    if (by < WATER_LEVEL + 3) continue  // 水没回避
+
+    const w = 8 + Math.random() * 16
+    const d = 8 + Math.random() * 16
+    const h = 12 + Math.random() * 45
+
+    const buildMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL(0.1 + Math.random() * 0.05, 0.1 + Math.random() * 0.15, 0.4 + Math.random() * 0.25),
+      roughness: 0.7,
+      metalness: 0.15
+    })
+
+    const building = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), buildMat)
+    building.position.set(bx, by + h / 2, bz)
+    building.rotation.y = Math.random() * Math.PI * 2
+    building.castShadow = true
+    building.receiveShadow = true
+    scene.add(building)
+
+    // 屋上ライト（夜間用、現在は昼間なので控えめ）
+    if (Math.random() > 0.7) {
+      const light = new THREE.PointLight(0xffaa66, 0.8, 25)
+      light.position.set(bx, by + h + 2, bz)
+      scene.add(light)
+    }
+  }
+}
+
+// ===== MOUNTAIN RADAR BASE =====
+function addMountainRadarBase(cx: number, cz: number): void {
+  const baseY = terrainH(cx, cz)
+
+  // 基礎プラットフォーム
+  const platform = new THREE.Mesh(new THREE.CylinderGeometry(22, 26, 4, 16), concMat)
+  platform.position.set(cx, baseY + 2, cz)
+  platform.castShadow = true
+  platform.receiveShadow = true
+  scene.add(platform)
+
+  // 中央ビル
+  const mainBuild = new THREE.Mesh(new THREE.BoxGeometry(16, 14, 16), concMat)
+  mainBuild.position.set(cx, baseY + 11, cz)
+  mainBuild.castShadow = true
+  scene.add(mainBuild)
+
+  // レーダードーム
+  const domeMat = new THREE.MeshStandardMaterial({ color: 0xe0e0e0, roughness: 0.4, metalness: 0.2 })
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(6, 16, 12), domeMat)
+  dome.position.set(cx, baseY + 22, cz)
+  dome.castShadow = true
+  scene.add(dome)
+
+  // アンテナタワー
+  addRadarDish(cx + 12, cz + 10, baseY + 4)
+  addRadarDish(cx - 12, cz - 10, baseY + 4)
+}
+
+// ===== DEFENSE POSITION (Multiple SAMs) =====
+function addDefensePosition(cx: number, cz: number, samCount: number): void {
+  const baseY = terrainH(cx, cz)
+
+  // 中央バンカー
+  const bunker = new THREE.Mesh(new THREE.BoxGeometry(14, 4, 14), concMat)
+  bunker.position.set(cx, baseY + 2, cz)
+  bunker.castShadow = true
+  scene.add(bunker)
+
+  // SAM配置（円形配列）
+  for (let i = 0; i < samCount; i++) {
+    const angle = (i / samCount) * Math.PI * 2
+    const sx = cx + Math.cos(angle) * 25
+    const sz = cz + Math.sin(angle) * 25
+    const sy = terrainH(sx, sz)
+
+    // SAMランチャー（簡易版）
+    const samBase = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.5, 1.5, 8), steelMat)
+    samBase.position.set(sx, sy + 0.75, sz)
+    samBase.castShadow = true
+    scene.add(samBase)
+
+    const samLauncher = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 4), steelMat)
+    samLauncher.position.set(sx, sy + 2.5, sz)
+    samLauncher.rotation.x = -Math.PI / 6
+    samLauncher.castShadow = true
+    scene.add(samLauncher)
   }
 }
 
@@ -2015,7 +2195,7 @@ function startGame(mode: GameMode) {
   for (const b of [...bullets]) scene.remove(b.mesh); bullets.length = 0
   for (const m of [...playerMissiles]) { if (m.light) scene.remove(m.light); scene.remove(m.mesh) }; playerMissiles.length = 0
   for (const m of [...enemyMissiles]) scene.remove(m.mesh); enemyMissiles.length = 0
-  lockedEnemy = null
+  lockedTarget = null
   score = 0; scoreEl.textContent = '0'
   missileAmmo = 6; flareAmmo = 8
   playerHP = MAX_HP; invincibleTimer = 0
@@ -2215,6 +2395,7 @@ function updateGroundTargets(dt: number) {
 
 function destroyGroundTarget(gi: number) {
   const gt = groundTargets[gi]
+  if (lockedTarget === gt) lockedTarget = null  // ロック対象が破壊されたらリセット
   createExplosion(gt.group.position.clone(), 2.5)
   playExplosionSound(2.0)
   scene.remove(gt.group)
@@ -2273,7 +2454,7 @@ function returnToModeScreen() {
   for (const m of [...playerMissiles]) { if (m.light) scene.remove(m.light); scene.remove(m.mesh) }; playerMissiles.length = 0
   for (const m of [...enemyMissiles]) scene.remove(m.mesh); enemyMissiles.length = 0
   for (const m of [...allyMissiles]) scene.remove(m.mesh); allyMissiles.length = 0
-  lockedEnemy = null
+  lockedTarget = null
   player.position.set(0, terrainH(0, 0) + 90, 0)
   player.quaternion.identity(); camQuat.identity(); speed = 30
   playerHP = MAX_HP; invincibleTimer = 0; updateHPDisplay()
@@ -2576,8 +2757,8 @@ function updatePips(el: HTMLElement, current: number, cls: string) {
 }
 
 function updateReticle() {
-  if (!lockedEnemy) { reticleEl.style.display = 'none'; return }
-  const pos = lockedEnemy.group.position.clone()
+  if (!lockedTarget) { reticleEl.style.display = 'none'; return }
+  const pos = lockedTarget.group.position.clone()
   if (pos.clone().sub(camera.position).dot(_fwd.clone().applyQuaternion(camera.quaternion)) < 0) { reticleEl.style.display = 'none'; return }
   pos.project(camera)
   const { w: rW, h: rH } = getEffectiveSize()
@@ -2651,7 +2832,7 @@ function drawEnemyBrackets() {
   for (const e of enemies) {
     const dist = e.group.position.distanceTo(player.position)
     const [sx, sy, vis] = projectToScreen(e.group.position)
-    const isLocked = e === lockedEnemy
+    const isLocked = e === lockedTarget
     const isMulti  = multiLockTargets.includes(e)
     const inRange  = dist < MISSILE_LOCK_RANGE
     const toE = e.group.position.clone().sub(player.position)
@@ -2847,7 +3028,7 @@ function drawRadar() {
   for (const e of enemies) {
     if (e.group.position.distanceTo(player.position) > RADAR_RANGE * 1.2) continue
     const [px, py] = worldToRadar(e.group.position)
-    ctx.fillStyle = e === lockedEnemy ? '#ff0' : (e.seekingSupply ? '#f80' : '#f44')
+    ctx.fillStyle = e === lockedTarget ? '#ff0' : (e.seekingSupply ? '#f80' : '#f44')
     ctx.beginPath(); ctx.arc(px, py, 3.5, 0, Math.PI * 2); ctx.fill()
   }
 
@@ -2951,7 +3132,7 @@ function loop() {
 
   if (currentMode !== null && !missionComplete) {
     if (keysJustPressed.has('Tab') || touchState.lockPressed) cycleLock()
-    if (keysJustPressed.has('Escape')) lockedEnemy = null
+    if (keysJustPressed.has('Escape')) lockedTarget = null
     if (keys['KeyZ'] || keys['KeyA'] || keys['KeyQ'] || touchState.gun) fireGun()
     if (keysJustPressed.has('KeyX') || touchState.missilePressed) firePlayerMissile()
     if (keysJustPressed.has('KeyC') || touchState.flarePressed) triggerFlareBurst()
