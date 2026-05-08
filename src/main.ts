@@ -5,7 +5,7 @@ import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.
 import { TokyoMapSystem } from './tokyoMapSystem'
 
 // ===== VERSION =====
-const VERSION = '3.3.2'
+const VERSION = '3.3.3'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -2707,14 +2707,22 @@ async function switchMap(map: GameMap) {
 }
 
 // MAP選択イベント（モード選択画面内）
-document.querySelectorAll<HTMLElement>('.map-select-btn').forEach(btn => {
+console.log('🔧 MAP選択イベントを設定中...')
+const mapButtons = document.querySelectorAll<HTMLElement>('.map-select-btn')
+console.log(`🔧 見つかったMAPボタン: ${mapButtons.length}個`)
+
+mapButtons.forEach(btn => {
+  console.log(`🔧 ボタン登録: ${btn.dataset.map}`)
   btn.addEventListener('click', async () => {
+    console.log(`🖱️ MAPボタンクリック: ${btn.dataset.map}`)
     // アクティブ状態の切り替え
     document.querySelectorAll('.map-select-btn').forEach(b => b.classList.remove('active'))
     btn.classList.add('active')
     // MAP切り替え（非同期）
     currentMap = btn.dataset.map as GameMap
+    console.log(`🗺️ switchMap()呼び出し: ${currentMap}`)
     await switchMap(currentMap)
+    console.log(`✅ switchMap()完了`)
   })
 })
 
