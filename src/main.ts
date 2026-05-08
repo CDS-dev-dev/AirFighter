@@ -493,6 +493,7 @@ if (currentMap === 'tokyo') {
   )
 } else {
   ground = generateTerrainMesh()
+  ground.name = 'OriginalGround'
 }
 scene.add(ground)
 
@@ -516,6 +517,12 @@ gltfLoader.load(
     // プロシージャル地形を非表示にして GLB 地形に切り替え
     scene.remove(ground)
     terrainGLB = gltf.scene  // グローバル変数に保存
+    terrainGLB.name = 'OriginalTerrainGLB'
+    terrainGLB.traverse(child => {
+      if (child.name) {
+        child.name = 'Original_' + child.name
+      }
+    })
     scene.add(terrainGLB)
     console.log('[Terrain] GLB loaded — procedural terrain replaced')
   },
@@ -557,6 +564,7 @@ const waterMesh = new THREE.Mesh(
   })
 )
 waterMesh.position.y = WATER_LEVEL
+waterMesh.name = 'OriginalWater'
 scene.add(waterMesh)
 
 // ===== MOUNTAINS =====
@@ -626,6 +634,7 @@ function makeMountainGeometry(radius: number, height: number, seed: number): THR
   body.position.set(x, base + h/2 - 12, z)
   body.castShadow = true
   body.receiveShadow = true
+  body.name = `OriginalMountain_${i}`
   scene.add(body)
 })
 
@@ -652,6 +661,9 @@ for (let i = 0; i < TREE_COUNT; i++) {
   foli2IM.setMatrixAt(i, _d.matrix)
 }
 trunkIM.instanceMatrix.needsUpdate = true; foliIM.instanceMatrix.needsUpdate = true; foli2IM.instanceMatrix.needsUpdate = true
+trunkIM.name = 'OriginalTrees_Trunk'
+foliIM.name = 'OriginalTrees_Foliage1'
+foli2IM.name = 'OriginalTrees_Foliage2'
 scene.add(trunkIM); scene.add(foliIM); scene.add(foli2IM)
 
 // ===== ROCK PILLARS (Blender GLB) =====
@@ -680,16 +692,19 @@ gltfLoader.load(import.meta.env.BASE_URL + 'models/rock_pillar.glb', (gltf) => {
       inst.position.set(px, ph, pz)
       inst.scale.set(rb/0.26, ht, rb/0.26)
       inst.rotation.y = Math.random()*Math.PI*2
+      inst.name = `OriginalRockPillar_${cl.cx}_${j}`
       scene.add(inst)
     }
   }
   // 孤立高塔
-  for (const [px, pz, ht, rb] of ISOLATED_TOWERS) {
+  for (let idx = 0; idx < ISOLATED_TOWERS.length; idx++) {
+    const [px, pz, ht, rb] = ISOLATED_TOWERS[idx]
     const ph = terrainH(px, pz)
     const inst = proto.clone()
     inst.position.set(px, ph, pz)
     inst.scale.set(rb/0.26, ht, rb/0.26)
     inst.rotation.y = Math.random()*Math.PI*2
+    inst.name = `OriginalRockTower_${idx}`
     scene.add(inst)
   }
 }, undefined, () => { /* fallback: no pillars if GLB fails */ })
@@ -710,13 +725,15 @@ gltfLoader.load(import.meta.env.BASE_URL + 'models/rock_arch.glb', (gltf) => {
   const proto = gltf.scene
   proto.traverse(c => { if ((c as THREE.Mesh).isMesh) { (c as THREE.Mesh).castShadow = true; (c as THREE.Mesh).receiveShadow = true } })
 
-  for (const [x, z, w, h, rotY] of ARCH_SPECS) {
+  for (let idx = 0; idx < ARCH_SPECS.length; idx++) {
+    const [x, z, w, h, rotY] = ARCH_SPECS[idx]
     const base = terrainH(x, z)
     const inst = proto.clone()
     inst.position.set(x, base, z)
     // half-span=1.0 → scale X by w/2, height=0.62 → scale Y by h/0.62
     inst.scale.set(w / 2, h / 0.62, w / 4)
     inst.rotation.y = rotY
+    inst.name = `OriginalRockArch_${idx}`
     scene.add(inst)
   }
 }, undefined, () => { /* fallback: no arches if GLB fails */ })
@@ -744,6 +761,7 @@ for (let i = 0; i < BOULDER_COUNT; i++) {
   boulderIM.setMatrixAt(i, _d.matrix)
 }
 boulderIM.instanceMatrix.needsUpdate = true
+boulderIM.name = 'OriginalBoulders'
 scene.add(boulderIM)
 
 // ===== SUPPLY POINTS =====
@@ -1137,8 +1155,9 @@ renderer.domElement.addEventListener('mouseup', (e) => {
 })
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault())
 renderer.domElement.addEventListener('wheel', (e) => {
-  // ホイール前（上に回す）→ 加速、ホイール後ろ（下に回す）→ 減速
-  const delta = e.deltaY > 0 ? -5 : 5  // deltaY > 0 は下/後ろ → 減速、deltaY < 0 は上/前 → 加速
+  // ホイール前に回す（手前に回す） = deltaY < 0 → 加速
+  // ホイール後ろに回す（奥に回す） = deltaY > 0 → 減速
+  const delta = e.deltaY < 0 ? 5 : -5
   wheelSpeedTarget = Math.max(8, Math.min(90, wheelSpeedTarget + delta))
 }, { passive: true })
 
@@ -2625,33 +2644,34 @@ async function switchMap(map: GameMap) {
     // ===== 東京MAP =====
     console.log('🗼 東京MAPに切り替え（完全新規実装）')
 
-    // ステップ1: シーンからすべてのオブジェクトを削除（保護対象以外）
-    const protected_objects = new Set<THREE.Object3D>()
-    protected_objects.add(player)
-    protected_objects.add(camera)
-    enemies.forEach(e => protected_objects.add(e.group))
-
+    // ステップ1: オリジナルMAPのすべてのオブジェクトを削除
     const to_remove: THREE.Object3D[] = []
 
     // scene.childrenをコピーしてから削除（イテレーション中の変更を回避）
     const children_copy = [...scene.children]
 
     for (const obj of children_copy) {
+      // プレイヤー・カメラは保護
+      if (obj === player || obj === camera) continue
+
       // ライトは保護
-      if (obj.type.includes('Light')) {
-        protected_objects.add(obj)
-        continue
-      }
+      if (obj.type.includes('Light')) continue
 
-      // プレイヤーの子オブジェクトは保護
-      if (obj.parent === player) {
-        continue
+      // 敵機は保護
+      let isEnemy = false
+      for (const e of enemies) {
+        if (e.group === obj) {
+          isEnemy = true
+          break
+        }
       }
+      if (isEnemy) continue
 
-      // 保護対象でなければ削除リストに追加
-      if (!protected_objects.has(obj)) {
-        to_remove.push(obj)
-      }
+      // 東京MAPオブジェクトは保護
+      if (obj.name?.includes('Tokyo')) continue
+
+      // それ以外はすべて削除（オリジナルMAP）
+      to_remove.push(obj)
     }
 
     console.log(`🗑️ 削除対象オブジェクト数: ${to_remove.length}個`)
