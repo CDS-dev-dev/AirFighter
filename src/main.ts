@@ -5,7 +5,7 @@ import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.
 import { TokyoMapSystem } from './tokyoMapSystem'
 
 // ===== VERSION =====
-const VERSION = '3.3.4'
+const VERSION = '3.3.5'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -2706,25 +2706,54 @@ async function switchMap(map: GameMap) {
   }
 }
 
-// MAP選択イベント（モード選択画面内）
+// MAP選択イベント（直接ID指定で確実に登録）
 console.log('🔧 MAP選択イベントを設定中...')
-const mapButtons = document.querySelectorAll<HTMLElement>('.map-select-btn')
-console.log(`🔧 見つかったMAPボタン: ${mapButtons.length}個`)
 
-mapButtons.forEach(btn => {
-  console.log(`🔧 ボタン登録: ${btn.dataset.map}`)
-  btn.addEventListener('click', async () => {
-    console.log(`🖱️ MAPボタンクリック: ${btn.dataset.map}`)
-    // アクティブ状態の切り替え
-    document.querySelectorAll('.map-select-btn').forEach(b => b.classList.remove('active'))
-    btn.classList.add('active')
-    // MAP切り替え（非同期）
-    currentMap = btn.dataset.map as GameMap
-    console.log(`🗺️ switchMap()呼び出し: ${currentMap}`)
-    await switchMap(currentMap)
-    console.log(`✅ switchMap()完了`)
+async function handleMapSwitch(mapType: GameMap) {
+  console.log(`🖱️ MAP切り替え開始: ${mapType}`)
+
+  // アクティブ状態の切り替え
+  document.querySelectorAll('.map-select-btn').forEach(b => b.classList.remove('active'))
+  if (mapType === 'tokyo') {
+    document.getElementById('map-btn-tokyo')?.classList.add('active')
+  } else {
+    document.getElementById('map-btn-original')?.classList.add('active')
+  }
+
+  // MAP切り替え
+  currentMap = mapType
+  console.log(`🗺️ switchMap()呼び出し: ${currentMap}`)
+  await switchMap(currentMap)
+  console.log(`✅ switchMap()完了`)
+}
+
+// 東京MAPボタン
+const tokyoBtn = document.getElementById('map-btn-tokyo')
+if (tokyoBtn) {
+  console.log('🔧 東京MAPボタン登録成功')
+  tokyoBtn.addEventListener('click', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    console.log('✅ 東京MAPボタンクリック検出！')
+    handleMapSwitch('tokyo')
   })
-})
+} else {
+  console.error('❌ 東京MAPボタンが見つかりません')
+}
+
+// オリジナルMAPボタン
+const originalBtn = document.getElementById('map-btn-original')
+if (originalBtn) {
+  console.log('🔧 オリジナルMAPボタン登録成功')
+  originalBtn.addEventListener('click', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    console.log('✅ オリジナルMAPボタンクリック検出！')
+    handleMapSwitch('original')
+  })
+} else {
+  console.error('❌ オリジナルMAPボタンが見つかりません')
+}
 
 // モードボタンとbackボタンのイベント
 document.querySelectorAll<HTMLElement>('.ms-start').forEach(btn => {
