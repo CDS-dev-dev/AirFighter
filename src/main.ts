@@ -1187,7 +1187,9 @@ function playExplosionSound(scale = 1.0) {
 }
 
 // ===== GAME OBJECTS =====
+type GameMap = 'original' | 'tokyo'
 type GameMode = 'dogfight' | 'souryokusen' | 'free'
+let currentMap: GameMap = 'original'  // デフォルトMAP
 let currentMode: GameMode | null = null
 // dogfight: player spawn position (ally side)
 let dfSpawnX = 0, dfSpawnZ = 0
@@ -2432,9 +2434,10 @@ function completeMission() {
   overlay.style.display = 'flex'
 }
 
-function returnToModeScreen() {
+function returnToMapScreen() {
   document.getElementById('mission-complete')!.style.display = 'none'
-  document.getElementById('mode-screen')!.style.display = 'flex'
+  document.getElementById('mode-screen')!.style.display = 'none'
+  document.getElementById('map-screen')!.style.display = 'flex'
   document.getElementById('objective-hud')!.style.display = 'none'
   currentMode = null
   missionComplete = false
@@ -2455,11 +2458,36 @@ function returnToModeScreen() {
   updatePips(flarePips, flareAmmo, 'flare-on')
 }
 
+function returnToModeScreen() {
+  // ミッション完了画面からモード選択へ
+  document.getElementById('mission-complete')!.style.display = 'none'
+  document.getElementById('mode-screen')!.style.display = 'flex'
+  currentMode = null
+  missionComplete = false
+}
+
+function switchMap(map: GameMap) {
+  // MAP切り替え処理（後で実装）
+  console.log(`Switched to ${map} map`)
+  // TODO: 東京MAPの場合は東京ランドマークをロード
+}
+
+// MAP選択イベント
+document.querySelectorAll<HTMLElement>('.map-card').forEach(card => {
+  card.addEventListener('click', () => {
+    currentMap = card.dataset.map as GameMap
+    document.getElementById('map-screen')!.style.display = 'none'
+    document.getElementById('mode-screen')!.style.display = 'flex'
+    // MAPに応じて地形・ランドマークを切り替え（後で実装）
+    switchMap(currentMap)
+  })
+})
+
 // モードボタンとbackボタンのイベント
 document.querySelectorAll<HTMLElement>('.ms-start').forEach(btn => {
   btn.addEventListener('click', () => startGame(btn.dataset.mode as GameMode))
 })
-document.getElementById('mc-back')!.addEventListener('click', returnToModeScreen)
+document.getElementById('mc-back')!.addEventListener('click', returnToMapScreen)
 
 // ドッグファイト人数調整ボタン
 function clamp(v: number, mn: number, mx: number) { return Math.max(mn, Math.min(mx, v)) }
