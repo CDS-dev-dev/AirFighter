@@ -675,11 +675,20 @@ let glbControlTower: THREE.Group | null = null
 let glbRadarDish: THREE.Group | null = null
 let glbFuelTank: THREE.Group | null = null
 let glbWarehouse: THREE.Group | null = null
+let glbDam: THREE.Group | null = null
+let glbCityBuilding01: THREE.Group | null = null
+let glbCityBuilding02: THREE.Group | null = null
+let glbCityBuilding03: THREE.Group | null = null
+let glbCityBuilding04: THREE.Group | null = null
+let glbCityBuilding05: THREE.Group | null = null
+let glbDefenseBunker: THREE.Group | null = null
+let glbMountainRadarBase: THREE.Group | null = null
 
 let _bldgGLBsLoaded = 0
+const _totalBuildingGLBs = 13  // 5 original + 8 new
 function _onBuildingGLBLoaded() {
   _bldgGLBsLoaded++
-  if (_bldgGLBsLoaded >= 5) buildWorldStructures()
+  if (_bldgGLBsLoaded >= _totalBuildingGLBs) buildWorldStructures()
 }
 function buildWorldStructures() {
   // ===== 橋梁 =====
@@ -718,11 +727,19 @@ function _glbSetShadow(g: THREE.Group) {
   g.traverse(c => { if ((c as THREE.Mesh).isMesh) { (c as THREE.Mesh).castShadow = true; (c as THREE.Mesh).receiveShadow = true } })
 }
 ;[
-  ['models/hangar.glb',        (g: THREE.Group) => { glbHangar        = g }],
-  ['models/control_tower.glb', (g: THREE.Group) => { glbControlTower  = g }],
-  ['models/radar_dish.glb',    (g: THREE.Group) => { glbRadarDish     = g }],
-  ['models/fuel_tank.glb',     (g: THREE.Group) => { glbFuelTank      = g }],
-  ['models/warehouse.glb',     (g: THREE.Group) => { glbWarehouse     = g }],
+  ['models/hangar.glb',                (g: THREE.Group) => { glbHangar             = g }],
+  ['models/control_tower.glb',         (g: THREE.Group) => { glbControlTower       = g }],
+  ['models/radar_dish.glb',            (g: THREE.Group) => { glbRadarDish          = g }],
+  ['models/fuel_tank.glb',             (g: THREE.Group) => { glbFuelTank           = g }],
+  ['models/warehouse.glb',             (g: THREE.Group) => { glbWarehouse          = g }],
+  ['models/dam.glb',                   (g: THREE.Group) => { glbDam                = g }],
+  ['models/city_building_01.glb',      (g: THREE.Group) => { glbCityBuilding01     = g }],
+  ['models/city_building_02.glb',      (g: THREE.Group) => { glbCityBuilding02     = g }],
+  ['models/city_building_03.glb',      (g: THREE.Group) => { glbCityBuilding03     = g }],
+  ['models/city_building_04.glb',      (g: THREE.Group) => { glbCityBuilding04     = g }],
+  ['models/city_building_05.glb',      (g: THREE.Group) => { glbCityBuilding05     = g }],
+  ['models/defense_bunker.glb',        (g: THREE.Group) => { glbDefenseBunker      = g }],
+  ['models/mountain_radar_base.glb',   (g: THREE.Group) => { glbMountainRadarBase  = g }],
 ].forEach(([url, setter]) => {
   gltfLoader.load(import.meta.env.BASE_URL + (url as string), (gltf) => {
     const g = gltf.scene; _glbSetShadow(g); (setter as (g: THREE.Group) => void)(g)
@@ -1791,25 +1808,16 @@ function buildBridge(cx: number, cz: number, span: number, rotY: number): void {
 
 // ===== DAM =====
 function addDam(cx: number, cz: number, width: number, rotY: number): void {
+  if (!glbDam) return  // GLB未ロードなら処理スキップ
   const baseY = terrainH(cx, cz)
-  const damH = 35
-  const damT = 6
 
-  // ダム本体
-  const damMat = new THREE.MeshStandardMaterial({ color: 0x8a8a8a, roughness: 0.75, metalness: 0.15 })
-  const damBody = new THREE.Mesh(new THREE.BoxGeometry(width, damH, damT), damMat)
-  damBody.position.set(cx, baseY + damH / 2, cz)
-  damBody.rotation.y = rotY
-  damBody.castShadow = true
-  damBody.receiveShadow = true
-  scene.add(damBody)
-
-  // 天板
-  const top = new THREE.Mesh(new THREE.BoxGeometry(width + 4, 2, damT + 6), concMat)
-  top.position.set(cx, baseY + damH + 1, cz)
-  top.rotation.y = rotY
-  top.castShadow = true
-  scene.add(top)
+  const dam = glbDam.clone()
+  dam.position.set(cx, baseY, cz)
+  dam.rotation.y = rotY
+  // width調整（必要に応じてスケール）
+  const baseWidth = 90  // Blenderでの基準幅
+  dam.scale.setScalar(width / baseWidth)
+  scene.add(dam)
 
   // 水面エフェクト（下流側）
   const waterSurf = new THREE.Mesh(
@@ -1817,13 +1825,17 @@ function addDam(cx: number, cz: number, width: number, rotY: number): void {
     new THREE.MeshStandardMaterial({ color: 0x1a4d6f, transparent: true, opacity: 0.6, roughness: 0.2, metalness: 0.3 })
   )
   waterSurf.rotation.x = -Math.PI / 2
-  waterSurf.position.set(cx, baseY - 5, cz + (rotY === 0 ? damT / 2 + 15 : 0))
+  waterSurf.position.set(cx, baseY - 5, cz + (rotY === 0 ? 18 : 0))
   waterSurf.rotation.z = rotY
   scene.add(waterSurf)
 }
 
 // ===== CITY AREA =====
 function addCityArea(cx: number, cz: number, radius: number, buildingCount: number): void {
+  const glbBuildings = [glbCityBuilding01, glbCityBuilding02, glbCityBuilding03, glbCityBuilding04, glbCityBuilding05]
+  const availableGLBs = glbBuildings.filter(g => g !== null)
+  if (availableGLBs.length === 0) return  // GLB未ロードならスキップ
+
   for (let i = 0; i < buildingCount; i++) {
     const angle = Math.random() * Math.PI * 2
     const dist = Math.random() * radius
@@ -1833,27 +1845,20 @@ function addCityArea(cx: number, cz: number, radius: number, buildingCount: numb
 
     if (by < WATER_LEVEL + 3) continue  // 水没回避
 
-    const w = 8 + Math.random() * 16
-    const d = 8 + Math.random() * 16
-    const h = 12 + Math.random() * 45
-
-    const buildMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color().setHSL(0.1 + Math.random() * 0.05, 0.1 + Math.random() * 0.15, 0.4 + Math.random() * 0.25),
-      roughness: 0.7,
-      metalness: 0.15
-    })
-
-    const building = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), buildMat)
-    building.position.set(bx, by + h / 2, bz)
+    // ランダムにGLBを選択
+    const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
+    const building = glb.clone()
+    building.position.set(bx, by, bz)
     building.rotation.y = Math.random() * Math.PI * 2
-    building.castShadow = true
-    building.receiveShadow = true
+    // ランダムスケール（0.8〜1.2倍）
+    const scale = 0.8 + Math.random() * 0.4
+    building.scale.setScalar(scale)
     scene.add(building)
 
     // 屋上ライト（夜間用、現在は昼間なので控えめ）
     if (Math.random() > 0.7) {
       const light = new THREE.PointLight(0xffaa66, 0.8, 25)
-      light.position.set(bx, by + h + 2, bz)
+      light.position.set(bx, by + 40, bz)
       scene.add(light)
     }
   }
@@ -1861,41 +1866,28 @@ function addCityArea(cx: number, cz: number, radius: number, buildingCount: numb
 
 // ===== MOUNTAIN RADAR BASE =====
 function addMountainRadarBase(cx: number, cz: number): void {
+  if (!glbMountainRadarBase) return  // GLB未ロードならスキップ
   const baseY = terrainH(cx, cz)
 
-  // 基礎プラットフォーム
-  const platform = new THREE.Mesh(new THREE.CylinderGeometry(22, 26, 4, 16), concMat)
-  platform.position.set(cx, baseY + 2, cz)
-  platform.castShadow = true
-  platform.receiveShadow = true
-  scene.add(platform)
+  const base = glbMountainRadarBase.clone()
+  base.position.set(cx, baseY, cz)
+  base.rotation.y = Math.random() * Math.PI * 2
+  scene.add(base)
 
-  // 中央ビル
-  const mainBuild = new THREE.Mesh(new THREE.BoxGeometry(16, 14, 16), concMat)
-  mainBuild.position.set(cx, baseY + 11, cz)
-  mainBuild.castShadow = true
-  scene.add(mainBuild)
-
-  // レーダードーム
-  const domeMat = new THREE.MeshStandardMaterial({ color: 0xe0e0e0, roughness: 0.4, metalness: 0.2 })
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(6, 16, 12), domeMat)
-  dome.position.set(cx, baseY + 22, cz)
-  dome.castShadow = true
-  scene.add(dome)
-
-  // アンテナタワー
-  addRadarDish(cx + 12, cz + 10, baseY + 4)
-  addRadarDish(cx - 12, cz - 10, baseY + 4)
+  // レーダードーム発光
+  const domeLight = new THREE.PointLight(0x66aaff, 3, 50)
+  domeLight.position.set(cx, baseY + 22, cz)
+  scene.add(domeLight)
 }
 
 // ===== DEFENSE POSITION (Multiple SAMs) =====
 function addDefensePosition(cx: number, cz: number, samCount: number): void {
+  if (!glbDefenseBunker) return  // GLB未ロードならスキップ
   const baseY = terrainH(cx, cz)
 
   // 中央バンカー
-  const bunker = new THREE.Mesh(new THREE.BoxGeometry(14, 4, 14), concMat)
-  bunker.position.set(cx, baseY + 2, cz)
-  bunker.castShadow = true
+  const bunker = glbDefenseBunker.clone()
+  bunker.position.set(cx, baseY, cz)
   scene.add(bunker)
 
   // SAM配置（円形配列）
