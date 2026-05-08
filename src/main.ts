@@ -384,69 +384,83 @@ function mkGroundTex(): THREE.CanvasTexture {
 
 // ===== 地形メッシュ生成関数 =====
 function generateTerrainMesh(): THREE.Mesh {
-  const terrainGeo = new THREE.PlaneGeometry(9000, 9000, 256, 256)
+  const resolution = currentMap === 'tokyo' ? 64 : 128  // 東京MAPは更に軽量化
+  const terrainGeo = new THREE.PlaneGeometry(9000, 9000, resolution, resolution)
   terrainGeo.rotateX(-Math.PI / 2)
   const tPos = terrainGeo.attributes.position as THREE.BufferAttribute
   const tCol = new Float32Array(tPos.count * 3)
+
+  const isTokyo = currentMap === 'tokyo'
+
   for (let i = 0; i < tPos.count; i++) {
     const x = tPos.getX(i), z = tPos.getZ(i)
     tPos.setY(i, terrainH(x, z))
     const y = tPos.getY(i)
-    const v = Math.sin(x * 0.042 + z * 0.063) * 0.06 + Math.sin(x * 0.11 - z * 0.09) * 0.04
     let r: number, g: number, b: number
-    // Pass 1: 高度別ベースカラー (高度範囲 -400〜+1400m)
-    if (y < -180)      { r=0.26+v; g=0.21+v; b=0.19 }   // 深谷岩盤・海底
-    else if (y < -15)  { r=0.22+v; g=0.40+v; b=0.28 }   // 峡谷壁・湿岩
-    else if (y < 36)   { r=0.28+v; g=0.70+v; b=0.22 }   // 低地草原
-    else if (y < 120)  { r=0.24+v; g=0.60+v; b=0.17 }   // 平原
-    else if (y < 240)  { r=0.25+v; g=0.53+v; b=0.14+v } // 丘陵
-    else if (y < 420)  { r=0.40+v; g=0.46+v; b=0.22+v } // 高地
-    else if (y < 690)  { r=0.52+v; g=0.44+v; b=0.28 }   // 山岳麓
-    else if (y < 1080) { r=0.66+v; g=0.60+v; b=0.52 }   // 高山岩
-    else               { r=0.88+v; g=0.87+v; b=0.92 }    // 雪頂
-    tCol[i*3]   = Math.max(0, Math.min(1, r))
-    tCol[i*3+1] = Math.max(0, Math.min(1, g))
-    tCol[i*3+2] = Math.max(0, Math.min(1, b))
 
-    // Pass 2: スロープ・詳細テクスチャ（高周波ノイズ強化）
-    const gradX = terrainH(x + 18, z) - terrainH(x - 18, z)
-    const gradZ = terrainH(x, z + 18) - terrainH(x, z - 18)
-    const slope = clamp01(Math.hypot(gradX, gradZ) / 165)
-    const freckles = (fbm(x * 0.018 + 7, z * 0.018 - 11, 3) - 0.5) * 0.14
-    const microNoise = (fbm(x * 0.08 + 13, z * 0.08 - 7, 2) - 0.5) * 0.06  // 細かいバリエーション
+    if (isTokyo) {
+      // ===== 東京MAP: 都市カラーリング（グレー・アスファルト基調） =====
+      const noise = (fbm(x * 0.02, z * 0.02, 2) - 0.5) * 0.08
+      const gridNoise = Math.sin(x * 0.01) * Math.sin(z * 0.01) * 0.03  // 都市グリッド感
 
-    // 地形タイプ別ベースカラー
-    if (y < WATER_LEVEL + 2.5) {
-      r = 0.64 + freckles; g = 0.56 + freckles * 0.6; b = 0.38  // 砂浜（明るく）
-    } else if (y < 50) {
-      r = 0.38 + freckles; g = 0.72 + freckles; b = 0.26         // 低地草原（鮮やか）
-    } else if (y < 120) {
-      r = 0.32 + freckles; g = 0.62 + freckles; b = 0.24         // 平野草
-    } else if (y < 280) {
-      r = 0.36 + freckles; g = 0.54 + freckles * 0.8; b = 0.22  // 高地草
-    } else if (y < 520) {
-      r = 0.48 + freckles; g = 0.44 + freckles; b = 0.28         // 茶土
+      if (y < WATER_LEVEL) {
+        // 東京湾・川（青）
+        r = 0.18 + noise; g = 0.32 + noise; b = 0.48 + noise
+      } else if (y < WATER_LEVEL + 5) {
+        // 埋立地・河川敷（グレー）
+        r = 0.48 + noise; g = 0.46 + noise; b = 0.44 + noise
+      } else {
+        // 市街地（濃いグレー・アスファルト）
+        const baseGrey = 0.38 + noise + gridNoise
+        r = baseGrey + 0.02
+        g = baseGrey
+        b = baseGrey - 0.02
+
+        // 一部に公園の緑を散在（10%程度）
+        if ((Math.sin(x * 0.003) * Math.cos(z * 0.004)) > 0.88) {
+          r = 0.28 + noise; g = 0.42 + noise; b = 0.26 + noise
+        }
+      }
     } else {
-      r = 0.68 + freckles * 0.5; g = 0.60 + freckles * 0.5; b = 0.48  // 岩石
+      // ===== ORIGINAL MAP: 自然カラーリング =====
+      const freckles = (fbm(x * 0.018 + 7, z * 0.018 - 11, 3) - 0.5) * 0.14
+      const microNoise = (fbm(x * 0.08 + 13, z * 0.08 - 7, 2) - 0.5) * 0.06
+
+      if (y < WATER_LEVEL + 2.5) {
+        r = 0.64 + freckles; g = 0.56 + freckles * 0.6; b = 0.38
+      } else if (y < 50) {
+        r = 0.38 + freckles; g = 0.72 + freckles; b = 0.26
+      } else if (y < 120) {
+        r = 0.32 + freckles; g = 0.62 + freckles; b = 0.24
+      } else if (y < 280) {
+        r = 0.36 + freckles; g = 0.54 + freckles * 0.8; b = 0.22
+      } else if (y < 520) {
+        r = 0.48 + freckles; g = 0.44 + freckles; b = 0.28
+      } else {
+        r = 0.68 + freckles * 0.5; g = 0.60 + freckles * 0.5; b = 0.48
+      }
+
+      const gradX = terrainH(x + 18, z) - terrainH(x - 18, z)
+      const gradZ = terrainH(x, z + 18) - terrainH(x, z - 18)
+      const slope = clamp01(Math.hypot(gradX, gradZ) / 165)
+      const rock = clamp01(slope * 1.6 + smoothstep(380, 720, y) * 0.4)
+      r = THREE.MathUtils.lerp(r, 0.52 + freckles, rock)
+      g = THREE.MathUtils.lerp(g, 0.46 + freckles, rock)
+      b = THREE.MathUtils.lerp(b, 0.40 + freckles, rock)
+
+      const snow = smoothstep(880, 1150, y)
+      r = THREE.MathUtils.lerp(r, 0.95, snow)
+      g = THREE.MathUtils.lerp(g, 0.96, snow)
+      b = THREE.MathUtils.lerp(b, 0.98, snow)
+
+      r += microNoise; g += microNoise; b += microNoise
     }
 
-    // スロープで岩肌露出
-    const rock = clamp01(slope * 1.6 + smoothstep(380, 720, y) * 0.4)
-    r = THREE.MathUtils.lerp(r, 0.52 + freckles, rock)
-    g = THREE.MathUtils.lerp(g, 0.46 + freckles, rock)
-    b = THREE.MathUtils.lerp(b, 0.40 + freckles, rock)
-
-    // 雪頂
-    const snow = smoothstep(880, 1150, y)
-    r = THREE.MathUtils.lerp(r, 0.95, snow)
-    g = THREE.MathUtils.lerp(g, 0.96, snow)
-    b = THREE.MathUtils.lerp(b, 0.98, snow)
-
-    // 最終出力（マイクロノイズ追加）
-    tCol[i*3]   = clamp01(r + microNoise)
-    tCol[i*3+1] = clamp01(g + microNoise)
-    tCol[i*3+2] = clamp01(b + microNoise)
+    tCol[i*3]   = clamp01(r)
+    tCol[i*3+1] = clamp01(g)
+    tCol[i*3+2] = clamp01(b)
   }
+
   terrainGeo.setAttribute('color', new THREE.BufferAttribute(tCol, 3))
   terrainGeo.computeVertexNormals()
   const mesh = new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({
@@ -1460,11 +1474,13 @@ function fireGun() {
     bullets.push({ mesh, vel: aimDir.clone().multiplyScalar(230), life: 1.8 })
   }
   if (gunSoundCooldown <= 0) { playGunSound(); gunSoundCooldown = 0.06 }
-  // 砲口フラッシュ
-  const mFlash = new THREE.PointLight(0xffee00, 10, 30)
-  mFlash.position.copy(player.position).add(new THREE.Vector3(0, 0, -3.5).applyQuaternion(player.quaternion))
-  scene.add(mFlash)
-  setTimeout(() => scene.remove(mFlash), 55)
+  // 砲口フラッシュ（パフォーマンス最適化：2発に1回のみ表示）
+  if (Math.random() < 0.5) {
+    const mFlash = new THREE.PointLight(0xffee00, 6, 20)  // 強度10→6、範囲30→20に削減
+    mFlash.position.copy(player.position).add(new THREE.Vector3(0, 0, -3.5).applyQuaternion(player.quaternion))
+    scene.add(mFlash)
+    setTimeout(() => scene.remove(mFlash), 40)  // 表示時間55ms→40msに短縮
+  }
 }
 
 function firePlayerMissile() {
@@ -1485,7 +1501,7 @@ function firePlayerMissile() {
   mesh.position.copy(player.position).add(new THREE.Vector3(0, -0.5, 2).applyQuaternion(player.quaternion))
   mesh.quaternion.copy(player.quaternion)
   scene.add(mesh)
-  const mLight = new THREE.PointLight(0xff8800, 6, 55)
+  const mLight = new THREE.PointLight(0xff8800, 4, 30)  // 強度6→4、範囲55→30に削減
   mLight.position.copy(mesh.position)
   scene.add(mLight)
   playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(80), life: 12, target, diverted: false, spd: 95, turnRate: 1.8, light: mLight })
@@ -2624,7 +2640,7 @@ function buildTokyoLandmarks() {
 
   if (availableGLBs.length > 0) {
     // 新宿西口超高層ビル街（原点周辺、西側）
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 20; i++) {  // 50→20に削減
       const x = -150 + (Math.random() - 0.5) * 300
       const z = -100 + (Math.random() - 0.5) * 200
       const y = tokyoTerrainH(x, z)
@@ -2639,7 +2655,7 @@ function buildTokyoLandmarks() {
     }
 
     // 新宿東口・歌舞伎町（原点の東側）
-    for (let i = 0; i < 35; i++) {
+    for (let i = 0; i < 12; i++) {  // 35→12に削減
       const x = 50 + (Math.random() - 0.5) * 200
       const z = -50 + (Math.random() - 0.5) * 250
       const y = tokyoTerrainH(x, z)
@@ -2654,7 +2670,7 @@ function buildTokyoLandmarks() {
     }
 
     // 渋谷エリア（南西）
-    for (let i = 0; i < 45; i++) {
+    for (let i = 0; i < 15; i++) {  // 45→15に削減
       const x = -250 + (Math.random() - 0.5) * 300
       const z = 350 + (Math.random() - 0.5) * 300
       const y = tokyoTerrainH(x, z)
@@ -2669,7 +2685,7 @@ function buildTokyoLandmarks() {
     }
 
     // 六本木・赤坂エリア（南東）
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 12; i++) {  // 40→12に削減
       const x = 200 + (Math.random() - 0.5) * 400
       const z = 500 + (Math.random() - 0.5) * 400
       const y = tokyoTerrainH(x, z)
@@ -2684,7 +2700,7 @@ function buildTokyoLandmarks() {
     }
 
     // 皇居周辺・丸の内オフィス街（南）
-    for (let i = 0; i < 35; i++) {
+    for (let i = 0; i < 10; i++) {  // 35→10に削減
       const x = -200 + (Math.random() - 0.5) * 400
       const z = -200 + (Math.random() - 0.5) * 300
       const y = tokyoTerrainH(x, z)
@@ -2699,7 +2715,7 @@ function buildTokyoLandmarks() {
     }
 
     // 上野・秋葉原エリア（北東）
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 8; i++) {  // 30→8に削減
       const x = 200 + (Math.random() - 0.5) * 400
       const z = -600 + (Math.random() - 0.5) * 400
       const y = tokyoTerrainH(x, z)
@@ -2714,7 +2730,7 @@ function buildTokyoLandmarks() {
     }
 
     // 押上・スカイツリー周辺（東）
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 8; i++) {  // 25→8に削減
       const x = 1200 + (Math.random() - 0.5) * 300
       const z = -100 + (Math.random() - 0.5) * 300
       const y = tokyoTerrainH(x, z)
@@ -2729,7 +2745,7 @@ function buildTokyoLandmarks() {
     }
 
     // お台場・臨海副都心（南東、湾岸）
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 5; i++) {  // 20→5に削減
       const x = 600 + (Math.random() - 0.5) * 400
       const z = 1200 + (Math.random() - 0.5) * 400
       const y = tokyoTerrainH(x, z)
@@ -2872,7 +2888,7 @@ function updateHoming(m: HomingMissile, dt: number) {
 // ===== EXPLOSIONS =====
 function createExplosion(pos: THREE.Vector3, scale = 1.0) {
   const particles: Array<{ mesh: THREE.Mesh; vel: THREE.Vector3 }> = []
-  const count = Math.floor(10 + scale * 8)
+  const count = Math.floor(6 + scale * 4)  // パーティクル数を半分に削減
   for (let i = 0; i < count; i++) {
     const core = i < count * 0.5
     const mat = new THREE.MeshStandardMaterial({
@@ -2880,17 +2896,17 @@ function createExplosion(pos: THREE.Vector3, scale = 1.0) {
       emissive: core ? 0xff2200 : 0xff8800,
       emissiveIntensity: 4.0, roughness: 0.8, transparent: true, opacity: 1
     })
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry((0.2 + Math.random() * 0.6) * scale, 5, 5), mat)
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry((0.3 + Math.random() * 0.7) * scale, 4, 4), mat)  // ジオメトリ解像度5→4
     mesh.position.copy(pos)
     scene.add(mesh)
     particles.push({ mesh, vel: new THREE.Vector3((Math.random() - 0.5) * 28 * scale, Math.random() * 18 * scale, (Math.random() - 0.5) * 28 * scale) })
   }
   // Flash point light at explosion
-  const flash = new THREE.PointLight(0xff6600, 8 * scale, 60)
+  const flash = new THREE.PointLight(0xff6600, 6 * scale, 40)  // 強度8→6、範囲60→40に削減
   flash.position.copy(pos)
   scene.add(flash)
-  setTimeout(() => scene.remove(flash), 200)
-  explosions.push({ particles, life: 1.3 })
+  setTimeout(() => scene.remove(flash), 150)  // 表示時間200ms→150msに短縮
+  explosions.push({ particles, life: 1.1 })  // ライフタイム1.3→1.1に短縮
 }
 
 // ===== UPDATE =====
