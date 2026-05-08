@@ -5,7 +5,7 @@ import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.
 import { TokyoMapSystem } from './tokyoMapSystem'
 
 // ===== VERSION =====
-const VERSION = '3.0.0'
+const VERSION = '3.1.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -509,6 +509,7 @@ function generateTerrainMesh(): THREE.Mesh {
   }
 }
 
+// 初期化時はプレースホルダー地形（後で差し替え）
 let ground = generateTerrainMesh()
 scene.add(ground)
 
@@ -1321,7 +1322,7 @@ function playExplosionSound(scale = 1.0) {
 // ===== GAME OBJECTS =====
 type GameMap = 'original' | 'tokyo'
 type GameMode = 'dogfight' | 'souryokusen' | 'free'
-let currentMap: GameMap = 'original'  // デフォルトMAP
+let currentMap: GameMap = 'tokyo'  // デフォルトMAP
 let currentMode: GameMode | null = null
 let isPaused = false  // ポーズ状態
 let tokyoMapSystem: TokyoMapSystem | null = null  // 東京MAPシステム（完全独立）
@@ -3709,4 +3710,21 @@ function loop() {
     renderer.render(scene, camera)
   }
 }
+
+// ===== 東京MAP初期化（非同期） =====
+;(async () => {
+  if (currentMap === 'tokyo') {
+    console.log('🗼 東京MAP初期化開始...')
+    tokyoMapSystem = new TokyoMapSystem(scene, gltfLoader)
+    await tokyoMapSystem.initialize()
+
+    // プレースホルダー地形を削除
+    scene.remove(ground)
+    ground.geometry.dispose()
+    ;(ground.material as THREE.Material).dispose()
+
+    console.log('✅ 東京MAP初期化完了')
+  }
+})()
+
 loop()
