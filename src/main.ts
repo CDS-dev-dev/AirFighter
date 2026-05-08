@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 
 // ===== VERSION =====
-const VERSION = '1.1.0'
+const VERSION = '1.2.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -164,64 +164,54 @@ function gauss2d(x: number, z: number, ax: number, az: number, rx: number, rz: n
 //    南  — 南山地 (350-650m) + 湾 + 半島
 //    ※ 山は高く、谷は深く、30秒飛ぶたびに景観が変わる
 // ═══════════════════════════════════════════════════════
-// Tokyo MAP用の地形関数（実際の東京の地形を再現）
+// Tokyo MAP用の地形関数（完全平坦な都市、OpenStreetMap参照）
 function tokyoTerrainH(x: number, z: number): number {
-  // 東京の地形：武蔵野台地（西）と下町低地（東）
-  // スケール: 1unit = 10m, 範囲: -3000〜3000 (60km四方)
+  // 完全平坦な都市地形（標高5-15m）
+  // スケール: 1unit = 10m, 新宿駅を原点(0,0)
+  // 範囲: -3000〜3000 (60km四方)
 
-  // ベース高度：西高東低
-  let h = 25 - (x / 3000) * 15  // 西40m → 東10m
+  let h = 10  // 基本標高10m（完全平坦）
 
-  // 武蔵野台地（西部、標高40-60m）
-  if (x < 0) {
-    h += 15 + Math.sin(x * 0.0003) * 8
+  // 隅田川（北から南へ、x=500±60m）
+  const toSumida = Math.abs(x - 500)
+  if (toSumida < 60 && Math.abs(z) < 2000) {
+    h = WATER_LEVEL - 2  // 川（水面下）
   }
 
-  // 隅田川（北から南へ流れる、x=400-600付近）
-  const sumidaDist = Math.abs(x - 500)
-  if (sumidaDist < 100 && z > -1500 && z < 1500) {
-    h -= smoothstep(100, 0, sumidaDist) * 20  // 川底まで下げる
+  // 荒川（東部、x=1200±80m）
+  const toArakawa = Math.abs(x - 1200)
+  if (toArakawa < 80 && z > -1500 && z < 1500) {
+    h = WATER_LEVEL - 2  // 川（水面下）
   }
 
-  // 荒川（東部、x=1200-1400付近）
-  const arakawaDist = Math.abs(x - 1300)
-  if (arakawaDist < 150 && z > -1000 && z < 1500) {
-    h -= smoothstep(150, 0, arakawaDist) * 18
+  // 多摩川（西部、z=1500±100m）
+  const toTamagawa = Math.abs(z - 1500)
+  if (toTamagawa < 100 && x > -1500 && x < 500) {
+    h = WATER_LEVEL - 2  // 川（水面下）
   }
 
-  // 東京湾（南東部、x>600, z>800）
-  if (x > 600 && z > 800) {
-    const bayDepth = smoothstep(0, 800, Math.hypot(x - 600, z - 800))
-    h -= bayDepth * 30
+  // 東京湾（南東、x>400 && z>1000）
+  if (x > 400 && z > 1000) {
+    const toBay = Math.min(x - 400, z - 1000)
+    if (toBay > 0) {
+      h = WATER_LEVEL - 5 - toBay * 0.01  // 湾（徐々に深く）
+    }
   }
 
-  // 皇居（緑地、x=-400付近、z=-200付近）
-  const palaceDist = Math.hypot(x + 400, z + 200)
-  if (palaceDist < 300) {
-    h += Math.sin((palaceDist / 300) * Math.PI) * 12  // 江戸城の丘
+  // 皇居（緑地、水濠あり、x=-200〜-600, z=-400〜0）
+  const palaceX = (x + 400)
+  const palaceZ = (z + 200)
+  if (Math.abs(palaceX) < 300 && Math.abs(palaceZ) < 300) {
+    // 皇居周辺の濠
+    const distFromCenter = Math.hypot(palaceX, palaceZ)
+    if (distFromCenter > 250 && distFromCenter < 300) {
+      h = WATER_LEVEL - 1  // 濠
+    } else {
+      h = 12  // 皇居内はわずかに高い
+    }
   }
 
-  // 上野の山（北部台地、x=-100, z=-800）
-  const uenoDist = Math.hypot(x + 100, z + 800)
-  if (uenoDist < 200) {
-    h += Math.sin((uenoDist / 200) * Math.PI) * 15
-  }
-
-  // 代々木公園（緑地、x=-800, z=-400）
-  const yoyogiDist = Math.hypot(x + 800, z + 400)
-  if (yoyogiDist < 250) {
-    h += Math.sin((yoyogiDist / 250) * Math.PI) * 8
-  }
-
-  // 下町低地（東部、低い土地）
-  if (x > 600) {
-    h -= 10
-  }
-
-  // 微細な起伏（道路・建物の基礎）
-  h += (fbm(x * 0.015, z * 0.015, 2) - 0.5) * 3
-
-  return Math.max(h, WATER_LEVEL)  // 水面以下にならない
+  return h
 }
 
 // MAP別地形関数の切り替え
@@ -405,26 +395,58 @@ function generateTerrainMesh(): THREE.Mesh {
     let r: number, g: number, b: number
 
     if (isTokyo) {
-      // ===== 東京MAP: 都市カラーリング（グレー・アスファルト基調） =====
-      const noise = (fbm(x * 0.02, z * 0.02, 2) - 0.5) * 0.08
-      const gridNoise = Math.sin(x * 0.01) * Math.sin(z * 0.01) * 0.03  // 都市グリッド感
+      // ===== 東京MAP: 完全都市カラーリング（OpenStreetMap参照） =====
+      const noise = (fbm(x * 0.03, z * 0.03, 2) - 0.5) * 0.05
 
       if (y < WATER_LEVEL) {
-        // 東京湾・川（青）
-        r = 0.18 + noise; g = 0.32 + noise; b = 0.48 + noise
-      } else if (y < WATER_LEVEL + 5) {
-        // 埋立地・河川敷（グレー）
-        r = 0.48 + noise; g = 0.46 + noise; b = 0.44 + noise
+        // 東京湾・川（濃い青）
+        r = 0.12 + noise; g = 0.25 + noise; b = 0.42 + noise
       } else {
-        // 市街地（濃いグレー・アスファルト）
-        const baseGrey = 0.38 + noise + gridNoise
-        r = baseGrey + 0.02
-        g = baseGrey
-        b = baseGrey - 0.02
+        // 道路グリッド（東京の実際の道路網を模倣）
+        const isMainRoad = (
+          // 環七通り（外環、x=-800）
+          (Math.abs(x + 800) < 15) ||
+          // 環八通り（x=-1200）
+          (Math.abs(x + 1200) < 15) ||
+          // 山手通り（内環、x=0）
+          (Math.abs(x) < 12) ||
+          // 中央通り・明治通り（z=0）
+          (Math.abs(z) < 12) ||
+          // 青山通り・国道246（z=200）
+          (Math.abs(z - 200) < 12) ||
+          // 靖国通り（z=-200）
+          (Math.abs(z + 200) < 12) ||
+          // 甲州街道（z=400）
+          (Math.abs(z - 400) < 12)
+        )
 
-        // 一部に公園の緑を散在（10%程度）
-        if ((Math.sin(x * 0.003) * Math.cos(z * 0.004)) > 0.88) {
-          r = 0.28 + noise; g = 0.42 + noise; b = 0.26 + noise
+        const isSubRoad = (
+          // 100mグリッド（細い道路）
+          (Math.abs(x % 100) < 4) || (Math.abs(z % 100) < 4)
+        )
+
+        // 皇居（大きな緑地、x=-400, z=-200）
+        const toPalace = Math.hypot(x + 400, z + 200)
+        const isPalace = toPalace < 280
+
+        // 公園（明治神宮、代々木、上野など）
+        const toMeiji = Math.hypot(x + 700, z + 50)
+        const toYoyogi = Math.hypot(x + 500, z + 150)
+        const toUeno = Math.hypot(x + 100, z + 800)
+        const isPark = (toMeiji < 150) || (toYoyogi < 100) || (toUeno < 120)
+
+        if (isPalace || isPark) {
+          // 公園・皇居（緑）
+          r = 0.22 + noise; g = 0.38 + noise; b = 0.20 + noise
+        } else if (isMainRoad) {
+          // 主要道路（濃いグレー）
+          r = 0.28 + noise; g = 0.27 + noise; b = 0.26 + noise
+        } else if (isSubRoad) {
+          // 細街路（薄いグレー）
+          r = 0.40 + noise; g = 0.39 + noise; b = 0.38 + noise
+        } else {
+          // ビル街・住宅地（コンクリート）
+          r = 0.52 + noise; g = 0.50 + noise; b = 0.48 + noise
         }
       }
     } else {
@@ -2674,7 +2696,7 @@ function buildTokyoLandmarks() {
 
   if (availableGLBs.length > 0) {
     // 新宿西口超高層ビル街（原点周辺、西側）
-    for (let i = 0; i < 20; i++) {  // 50→20に削減
+    for (let i = 0; i < 60; i++) {  // 超高層ビル密集地帯
       const x = -150 + (Math.random() - 0.5) * 300
       const z = -100 + (Math.random() - 0.5) * 200
       const y = tokyoTerrainH(x, z)
@@ -2689,7 +2711,7 @@ function buildTokyoLandmarks() {
     }
 
     // 新宿東口・歌舞伎町（原点の東側）
-    for (let i = 0; i < 12; i++) {  // 35→12に削減
+    for (let i = 0; i < 40; i++) {  // 歓楽街密集
       const x = 50 + (Math.random() - 0.5) * 200
       const z = -50 + (Math.random() - 0.5) * 250
       const y = tokyoTerrainH(x, z)
@@ -2704,7 +2726,7 @@ function buildTokyoLandmarks() {
     }
 
     // 渋谷エリア（南西）
-    for (let i = 0; i < 15; i++) {  // 45→15に削減
+    for (let i = 0; i < 50; i++) {  // 若者の街、ビル密集
       const x = -250 + (Math.random() - 0.5) * 300
       const z = 350 + (Math.random() - 0.5) * 300
       const y = tokyoTerrainH(x, z)
@@ -2719,7 +2741,7 @@ function buildTokyoLandmarks() {
     }
 
     // 六本木・赤坂エリア（南東）
-    for (let i = 0; i < 12; i++) {  // 40→12に削減
+    for (let i = 0; i < 45; i++) {  // 高級オフィス街
       const x = 200 + (Math.random() - 0.5) * 400
       const z = 500 + (Math.random() - 0.5) * 400
       const y = tokyoTerrainH(x, z)
@@ -2734,7 +2756,7 @@ function buildTokyoLandmarks() {
     }
 
     // 皇居周辺・丸の内オフィス街（南）
-    for (let i = 0; i < 10; i++) {  // 35→10に削減
+    for (let i = 0; i < 35; i++) {  // 大企業本社密集
       const x = -200 + (Math.random() - 0.5) * 400
       const z = -200 + (Math.random() - 0.5) * 300
       const y = tokyoTerrainH(x, z)
@@ -2749,7 +2771,7 @@ function buildTokyoLandmarks() {
     }
 
     // 上野・秋葉原エリア（北東）
-    for (let i = 0; i < 8; i++) {  // 30→8に削減
+    for (let i = 0; i < 30; i++) {  // 電気街・観光地
       const x = 200 + (Math.random() - 0.5) * 400
       const z = -600 + (Math.random() - 0.5) * 400
       const y = tokyoTerrainH(x, z)
@@ -2764,7 +2786,7 @@ function buildTokyoLandmarks() {
     }
 
     // 押上・スカイツリー周辺（東）
-    for (let i = 0; i < 8; i++) {  // 25→8に削減
+    for (let i = 0; i < 25; i++) {  // 下町エリア
       const x = 1200 + (Math.random() - 0.5) * 300
       const z = -100 + (Math.random() - 0.5) * 300
       const y = tokyoTerrainH(x, z)
@@ -2779,7 +2801,7 @@ function buildTokyoLandmarks() {
     }
 
     // お台場・臨海副都心（南東、湾岸）
-    for (let i = 0; i < 5; i++) {  // 20→5に削減
+    for (let i = 0; i < 20; i++) {  // 湾岸エリア
       const x = 600 + (Math.random() - 0.5) * 400
       const z = 1200 + (Math.random() - 0.5) * 400
       const y = tokyoTerrainH(x, z)
@@ -2789,6 +2811,26 @@ function buildTokyoLandmarks() {
       building.position.set(x, y, z)
       building.rotation.y = Math.random() * Math.PI * 2
       building.scale.setScalar(0.6 + Math.random() * 0.6)
+      scene.add(building)
+      tokyoObjects.push(building)
+    }
+
+    // 広域ビル群（23区全体に配置）
+    for (let i = 0; i < 150; i++) {
+      const x = (Math.random() - 0.5) * 4000  // -2000〜2000
+      const z = (Math.random() - 0.5) * 4000
+      const y = tokyoTerrainH(x, z)
+      if (y < WATER_LEVEL + 3) continue
+
+      // 皇居・公園エリアを避ける
+      const toPalace = Math.hypot(x + 400, z + 200)
+      if (toPalace < 300) continue
+
+      const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
+      const building = glb.clone()
+      building.position.set(x, y, z)
+      building.rotation.y = Math.random() * Math.PI * 2
+      building.scale.setScalar(0.4 + Math.random() * 0.5)  // 中〜低層ビル
       scene.add(building)
       tokyoObjects.push(building)
     }
