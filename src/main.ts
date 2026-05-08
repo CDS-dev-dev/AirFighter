@@ -1155,9 +1155,10 @@ renderer.domElement.addEventListener('mouseup', (e) => {
 })
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault())
 renderer.domElement.addEventListener('wheel', (e) => {
-  // ホイール前に回す（手前に回す） = deltaY < 0 → 加速
-  // ホイール後ろに回す（奥に回す） = deltaY > 0 → 減速
-  const delta = e.deltaY < 0 ? 5 : -5
+  // ホイール前（上スクロール）= deltaY < 0 → 加速にするため、正の値を加算
+  // ホイール後ろ（下スクロール）= deltaY > 0 → 減速にするため、負の値を加算
+  // deltaYの符号をそのまま使う（deltaY < 0なら負なので、-deltaYで正になる）
+  const delta = -e.deltaY * 0.05  // deltaYを反転して使用
   wheelSpeedTarget = Math.max(8, Math.min(90, wheelSpeedTarget + delta))
 }, { passive: true })
 
@@ -2676,8 +2677,13 @@ async function switchMap(map: GameMap) {
 
     console.log(`🗑️ 削除対象オブジェクト数: ${to_remove.length}個`)
 
+    // 削除するオブジェクトの名前をログ出力
+    const objectNames = to_remove.map(o => o.name || o.type).join(', ')
+    console.log(`🗑️ 削除対象: ${objectNames}`)
+
     // すべて削除してメモリ解放
     for (const obj of to_remove) {
+      console.log(`  - 削除: ${obj.name || obj.type}`)
       scene.remove(obj)
 
       // 再帰的にメモリ解放
@@ -2698,6 +2704,12 @@ async function switchMap(map: GameMap) {
     }
 
     console.log('✅ オリジナルMAP完全削除完了')
+
+    // 削除後のシーン確認
+    console.log('🔍 削除後のシーン内容:')
+    scene.children.forEach(obj => {
+      console.log(`  - 残存: ${obj.name || obj.type}`)
+    })
 
     // ステップ2: 東京MAPを初期化
     if (!tokyoMapSystem) {
