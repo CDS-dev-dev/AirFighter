@@ -386,6 +386,60 @@
       }
       .ms-adj:hover { background: rgba(50,90,180,0.8); }
 
+      /* ===== ポーズ画面 ===== */
+      #pause-screen {
+        position: fixed; inset: 0; z-index: 550;
+        background: rgba(0,8,20,0.92); backdrop-filter: blur(12px);
+        display: none; flex-direction: column; align-items: center; justify-content: center; gap: 24px;
+        padding: 40px 20px;
+      }
+      .pause-title {
+        font-size: 48px; font-weight: 100; letter-spacing: 14px;
+        color: #e8f4ff; text-shadow: 0 0 50px rgba(60,160,255,0.6);
+      }
+      .pause-controls {
+        display: grid; grid-template-columns: repeat(2, 1fr); gap: 30px;
+        max-width: 900px; width: 100%;
+      }
+      .ctrl-section {
+        background: rgba(8,22,48,0.7);
+        border: 1px solid rgba(60,140,255,0.25);
+        border-radius: 12px; padding: 20px;
+        color: #e8f4ff;
+      }
+      .ctrl-header {
+        font-size: 18px; font-weight: 700; letter-spacing: 2px;
+        margin-bottom: 16px; color: #4cf;
+        display: flex; align-items: center; gap: 10px;
+      }
+      .ctrl-icon { font-size: 24px; }
+      .ctrl-list { display: flex; flex-direction: column; gap: 10px; }
+      .ctrl-item {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 12px; background: rgba(10,20,40,0.5);
+        border-radius: 6px; font-size: 12px;
+      }
+      .ctrl-key {
+        background: rgba(60,140,255,0.25);
+        border: 1px solid rgba(80,170,255,0.4);
+        border-radius: 4px; padding: 4px 10px;
+        font-family: monospace; font-weight: 700;
+        color: #8cf; min-width: 80px; text-align: center;
+      }
+      .ctrl-action { color: rgba(200,235,255,0.85); }
+      .pause-resume {
+        margin-top: 10px; padding: 14px 36px;
+        background: rgba(20,60,140,0.8); border: 1px solid rgba(60,140,255,0.5);
+        border-radius: 10px; color: #e8f4ff; font-size: 14px; letter-spacing: 4px;
+        cursor: pointer; font-family: 'Segoe UI', system-ui;
+        transition: background 0.15s, transform 0.1s;
+      }
+      .pause-resume:hover { background: rgba(30,80,180,0.9); transform: scale(1.05); }
+      @media (pointer: coarse) {
+        .pause-controls { grid-template-columns: 1fr; gap: 20px; }
+        .pause-title { font-size: 32px; letter-spacing: 8px; }
+      }
+
       /* ===== ミッション完了 ===== */
       #mission-complete {
         position: fixed; inset: 0; z-index: 400;
@@ -561,6 +615,105 @@
     <div id="supply-indicator">RESUPPLY</div>
     <!-- リスポーン演出 -->
     <div id="respawn-overlay"><div id="respawn-countdown">DESTROYED<br><span id="respawn-count">3</span></div></div>
+
+    <!-- ポーズ画面 -->
+    <div id="pause-screen">
+      <div class="pause-title">PAUSED</div>
+      <div class="pause-controls">
+        <!-- PC操作 -->
+        <div class="ctrl-section">
+          <div class="ctrl-header">
+            <span class="ctrl-icon">🖱️</span>
+            <span>PC Controls</span>
+          </div>
+          <div class="ctrl-list">
+            <div class="ctrl-item">
+              <span class="ctrl-key">Mouse Move</span>
+              <span class="ctrl-action">機体操縦（上下左右）</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">W / S</span>
+              <span class="ctrl-action">ピッチ（上昇/降下）</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">← / →</span>
+              <span class="ctrl-action">ヨー（左右旋回）</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">Space</span>
+              <span class="ctrl-action">ブースト</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">Space ×2</span>
+              <span class="ctrl-action">エアブレーキ</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">Scroll</span>
+              <span class="ctrl-action">速度調整</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">Z / A / Q</span>
+              <span class="ctrl-action">機銃発射</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">X / Left Click</span>
+              <span class="ctrl-action">ミサイル発射</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">Right Click</span>
+              <span class="ctrl-action">ロックオン切替</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">C</span>
+              <span class="ctrl-action">フレア×3</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">P / Esc</span>
+              <span class="ctrl-action">ポーズ</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- スマホ操作 -->
+        <div class="ctrl-section">
+          <div class="ctrl-header">
+            <span class="ctrl-icon">📱</span>
+            <span>Mobile Controls</span>
+          </div>
+          <div class="ctrl-list">
+            <div class="ctrl-item">
+              <span class="ctrl-key">左半分ドラッグ</span>
+              <span class="ctrl-action">機体操縦（ジョイスティック）</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">BOOST ボタン</span>
+              <span class="ctrl-action">ブースト（右下）</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">LOCK ボタン</span>
+              <span class="ctrl-action">ロックオン切替（右上）</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">GUN ボタン</span>
+              <span class="ctrl-action">機銃発射</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">MSL ボタン</span>
+              <span class="ctrl-action">ミサイル発射</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">FLR ボタン</span>
+              <span class="ctrl-action">フレア×3</span>
+            </div>
+            <div class="ctrl-item">
+              <span class="ctrl-key">Tips</span>
+              <span class="ctrl-action">横画面推奨</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="pause-resume" id="pause-resume">RESUME (P)</button>
+    </div>
 
     <!-- MAP選択 -->
     <div id="map-screen">
