@@ -1118,11 +1118,11 @@ player.position.set(0, terrainH(0, 0) + 150, 0)  // 初期位置を高く（90�
 scene.add(player)
 let cameraOffset = new THREE.Vector3(0, 5, 20)
 const camQuat = new THREE.Quaternion()
-let speed = 200  // 初期速度 200 m/s（720 km/h）
+let speed = 150  // 初期速度 150 m/s（540 km/h）操作性向上のため低速化
 
 // ===== MOUSE / ADVANCED INPUT STATE =====
 const mouseState = { nx: 0, ny: 0, leftDown: false, leftHoldTime: 0 }
-let wheelSpeedTarget = 200  // 巡航速度 200 m/s
+let wheelSpeedTarget = 150  // 巡航速度 150 m/s（操作性向上）
 let camShakeAmt = 0
 let decelerateMode = false
 let lastSpaceTime = 0
@@ -1263,9 +1263,10 @@ let audioCtx: AudioContext | null = null
 let engineOsc: OscillatorNode | null = null
 let engineGain: GainNode | null = null
 let audioReady = false
+let audioEnabled = false  // デフォルトは消音
 
 function initAudio() {
-  if (audioReady) return
+  if (audioReady || !audioEnabled) return  // 音声無効時は初期化しない
   audioReady = true
   audioCtx = new AudioContext()
   const ctx = audioCtx
@@ -2826,6 +2827,26 @@ if (originalBtn) {
   console.error('❌ オリジナルMAPボタンが見つかりません')
 }
 
+// 音声設定ボタン
+const audioOffBtn = document.getElementById('audio-btn-off')
+const audioOnBtn = document.getElementById('audio-btn-on')
+
+if (audioOffBtn && audioOnBtn) {
+  audioOffBtn.addEventListener('click', () => {
+    audioEnabled = false
+    audioOffBtn.classList.add('active')
+    audioOnBtn.classList.remove('active')
+    console.log('🔇 音声OFF')
+  })
+
+  audioOnBtn.addEventListener('click', () => {
+    audioEnabled = true
+    audioOnBtn.classList.add('active')
+    audioOffBtn.classList.remove('active')
+    console.log('🔊 音声ON')
+  })
+}
+
 // モードボタンとbackボタンのイベント
 document.querySelectorAll<HTMLElement>('.ms-start').forEach(btn => {
   btn.addEventListener('click', () => startGame(btn.dataset.mode as GameMode))
@@ -3548,7 +3569,7 @@ function loop() {
   const boost = (!!keys['Space'] || touchState.boost) && !decelerateMode
   const boostTarget = decelerateMode ? 50 : (boost ? 550 : wheelSpeedTarget)  // 減速50m/s、ブースト550m/s（1,980km/h）
   speed += (boostTarget - speed) * dt * 2.2
-  if (!boost && !decelerateMode) wheelSpeedTarget += (200 - wheelSpeedTarget) * dt * 0.4  // 巡航速度に自動復帰
+  if (!boost && !decelerateMode) wheelSpeedTarget += (150 - wheelSpeedTarget) * dt * 0.4  // 巡航速度150に自動復帰
 
   // === MOUSE HOLD TIMER ===
   if (mouseState.leftDown) mouseState.leftHoldTime += dt
