@@ -5,7 +5,7 @@ import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.
 import { TokyoMapSystem } from './tokyoMapSystem'
 
 // ===== VERSION =====
-const VERSION = '3.3.0'
+const VERSION = '3.3.1'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -2622,12 +2622,47 @@ async function switchMap(map: GameMap) {
     // ===== 東京MAP（最小限バージョン）=====
     console.log('🗺️ 東京MAPに切り替え（最小限バージョン）')
 
-    // 既存のオリジナルMAPをクリーンアップ
+    // 既存のオリジナルMAPの地形を削除
     if (ground) {
       scene.remove(ground)
       ground.geometry.dispose()
       ;(ground.material as THREE.Material).dispose()
+      console.log('🗑️ オリジナル地形削除')
     }
+
+    // オリジナルマップの全構造物を削除
+    const objectsToRemove: THREE.Object3D[] = []
+    scene.traverse((obj) => {
+      // オリジナルマップのオブジェクトを識別
+      if (obj.name && (
+        obj.name.includes('Bridge') ||
+        obj.name.includes('Base') ||
+        obj.name.includes('Port') ||
+        obj.name.includes('Dam') ||
+        obj.name.includes('City') ||
+        obj.name.includes('Radar') ||
+        obj.name.includes('Defense') ||
+        obj.name.includes('Boulder') ||
+        obj.name.includes('Rock') ||
+        obj.name.includes('Pillar') ||
+        obj.name.includes('Arch') ||
+        obj.parent === originalMapGroup
+      )) {
+        objectsToRemove.push(obj)
+      }
+    })
+    objectsToRemove.forEach(obj => {
+      if (obj.parent) obj.parent.remove(obj)
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry?.dispose()
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach(mat => mat.dispose())
+        } else {
+          obj.material?.dispose()
+        }
+      }
+    })
+    console.log(`🗑️ オリジナル構造物削除: ${objectsToRemove.length}個`)
 
     // 東京MAPシステムを初期化
     if (!tokyoMapSystem) {
