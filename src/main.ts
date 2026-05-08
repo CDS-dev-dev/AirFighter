@@ -910,9 +910,19 @@ scene.add(new THREE.Points(trailGeo, new THREE.PointsMaterial({
 const player = createAircraft(0x2255cc, 0x112244)
 player.position.set(0, terrainH(0, 0) + 90, 0)
 scene.add(player)
-const cameraOffset = new THREE.Vector3(0, 5, 20)
+let cameraOffset = new THREE.Vector3(0, 5, 20)
 const camQuat = new THREE.Quaternion()
 let speed = 30
+
+// ===== MOUSE / ADVANCED INPUT STATE =====
+const mouseState = { nx: 0, ny: 0, leftDown: false, leftHoldTime: 0 }
+let wheelSpeedTarget = 30
+let camShakeAmt = 0
+let decelerateMode = false
+let lastSpaceTime = 0
+const multiLockTargets: Enemy[] = []
+let flareBurstLeft = 0
+let flareBurstTimer = 0
 
 // ===== INPUT =====
 const keys: Record<string, boolean> = {}
@@ -923,6 +933,31 @@ window.addEventListener('keydown', e => {
   keys[e.code] = true
 })
 window.addEventListener('keyup', e => { keys[e.code] = false })
+
+// ===== MOUSE CONTROLS =====
+renderer.domElement.addEventListener('mousemove', (e) => {
+  const { w, h } = getEffectiveSize()
+  mouseState.nx = (e.clientX / w - 0.5) * 2
+  mouseState.ny = (e.clientY / h - 0.5) * 2
+})
+renderer.domElement.addEventListener('mousedown', (e) => {
+  if (e.button === 0) { mouseState.leftDown = true; mouseState.leftHoldTime = 0 }
+  if (e.button === 2) handleRightLock()
+})
+renderer.domElement.addEventListener('mouseup', (e) => {
+  if (e.button === 0) {
+    if (currentMode && !missionComplete) {
+      if (mouseState.leftHoldTime < 0.5) firePlayerMissile()
+      else handleLeftRelease(mouseState.leftHoldTime)
+    }
+    mouseState.leftDown = false; mouseState.leftHoldTime = 0
+  }
+})
+renderer.domElement.addEventListener('contextmenu', e => e.preventDefault())
+renderer.domElement.addEventListener('wheel', (e) => {
+  const delta = e.deltaY > 0 ? -5 : 5
+  wheelSpeedTarget = Math.max(8, Math.min(90, wheelSpeedTarget + delta))
+}, { passive: true })
 
 // ===== TOUCH INPUT =====
 const touchState = {
@@ -1181,8 +1216,11 @@ function fireAllyMissile(ally: Ally, target: Enemy) {
 }
 
 function killEnemy(ei: number) {
-  if (lockedEnemy === enemies[ei]) lockedEnemy = null
-  createExplosion(enemies[ei].group.position.clone(), 2.0)
+  const dead = enemies[ei]
+  if (lockedEnemy === dead) lockedEnemy = null
+  const mli = multiLockTargets.indexOf(dead)
+  if (mli !== -1) multiLockTargets.splice(mli, 1)
+  createExplosion(dead.group.position.clone(), 2.0)
   playExplosionSound(1.5)
   scene.remove(enemies[ei].group)
   enemies.splice(ei, 1)
@@ -1287,6 +1325,7 @@ function firePlayerMissile() {
   mLight.position.copy(mesh.position)
   scene.add(mLight)
   playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(80), life: 12, target, diverted: false, spd: 95, turnRate: 1.8, light: mLight })
+  camShakeAmt = Math.max(camShakeAmt, 0.22)
   playMissileSound()
 }
 
@@ -1306,20 +1345,71 @@ function fireEnemyMissile(enemy: Enemy) {
   enemyMissiles.push({ mesh, vel: toTarget.clone().multiplyScalar(65), life: 15, target, diverted: false, spd: 70, turnRate: 0.85, light: null })
 }
 
-function dropFlare() {
-  if (flareCooldown > 0 || flareAmmo <= 0) return
-  if (!audioReady) initAudio()
-  flareCooldown = 0.4; flareAmmo--
+function _dropSingleFlare() {
+  if (flareAmmo <= 0) return
+  flareAmmo--
   flareEl.textContent = flareAmmo.toString()
   updatePips(flarePips, flareAmmo, 'flare-on')
-  const mat = new THREE.MeshStandardMaterial({ color: 0xff6600, emissive: 0xff4400, emissiveIntensity: 6.0, roughness: 0.5 })
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.28, 7, 7), mat)
-  mesh.position.copy(player.position).add(new THREE.Vector3(0, 0, 3).applyQuaternion(player.quaternion))
+  const mat = new THREE.MeshStandardMaterial({ color: 0xff8800, emissive: 0xff5500, emissiveIntensity: 9.0, roughness: 0.4 })
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.32, 7, 7), mat)
+  mesh.position.copy(player.position).add(new THREE.Vector3((Math.random()-0.5)*1.5, -0.5, 2.5).applyQuaternion(player.quaternion))
   scene.add(mesh)
+  const fLight = new THREE.PointLight(0xff6600, 5, 18)
+  fLight.position.copy(mesh.position); scene.add(fLight)
+  setTimeout(() => scene.remove(fLight), 400)
   const backward = new THREE.Vector3(0, 0, 4).applyQuaternion(player.quaternion)
-  backward.add(new THREE.Vector3((Math.random()-0.5)*30, -4+Math.random()*8, (Math.random()-0.5)*30))
+  backward.add(new THREE.Vector3((Math.random()-0.5)*32, -5+Math.random()*10, (Math.random()-0.5)*32))
   flares.push({ mesh, vel: backward, life: 7.0 })
   playFlareSound()
+}
+
+function triggerFlareBurst() {
+  if (flareCooldown > 0 || flareAmmo <= 0) return
+  if (!audioReady) initAudio()
+  flareCooldown = 1.2
+  flareBurstLeft = Math.min(3, flareAmmo)
+  flareBurstTimer = 0
+}
+
+function handleRightLock() {
+  if (!currentMode || missionComplete) return
+  if (lockedEnemy) { lockedEnemy = null; return }
+  const fwdWorld = _fwd.clone().applyQuaternion(player.quaternion)
+  let best: Enemy | null = null, bestScore = -Infinity
+  for (const e of enemies) {
+    const toE = e.group.position.clone().sub(player.position)
+    const dist = toE.length()
+    if (dist > MISSILE_LOCK_RANGE * 1.2) continue
+    const dot = toE.normalize().dot(fwdWorld)
+    if (dot > 0.3) {
+      const sc = dot - dist / MISSILE_LOCK_RANGE * 0.25
+      if (sc > bestScore) { bestScore = sc; best = e }
+    }
+  }
+  lockedEnemy = best
+}
+
+function handleLeftRelease(holdTime: number) {
+  if (!currentMode || missionComplete) return
+  if (holdTime >= 2.0) {
+    // Multi-lock: add up to 4 enemies in front arc
+    multiLockTargets.length = 0
+    const fwdWorld = _fwd.clone().applyQuaternion(player.quaternion)
+    const sorted = enemies.slice().filter(e => {
+      const toE = e.group.position.clone().sub(player.position)
+      return toE.length() < MISSILE_LOCK_RANGE && toE.normalize().dot(fwdWorld) > 0.2
+    }).sort((a, b) => a.group.position.distanceTo(player.position) - b.group.position.distanceTo(player.position))
+    multiLockTargets.push(...sorted.slice(0, 4))
+    // Sequential fire
+    multiLockTargets.forEach((e, i) => {
+      setTimeout(() => {
+        if (missileAmmo > 0 && enemies.includes(e)) firePlayerMissile()
+      }, i * 320)
+    })
+  } else {
+    // Hold 0.5–2s = scan lock
+    handleRightLock()
+  }
 }
 
 // ===== GROUND TARGET MODELS =====
@@ -2420,6 +2510,7 @@ function checkCollisions() {
       if (invincibleTimer <= 0) {
         playerHP = Math.max(0, playerHP - 1)
         hitFlashTimer = 0.5
+        camShakeAmt = Math.max(camShakeAmt, 1.8)
         updateHPDisplay()
         if (playerHP <= 0) {
           // 即時リスポーンではなく3秒カウントダウン開始
@@ -2467,6 +2558,7 @@ const radarCanvas = document.getElementById('radar') as HTMLCanvasElement
 const radarCtx = radarCanvas.getContext('2d')!
 const overlayCanvas = document.getElementById('enemy-overlay') as HTMLCanvasElement
 const overlayCtx = overlayCanvas.getContext('2d')!
+const centerXhairEl = document.getElementById('center-xhair') as HTMLDivElement
 
 // ピップ初期化
 function initPips(el: HTMLElement, count: number, cls: string) {
@@ -2508,8 +2600,33 @@ function updateWarning() {
   }
 }
 
-// ミサイル射程内の敵に赤い[]ブラケットを表示
 const MISSILE_LOCK_RANGE = 750
+
+function _drawCornerBrackets(ctx: CanvasRenderingContext2D, sx: number, sy: number, SZ: number, ARM: number) {
+  for (const [cx2, cy2, dx, dy] of [
+    [sx - SZ, sy - SZ,  1,  1], [sx + SZ, sy - SZ, -1,  1],
+    [sx - SZ, sy + SZ,  1, -1], [sx + SZ, sy + SZ, -1, -1],
+  ] as [number, number, number, number][]) {
+    ctx.beginPath()
+    ctx.moveTo(cx2 + dx * ARM, cy2); ctx.lineTo(cx2, cy2); ctx.lineTo(cx2, cy2 + dy * ARM)
+    ctx.stroke()
+  }
+}
+
+function _drawOffscreenArrow(ctx: CanvasRenderingContext2D, worldPos: THREE.Vector3, w: number, h: number) {
+  const toTarget = worldPos.clone().sub(camera.position)
+  const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion)
+  const camUp    = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion)
+  const angle = Math.atan2(-toTarget.dot(camUp), toTarget.dot(camRight))
+  const margin = 32
+  const cx = w / 2 + Math.cos(angle) * (w / 2 - margin)
+  const cy = h / 2 + Math.sin(angle) * (h / 2 - margin)
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(angle)
+  ctx.fillStyle = 'rgba(255,80,80,0.9)'
+  ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-6, -7); ctx.lineTo(-6, 7); ctx.closePath(); ctx.fill()
+  ctx.restore()
+}
+
 function drawEnemyBrackets() {
   const { w, h } = getEffectiveSize()
   if (overlayCanvas.width !== w || overlayCanvas.height !== h) {
@@ -2519,59 +2636,91 @@ function drawEnemyBrackets() {
   ctx.clearRect(0, 0, w, h)
   if (!currentMode) return
 
+  const t = Date.now()
   const camFwd = _fwd.clone().applyQuaternion(camera.quaternion)
+  const playerFwd = _fwd.clone().applyQuaternion(player.quaternion)
 
   function projectToScreen(pos: THREE.Vector3): [number, number, boolean] {
     const toPos = pos.clone().sub(camera.position)
-    if (toPos.dot(camFwd) < 0) return [0, 0, false]  // behind camera
+    if (toPos.dot(camFwd) < 0) return [0, 0, false]
     const ndc = pos.clone().project(camera)
     return [(ndc.x + 1) / 2 * w, (-ndc.y + 1) / 2 * h, true]
   }
 
-  const allTargets: { pos: THREE.Vector3; isGround: boolean; label: string }[] = []
-
-  // 飛行機の敵
+  // Air enemies
   for (const e of enemies) {
     const dist = e.group.position.distanceTo(player.position)
-    if (dist < MISSILE_LOCK_RANGE) allTargets.push({ pos: e.group.position, isGround: false, label: `${Math.round(dist)}m` })
+    const [sx, sy, vis] = projectToScreen(e.group.position)
+    const isLocked = e === lockedEnemy
+    const isMulti  = multiLockTargets.includes(e)
+    const inRange  = dist < MISSILE_LOCK_RANGE
+    const toE = e.group.position.clone().sub(player.position)
+    const frontDot = toE.normalize().dot(playerFwd)
+
+    if (!vis) {
+      if (isLocked) _drawOffscreenArrow(ctx, e.group.position, w, h)
+      continue
+    }
+
+    if (isLocked || isMulti) {
+      const pulse = 0.65 + 0.35 * Math.sin(t * 0.007)
+      const r = isMulti && !isLocked ? 22 : 28
+      const col = isMulti ? `rgba(255,200,50,${pulse})` : `rgba(255,70,70,${pulse})`
+      ctx.strokeStyle = col; ctx.lineWidth = 2
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.stroke()
+      ctx.strokeStyle = col.replace(/[\d.]+\)$/, `${pulse * 0.5})`); ctx.lineWidth = 1
+      ctx.beginPath(); ctx.arc(sx, sy, r * 0.65, 0, Math.PI * 2); ctx.stroke()
+      ctx.fillStyle = col; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center'
+      if (isMulti && !isLocked) {
+        ctx.fillText(`[${multiLockTargets.indexOf(e) + 1}]`, sx, sy - r - 5)
+      } else {
+        ctx.fillText('LOCKED', sx, sy + r + 14)
+      }
+      ctx.fillText(`${Math.round(dist)}m`, sx, sy + r + 24)
+      if (!inRange) {
+        ctx.fillStyle = 'rgba(255,80,80,0.9)'
+        ctx.font = '8px monospace'
+        ctx.fillText('OUT OF RANGE', sx, sy - r - 8)
+      }
+    } else if (inRange && frontDot > 0.25) {
+      // Lockable: rotating dashed ring + corner brackets
+      const spin = t * 0.0022
+      const r = 22
+      ctx.strokeStyle = 'rgba(255,210,60,0.8)'; ctx.lineWidth = 1.2
+      for (let i = 0; i < 4; i++) {
+        const a0 = spin + (i / 4) * Math.PI * 2
+        ctx.beginPath(); ctx.arc(sx, sy, r, a0, a0 + Math.PI * 0.42); ctx.stroke()
+      }
+      ctx.strokeStyle = 'rgba(255,210,60,0.55)'
+      _drawCornerBrackets(ctx, sx, sy, 16, 6)
+      ctx.fillStyle = 'rgba(255,210,60,0.8)'; ctx.font = '8px monospace'; ctx.textAlign = 'center'
+      ctx.fillText(`${Math.round(dist)}m`, sx, sy + 16 + 13)
+    } else {
+      // Out of range or behind: dim brackets
+      ctx.strokeStyle = 'rgba(200,70,70,0.35)'; ctx.lineWidth = 1
+      _drawCornerBrackets(ctx, sx, sy, 16, 5)
+      if (!inRange) {
+        ctx.fillStyle = 'rgba(200,70,70,0.5)'; ctx.font = '7px monospace'; ctx.textAlign = 'center'
+        ctx.fillText(`${Math.round(dist)}m`, sx, sy + 16 + 11)
+      }
+    }
   }
-  // 地上目標（総力戦のみ）
+
+  // Ground targets (souryokusen)
   if (currentMode === 'souryokusen') {
     for (const gt of groundTargets) {
       const dist = gt.group.position.distanceTo(player.position)
-      if (dist < MISSILE_LOCK_RANGE) allTargets.push({ pos: gt.group.position, isGround: true, label: `${Math.round(dist)}m` })
+      if (dist > MISSILE_LOCK_RANGE * 1.4) continue
+      const [sx, sy, vis] = projectToScreen(gt.group.position)
+      if (!vis) continue
+      const inR = dist < MISSILE_LOCK_RANGE
+      ctx.strokeStyle = inR ? 'rgba(255,155,40,0.9)' : 'rgba(200,120,40,0.35)'
+      ctx.lineWidth = inR ? 1.5 : 1
+      _drawCornerBrackets(ctx, sx, sy, 18, 6)
+      ctx.fillStyle = inR ? 'rgba(255,175,60,0.9)' : 'rgba(180,120,50,0.45)'
+      ctx.font = '8px monospace'; ctx.textAlign = 'center'
+      ctx.fillText(`${Math.round(dist)}m`, sx, sy + 18 + 13)
     }
-  }
-
-  const SZ = 24  // bracket size
-  const ARM = 7  // bracket arm length
-  ctx.lineWidth = 1.5
-
-  for (const { pos, isGround, label } of allTargets) {
-    const [sx, sy, visible] = projectToScreen(pos)
-    if (!visible) continue
-
-    ctx.strokeStyle = isGround ? 'rgba(255,160,40,0.85)' : 'rgba(255,50,50,0.9)'
-    ctx.fillStyle   = isGround ? 'rgba(255,180,60,0.9)' : 'rgba(255,80,80,0.95)'
-
-    // Four corner brackets forming [ ]
-    for (const [cx2, cy2, dx, dy] of [
-      [sx - SZ, sy - SZ,  1,  1],
-      [sx + SZ, sy - SZ, -1,  1],
-      [sx - SZ, sy + SZ,  1, -1],
-      [sx + SZ, sy + SZ, -1, -1],
-    ] as [number, number, number, number][]) {
-      ctx.beginPath()
-      ctx.moveTo(cx2 + dx * ARM, cy2)
-      ctx.lineTo(cx2, cy2)
-      ctx.lineTo(cx2, cy2 + dy * ARM)
-      ctx.stroke()
-    }
-
-    // Distance label
-    ctx.font = '9px monospace'
-    ctx.textAlign = 'center'
-    ctx.fillText(label, sx, sy + SZ + 14)
   }
 }
 
@@ -2739,32 +2888,53 @@ function loop() {
   const dt = Math.min((now - last) / 1000, 0.05)
   last = now
 
-  const boost = !!keys['Space'] || touchState.boost
-  speed += ((boost ? 58 : 30) - speed) * dt * 2
+  // === SPEED CONTROL ===
+  if (keysJustPressed.has('Space')) {
+    const now2 = performance.now()
+    decelerateMode = (now2 - lastSpaceTime < 400) ? !decelerateMode : false
+    lastSpaceTime = now2
+  }
+  const boost = (!!keys['Space'] || touchState.boost) && !decelerateMode
+  const boostTarget = decelerateMode ? 8 : (boost ? 75 : wheelSpeedTarget)
+  speed += (boostTarget - speed) * dt * 2.2
+  if (!boost && !decelerateMode) wheelSpeedTarget += (30 - wheelSpeedTarget) * dt * 0.4
 
-  const keyPitch = (keys['KeyS'] || keys['ArrowDown'] ? 1 : 0) - (keys['KeyW'] || keys['ArrowUp'] ? 1 : 0)
-  const keyYaw   = (keys['KeyD'] || keys['ArrowRight'] ? 1 : 0) - (keys['KeyA'] || keys['ArrowLeft'] ? 1 : 0)
+  // === MOUSE HOLD TIMER ===
+  if (mouseState.leftDown) mouseState.leftHoldTime += dt
+
+  // === FLARE BURST TIMER ===
+  if (flareBurstLeft > 0) {
+    flareBurstTimer -= dt
+    if (flareBurstTimer <= 0) { _dropSingleFlare(); flareBurstLeft--; flareBurstTimer = 0.18 }
+  }
+
+  // === FLIGHT INPUT ===
+  const DEAD = 0.04
+  const rawMX = Math.abs(mouseState.nx) > DEAD ? mouseState.nx : 0
+  const rawMY = Math.abs(mouseState.ny) > DEAD ? mouseState.ny : 0
+  const mousePitch = Math.sign(rawMY) * rawMY * rawMY * 1.4
+  const mouseYaw   = Math.sign(rawMX) * rawMX * rawMX * 1.1
+  const keyPitch = (keys['KeyS'] || keys['ArrowDown']  ? 1 : 0) - (keys['KeyW'] || keys['ArrowUp'] ? 1 : 0)
+  const keyYaw   = (keys['ArrowRight'] ? 1 : 0) - (keys['ArrowLeft'] ? 1 : 0)
   const tPitch = Math.abs(touchState.pitch) > 0.08 ? touchState.pitch : 0
   const tYaw   = Math.abs(touchState.yaw)   > 0.08 ? touchState.yaw   : 0
-  const pitchInput = keyPitch || tPitch
-  const rollInput  = keyYaw   || tYaw
+  const pitchInput = keyPitch !== 0 ? keyPitch : (tPitch !== 0 ? tPitch : mousePitch)
+  const yawInput   = keyYaw   !== 0 ? keyYaw   : (tYaw   !== 0 ? tYaw   : mouseYaw)
 
-  // ピッチ：機体ローカル軸で前後（旋回能力を抑えて位置取り重視）
+  // === FLIGHT PHYSICS ===
   if (pitchInput !== 0)
     player.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(
       new THREE.Vector3(1, 0, 0), pitchInput * 1.9 * dt))
-
-  // ヨー：世界Y軸基準（旋回能力を抑えて位置取り重視）
-  if (rollInput !== 0)
+  if (yawInput !== 0)
     player.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 1, 0), -rollInput * 1.5 * dt))
+      new THREE.Vector3(0, 1, 0), -yawInput * 1.5 * dt))
 
-  // ロール自動水平復帰：ピッチ入力中はループを妨げないよう無効化
-  if (pitchInput === 0) {
-    const _euler = new THREE.Euler().setFromQuaternion(player.quaternion, 'YXZ')
-    _euler.z *= 0.82
-    player.quaternion.setFromEuler(_euler)
-  }
+  // バンキング: ヨー入力 → ロール（自然なバンク旋回）+ 自動水平復帰
+  const _bEuler = new THREE.Euler().setFromQuaternion(player.quaternion, 'YXZ')
+  const targetBankZ = -yawInput * 0.72
+  _bEuler.z += (targetBankZ - _bEuler.z) * dt * 5
+  if (pitchInput === 0 && Math.abs(yawInput) < 0.05) _bEuler.z *= 0.88
+  player.quaternion.setFromEuler(_bEuler)
   player.quaternion.normalize()
 
   player.position.addScaledVector(_fwd.clone().applyQuaternion(player.quaternion), speed * dt)
@@ -2782,9 +2952,9 @@ function loop() {
   if (currentMode !== null && !missionComplete) {
     if (keysJustPressed.has('Tab') || touchState.lockPressed) cycleLock()
     if (keysJustPressed.has('Escape')) lockedEnemy = null
-    if (keys['KeyZ'] || touchState.gun) fireGun()
+    if (keys['KeyZ'] || keys['KeyA'] || keys['KeyQ'] || touchState.gun) fireGun()
     if (keysJustPressed.has('KeyX') || touchState.missilePressed) firePlayerMissile()
-    if (keys['KeyC'] || touchState.flarePressed) dropFlare()
+    if (keysJustPressed.has('KeyC') || touchState.flarePressed) triggerFlareBurst()
   }
   keysJustPressed.clear()
   touchState.missilePressed = false
@@ -2840,7 +3010,15 @@ function loop() {
   respawnOverlay.style.opacity = respawnFlash.toString()
 
   // Camera – quaternion slerp でジンバルロック解消
-  const desiredCamPos = cameraOffset.clone().applyQuaternion(player.quaternion).add(player.position)
+  // 速度連動プルバック
+  const targetCamZ = 18 + (speed / 75) * 14
+  cameraOffset.z += (targetCamZ - cameraOffset.z) * dt * 3
+  // カメラシェイク
+  camShakeAmt *= Math.exp(-dt * 8)
+  const _sk = camShakeAmt
+  const desiredCamPos = cameraOffset.clone().applyQuaternion(player.quaternion)
+    .add(player.position)
+    .add(new THREE.Vector3((Math.random() - 0.5) * _sk, (Math.random() - 0.5) * _sk, 0))
   camera.position.lerp(desiredCamPos, 0.12)
   const playerUp = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion)
   const lookM = new THREE.Matrix4().lookAt(camera.position, player.position, playerUp)
@@ -2850,9 +3028,10 @@ function loop() {
   camera.quaternion.copy(camQuat)
 
   // 速度によるFOV拡大
-  const targetFOV = 65 + (speed / 58) * 20 + (boost ? 6 : 0)
+  const targetFOV = 62 + (speed / 75) * 24 + (boost ? 6 : 0)
   camera.fov += (targetFOV - camera.fov) * dt * 4
   camera.updateProjectionMatrix()
+  centerXhairEl.style.display = (currentMode && !missionComplete) ? 'block' : 'none'
 
   if (audioReady) updateEngineSound(speed, boost)
 
