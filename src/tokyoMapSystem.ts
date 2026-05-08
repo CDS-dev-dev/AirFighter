@@ -403,11 +403,52 @@ export class TokyoMapSystem {
 
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
 
+    // プロシージャルグラウンドテクスチャ
+    const createGroundTexture = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 512
+      canvas.height = 512
+      const ctx = canvas.getContext('2d')!
+
+      // アスファルトのベース
+      ctx.fillStyle = '#4a4a4a'
+      ctx.fillRect(0, 0, 512, 512)
+
+      // ノイズでリアルな質感
+      for (let i = 0; i < 8000; i++) {
+        const x = Math.random() * 512
+        const y = Math.random() * 512
+        const brightness = Math.random() * 30 + 50
+        ctx.fillStyle = `rgba(${brightness}, ${brightness}, ${brightness}, 0.15)`
+        ctx.fillRect(x, y, 2, 2)
+      }
+
+      // 道路のひび割れ
+      for (let i = 0; i < 30; i++) {
+        const x1 = Math.random() * 512
+        const y1 = Math.random() * 512
+        const x2 = x1 + (Math.random() - 0.5) * 100
+        const y2 = y1 + (Math.random() - 0.5) * 100
+        ctx.strokeStyle = 'rgba(30, 30, 30, 0.3)'
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(x1, y1)
+        ctx.lineTo(x2, y2)
+        ctx.stroke()
+      }
+
+      const texture = new THREE.CanvasTexture(canvas)
+      texture.wrapS = texture.wrapT = THREE.RepeatWrapping
+      texture.repeat.set(50, 50)
+      return texture
+    }
+
     const material = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.85,
-      metalness: 0.05,
-      envMapIntensity: 0.3
+      map: createGroundTexture(),
+      roughness: 0.95,
+      metalness: 0.02,
+      envMapIntensity: 0.2
     })
 
     this.terrainMesh = new THREE.Mesh(geometry, material)
@@ -581,35 +622,102 @@ export class TokyoMapSystem {
   }
 
   /**
-   * ビルマテリアル群を生成
+   * ビルマテリアル群を生成（リアルなテクスチャ）
    */
   private createBuildingMaterials(): THREE.Material[] {
+    // プロシージャルテクスチャ生成（窓パターン）
+    const createWindowTexture = (windowColor: number, wallColor: number) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 256
+      canvas.height = 256
+      const ctx = canvas.getContext('2d')!
+
+      // 壁の基本色
+      ctx.fillStyle = `#${wallColor.toString(16).padStart(6, '0')}`
+      ctx.fillRect(0, 0, 256, 256)
+
+      // 窓のグリッド（8x8）
+      ctx.fillStyle = `#${windowColor.toString(16).padStart(6, '0')}`
+      for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+          // ランダムに照明あり/なし
+          if (Math.random() > 0.3) {
+            const wx = x * 32 + 4
+            const wy = y * 32 + 4
+            ctx.fillRect(wx, wy, 24, 24)
+          }
+        }
+      }
+
+      const texture = new THREE.CanvasTexture(canvas)
+      texture.wrapS = texture.wrapT = THREE.RepeatWrapping
+      texture.repeat.set(1, 3) // 縦に3回繰り返し
+      return texture
+    }
+
+    // 法線マップ生成（凹凸感）
+    const createNormalMap = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 256
+      canvas.height = 256
+      const ctx = canvas.getContext('2d')!
+
+      // 基本色（法線マップの中立色）
+      ctx.fillStyle = '#8080ff'
+      ctx.fillRect(0, 0, 256, 256)
+
+      // わずかなノイズで凹凸感
+      for (let i = 0; i < 500; i++) {
+        const x = Math.random() * 256
+        const y = Math.random() * 256
+        const r = Math.random() * 3
+        ctx.fillStyle = `rgba(${128 + Math.random() * 20}, ${128 + Math.random() * 20}, 255, 0.3)`
+        ctx.fillRect(x, y, r, r)
+      }
+
+      const texture = new THREE.CanvasTexture(canvas)
+      return texture
+    }
+
+    const normalMap = createNormalMap()
+
     return [
-      // ガラスカーテンウォール
+      // モダンガラスビル
       new THREE.MeshStandardMaterial({
-        color: 0x6a7a8a,
-        roughness: 0.2,
-        metalness: 0.8,
-        envMapIntensity: 1.5
-      }),
-      // コンクリート
-      new THREE.MeshStandardMaterial({
-        color: 0x888888,
-        roughness: 0.9,
-        metalness: 0.1
-      }),
-      // 明るいガラス
-      new THREE.MeshStandardMaterial({
-        color: 0xa0b0c0,
+        map: createWindowTexture(0x99ccff, 0x5a6a7a),
+        normalMap,
         roughness: 0.15,
-        metalness: 0.9,
+        metalness: 0.85,
         envMapIntensity: 2.0
       }),
-      // レンガ調
+      // コンクリートビル
       new THREE.MeshStandardMaterial({
-        color: 0x7a6a5a,
+        map: createWindowTexture(0xffffcc, 0x707070),
+        normalMap,
         roughness: 0.85,
+        metalness: 0.1
+      }),
+      // 高層オフィスビル
+      new THREE.MeshStandardMaterial({
+        map: createWindowTexture(0xffffff, 0x3a4a5a),
+        normalMap,
+        roughness: 0.2,
+        metalness: 0.9,
+        envMapIntensity: 1.8
+      }),
+      // 古いビル
+      new THREE.MeshStandardMaterial({
+        map: createWindowTexture(0xffeecc, 0x6a5a4a),
+        normalMap,
+        roughness: 0.9,
         metalness: 0.05
+      }),
+      // 住宅ビル
+      new THREE.MeshStandardMaterial({
+        map: createWindowTexture(0xffffdd, 0x8a8a8a),
+        normalMap,
+        roughness: 0.7,
+        metalness: 0.2
       })
     ]
   }

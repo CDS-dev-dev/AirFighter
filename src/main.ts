@@ -5,7 +5,7 @@ import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.
 import { TokyoMapSystem } from './tokyoMapSystem'
 
 // ===== VERSION =====
-const VERSION = '3.1.0'
+const VERSION = '3.2.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -107,6 +107,10 @@ const steelMat = new THREE.MeshStandardMaterial({ color: 0x58636e, roughness: 0.
 const milGreen = new THREE.MeshStandardMaterial({ color: 0x3c4a28, roughness: 0.90, metalness: 0.12 })
 const radarDishes: THREE.Group[] = []  // 回転アニメ用
 
+// ===== MAP SYSTEM =====
+type GameMap = 'original' | 'tokyo'
+let currentMap: GameMap = 'tokyo'  // デフォルトMAP
+let tokyoMapSystem: TokyoMapSystem | null = null  // 東京MAPシステム（完全独立）
 
 // ===== TERRAIN =====
 const WATER_LEVEL = 1.8
@@ -169,40 +173,7 @@ function gauss2d(x: number, z: number, ax: number, az: number, rx: number, rz: n
 // 東京MAP専用システム（完全0ベース、OpenStreetMap参照）
 // ═══════════════════════════════════════════════════════
 
-// 東京MAP: 完全平坦な都市地形
-function tokyoTerrainH(x: number, z: number): number {
-  // 基本標高: 完全平坦10m（起伏なし）
-  let h = 10
-
-  // 水域のみ標高を下げる
-  // 隅田川（x=500, 幅120m）
-  if (Math.abs(x - 500) < 60 && Math.abs(z) < 2500) {
-    return WATER_LEVEL - 3
-  }
-
-  // 荒川（x=1200, 幅160m）
-  if (Math.abs(x - 1200) < 80 && z > -2000 && z < 2000) {
-    return WATER_LEVEL - 3
-  }
-
-  // 多摩川（z=1500, 幅200m）
-  if (Math.abs(z - 1500) < 100 && x > -2000 && x < 1000) {
-    return WATER_LEVEL - 3
-  }
-
-  // 東京湾（南東部、広大）
-  if (x > 500 && z > 1200) {
-    return WATER_LEVEL - 8
-  }
-
-  // 皇居の濠
-  const toPalace = Math.hypot(x + 400, z + 200)
-  if (toPalace > 250 && toPalace < 290) {
-    return WATER_LEVEL - 2
-  }
-
-  return h
-}
+// 東京MAP用の地形関数は削除 - TokyoMapSystemが完全に管理
 
 // MAP別地形関数の切り替え
 function terrainH(x: number, z: number): number {
@@ -371,14 +342,16 @@ function mkGroundTex(): THREE.CanvasTexture {
 
 // ===== 東京MAP専用地形メッシュ生成（完全独立） =====
 function generateTokyoTerrainMesh(): THREE.Mesh {
-  const terrainGeo = new THREE.PlaneGeometry(9000, 9000, 128, 128)
+  // TokyoMapSystemが使用されるため、プレースホルダーのみ
+  // 実際の地形はTokyoMapSystemが生成
+  const terrainGeo = new THREE.PlaneGeometry(12000, 12000, 256, 256)
   terrainGeo.rotateX(-Math.PI / 2)
   const tPos = terrainGeo.attributes.position as THREE.BufferAttribute
   const tCol = new Float32Array(tPos.count * 3)
 
   for (let i = 0; i < tPos.count; i++) {
     const x = tPos.getX(i), z = tPos.getZ(i)
-    const h = tokyoTerrainH(x, z)
+    const h = 0  // 完全フラット（TokyoMapSystemに任せる）
     tPos.setY(i, h)
 
     let r: number, g: number, b: number
@@ -509,8 +482,17 @@ function generateTerrainMesh(): THREE.Mesh {
   }
 }
 
-// 初期化時はプレースホルダー地形（後で差し替え）
-let ground = generateTerrainMesh()
+// 初期化時の地形生成（東京MAP以外）
+let ground: THREE.Mesh
+if (currentMap === 'tokyo') {
+  // 東京MAPの場合は空のプレースホルダー（TokyoMapSystemが後で生成）
+  ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ visible: false })
+  )
+} else {
+  ground = generateTerrainMesh()
+}
 scene.add(ground)
 
 // ===== TERRAIN GLB（Blender生成の高品質地形）=====
@@ -1320,12 +1302,9 @@ function playExplosionSound(scale = 1.0) {
 }
 
 // ===== GAME OBJECTS =====
-type GameMap = 'original' | 'tokyo'
 type GameMode = 'dogfight' | 'souryokusen' | 'free'
-let currentMap: GameMap = 'tokyo'  // デフォルトMAP
 let currentMode: GameMode | null = null
 let isPaused = false  // ポーズ状態
-let tokyoMapSystem: TokyoMapSystem | null = null  // 東京MAPシステム（完全独立）
 // dogfight: player spawn position (ally side)
 let dfSpawnX = 0, dfSpawnZ = 0
 let missionComplete = false
