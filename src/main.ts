@@ -382,75 +382,81 @@ function mkGroundTex(): THREE.CanvasTexture {
   return t
 }
 
-const terrainGeo = new THREE.PlaneGeometry(9000, 9000, 256, 256)
-terrainGeo.rotateX(-Math.PI / 2)
-const tPos = terrainGeo.attributes.position as THREE.BufferAttribute
-const tCol = new Float32Array(tPos.count * 3)
-for (let i = 0; i < tPos.count; i++) {
-  const x = tPos.getX(i), z = tPos.getZ(i)
-  tPos.setY(i, terrainH(x, z))
-  const y = tPos.getY(i)
-  const v = Math.sin(x * 0.042 + z * 0.063) * 0.06 + Math.sin(x * 0.11 - z * 0.09) * 0.04
-  let r: number, g: number, b: number
-  // Pass 1: 高度別ベースカラー (高度範囲 -400〜+1400m)
-  if (y < -180)      { r=0.26+v; g=0.21+v; b=0.19 }   // 深谷岩盤・海底
-  else if (y < -15)  { r=0.22+v; g=0.40+v; b=0.28 }   // 峡谷壁・湿岩
-  else if (y < 36)   { r=0.28+v; g=0.70+v; b=0.22 }   // 低地草原
-  else if (y < 120)  { r=0.24+v; g=0.60+v; b=0.17 }   // 平原
-  else if (y < 240)  { r=0.25+v; g=0.53+v; b=0.14+v } // 丘陵
-  else if (y < 420)  { r=0.40+v; g=0.46+v; b=0.22+v } // 高地
-  else if (y < 690)  { r=0.52+v; g=0.44+v; b=0.28 }   // 山岳麓
-  else if (y < 1080) { r=0.66+v; g=0.60+v; b=0.52 }   // 高山岩
-  else               { r=0.88+v; g=0.87+v; b=0.92 }    // 雪頂
-  tCol[i*3]   = Math.max(0, Math.min(1, r))
-  tCol[i*3+1] = Math.max(0, Math.min(1, g))
-  tCol[i*3+2] = Math.max(0, Math.min(1, b))
+// ===== 地形メッシュ生成関数 =====
+function generateTerrainMesh(): THREE.Mesh {
+  const terrainGeo = new THREE.PlaneGeometry(9000, 9000, 256, 256)
+  terrainGeo.rotateX(-Math.PI / 2)
+  const tPos = terrainGeo.attributes.position as THREE.BufferAttribute
+  const tCol = new Float32Array(tPos.count * 3)
+  for (let i = 0; i < tPos.count; i++) {
+    const x = tPos.getX(i), z = tPos.getZ(i)
+    tPos.setY(i, terrainH(x, z))
+    const y = tPos.getY(i)
+    const v = Math.sin(x * 0.042 + z * 0.063) * 0.06 + Math.sin(x * 0.11 - z * 0.09) * 0.04
+    let r: number, g: number, b: number
+    // Pass 1: 高度別ベースカラー (高度範囲 -400〜+1400m)
+    if (y < -180)      { r=0.26+v; g=0.21+v; b=0.19 }   // 深谷岩盤・海底
+    else if (y < -15)  { r=0.22+v; g=0.40+v; b=0.28 }   // 峡谷壁・湿岩
+    else if (y < 36)   { r=0.28+v; g=0.70+v; b=0.22 }   // 低地草原
+    else if (y < 120)  { r=0.24+v; g=0.60+v; b=0.17 }   // 平原
+    else if (y < 240)  { r=0.25+v; g=0.53+v; b=0.14+v } // 丘陵
+    else if (y < 420)  { r=0.40+v; g=0.46+v; b=0.22+v } // 高地
+    else if (y < 690)  { r=0.52+v; g=0.44+v; b=0.28 }   // 山岳麓
+    else if (y < 1080) { r=0.66+v; g=0.60+v; b=0.52 }   // 高山岩
+    else               { r=0.88+v; g=0.87+v; b=0.92 }    // 雪頂
+    tCol[i*3]   = Math.max(0, Math.min(1, r))
+    tCol[i*3+1] = Math.max(0, Math.min(1, g))
+    tCol[i*3+2] = Math.max(0, Math.min(1, b))
 
-  // Pass 2: スロープ・詳細テクスチャ（高周波ノイズ強化）
-  const gradX = terrainH(x + 18, z) - terrainH(x - 18, z)
-  const gradZ = terrainH(x, z + 18) - terrainH(x, z - 18)
-  const slope = clamp01(Math.hypot(gradX, gradZ) / 165)
-  const freckles = (fbm(x * 0.018 + 7, z * 0.018 - 11, 3) - 0.5) * 0.14
-  const microNoise = (fbm(x * 0.08 + 13, z * 0.08 - 7, 2) - 0.5) * 0.06  // 細かいバリエーション
+    // Pass 2: スロープ・詳細テクスチャ（高周波ノイズ強化）
+    const gradX = terrainH(x + 18, z) - terrainH(x - 18, z)
+    const gradZ = terrainH(x, z + 18) - terrainH(x, z - 18)
+    const slope = clamp01(Math.hypot(gradX, gradZ) / 165)
+    const freckles = (fbm(x * 0.018 + 7, z * 0.018 - 11, 3) - 0.5) * 0.14
+    const microNoise = (fbm(x * 0.08 + 13, z * 0.08 - 7, 2) - 0.5) * 0.06  // 細かいバリエーション
 
-  // 地形タイプ別ベースカラー
-  if (y < WATER_LEVEL + 2.5) {
-    r = 0.64 + freckles; g = 0.56 + freckles * 0.6; b = 0.38  // 砂浜（明るく）
-  } else if (y < 50) {
-    r = 0.38 + freckles; g = 0.72 + freckles; b = 0.26         // 低地草原（鮮やか）
-  } else if (y < 120) {
-    r = 0.32 + freckles; g = 0.62 + freckles; b = 0.24         // 平野草
-  } else if (y < 280) {
-    r = 0.36 + freckles; g = 0.54 + freckles * 0.8; b = 0.22  // 高地草
-  } else if (y < 520) {
-    r = 0.48 + freckles; g = 0.44 + freckles; b = 0.28         // 茶土
-  } else {
-    r = 0.68 + freckles * 0.5; g = 0.60 + freckles * 0.5; b = 0.48  // 岩石
+    // 地形タイプ別ベースカラー
+    if (y < WATER_LEVEL + 2.5) {
+      r = 0.64 + freckles; g = 0.56 + freckles * 0.6; b = 0.38  // 砂浜（明るく）
+    } else if (y < 50) {
+      r = 0.38 + freckles; g = 0.72 + freckles; b = 0.26         // 低地草原（鮮やか）
+    } else if (y < 120) {
+      r = 0.32 + freckles; g = 0.62 + freckles; b = 0.24         // 平野草
+    } else if (y < 280) {
+      r = 0.36 + freckles; g = 0.54 + freckles * 0.8; b = 0.22  // 高地草
+    } else if (y < 520) {
+      r = 0.48 + freckles; g = 0.44 + freckles; b = 0.28         // 茶土
+    } else {
+      r = 0.68 + freckles * 0.5; g = 0.60 + freckles * 0.5; b = 0.48  // 岩石
+    }
+
+    // スロープで岩肌露出
+    const rock = clamp01(slope * 1.6 + smoothstep(380, 720, y) * 0.4)
+    r = THREE.MathUtils.lerp(r, 0.52 + freckles, rock)
+    g = THREE.MathUtils.lerp(g, 0.46 + freckles, rock)
+    b = THREE.MathUtils.lerp(b, 0.40 + freckles, rock)
+
+    // 雪頂
+    const snow = smoothstep(880, 1150, y)
+    r = THREE.MathUtils.lerp(r, 0.95, snow)
+    g = THREE.MathUtils.lerp(g, 0.96, snow)
+    b = THREE.MathUtils.lerp(b, 0.98, snow)
+
+    // 最終出力（マイクロノイズ追加）
+    tCol[i*3]   = clamp01(r + microNoise)
+    tCol[i*3+1] = clamp01(g + microNoise)
+    tCol[i*3+2] = clamp01(b + microNoise)
   }
-
-  // スロープで岩肌露出
-  const rock = clamp01(slope * 1.6 + smoothstep(380, 720, y) * 0.4)
-  r = THREE.MathUtils.lerp(r, 0.52 + freckles, rock)
-  g = THREE.MathUtils.lerp(g, 0.46 + freckles, rock)
-  b = THREE.MathUtils.lerp(b, 0.40 + freckles, rock)
-
-  // 雪頂
-  const snow = smoothstep(880, 1150, y)
-  r = THREE.MathUtils.lerp(r, 0.95, snow)
-  g = THREE.MathUtils.lerp(g, 0.96, snow)
-  b = THREE.MathUtils.lerp(b, 0.98, snow)
-
-  // 最終出力（マイクロノイズ追加）
-  tCol[i*3]   = clamp01(r + microNoise)
-  tCol[i*3+1] = clamp01(g + microNoise)
-  tCol[i*3+2] = clamp01(b + microNoise)
+  terrainGeo.setAttribute('color', new THREE.BufferAttribute(tCol, 3))
+  terrainGeo.computeVertexNormals()
+  const mesh = new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({
+    map: mkGroundTex(), vertexColors: true, roughness: 0.88, metalness: 0.0
+  }))
+  mesh.receiveShadow = true
+  return mesh
 }
-terrainGeo.setAttribute('color', new THREE.BufferAttribute(tCol, 3))
-terrainGeo.computeVertexNormals()
-const ground = new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({
-  map: mkGroundTex(), vertexColors: true, roughness: 0.88, metalness: 0.0
-}))
-ground.receiveShadow = true
+
+let ground = generateTerrainMesh()
 scene.add(ground)
 
 // ===== TERRAIN GLB（Blender生成の高品質地形）=====
@@ -2524,6 +2530,9 @@ function completeMission() {
   overlay.style.display = 'flex'
 }
 
+// 東京ランドマーク・ビルを管理する配列
+const tokyoObjects: THREE.Object3D[] = []
+
 // Tokyo MAP用のランドマーク配置関数
 // 新宿駅を原点(0,0)として実際の東京を再現
 // スケール: 1unit = 10m
@@ -2534,6 +2543,7 @@ function buildTokyoLandmarks() {
     tocho.position.set(-80, tokyoTerrainH(-80, 0), 0)
     tocho.scale.setScalar(1.0)
     scene.add(tocho)
+    tokyoObjects.push(tocho)
   }
 
   // 渋谷スクランブルスクエア（新宿から南西3.5km）
@@ -2542,6 +2552,7 @@ function buildTokyoLandmarks() {
     scramble.position.set(-250, tokyoTerrainH(-250, 350), 350)
     scramble.scale.setScalar(1.0)
     scene.add(scramble)
+    tokyoObjects.push(scramble)
   }
 
   // 六本木ヒルズ（新宿から南東5km）
@@ -2550,6 +2561,7 @@ function buildTokyoLandmarks() {
     roppongi.position.set(200, tokyoTerrainH(200, 500), 500)
     roppongi.scale.setScalar(1.0)
     scene.add(roppongi)
+    tokyoObjects.push(roppongi)
   }
 
   // 東京タワー（新宿から南東7km）
@@ -2558,6 +2570,7 @@ function buildTokyoLandmarks() {
     tower.position.set(300, tokyoTerrainH(300, 700), 700)
     tower.scale.setScalar(1.0)
     scene.add(tower)
+    tokyoObjects.push(tower)
   }
 
   // 東京ドーム（新宿から北東5km）
@@ -2566,6 +2579,7 @@ function buildTokyoLandmarks() {
     dome.position.set(400, tokyoTerrainH(400, -500), -500)
     dome.scale.setScalar(1.0)
     scene.add(dome)
+    tokyoObjects.push(dome)
   }
 
   // 東京スカイツリー（新宿から東12km）
@@ -2574,6 +2588,7 @@ function buildTokyoLandmarks() {
     skytree.position.set(1200, tokyoTerrainH(1200, 0), 0)
     skytree.scale.setScalar(1.0)
     scene.add(skytree)
+    tokyoObjects.push(skytree)
   }
 
   // レインボーブリッジ（新宿から南東10km、東京湾）
@@ -2583,6 +2598,7 @@ function buildTokyoLandmarks() {
     bridge.rotation.y = Math.PI * 0.15
     bridge.scale.setScalar(1.0)
     scene.add(bridge)
+    tokyoObjects.push(bridge)
   }
 
   // 都市ビル群を実際の東京に合わせて配置
@@ -2602,6 +2618,7 @@ function buildTokyoLandmarks() {
       building.rotation.y = Math.random() * Math.PI * 2
       building.scale.setScalar(0.9 + Math.random() * 0.6)  // 大きめ
       scene.add(building)
+      tokyoObjects.push(building)
     }
 
     // 新宿東口・歌舞伎町（原点の東側）
@@ -2616,6 +2633,7 @@ function buildTokyoLandmarks() {
       building.rotation.y = Math.random() * Math.PI * 2
       building.scale.setScalar(0.6 + Math.random() * 0.7)
       scene.add(building)
+      tokyoObjects.push(building)
     }
 
     // 渋谷エリア（南西）
@@ -2630,6 +2648,7 @@ function buildTokyoLandmarks() {
       building.rotation.y = Math.random() * Math.PI * 2
       building.scale.setScalar(0.7 + Math.random() * 0.8)
       scene.add(building)
+      tokyoObjects.push(building)
     }
 
     // 六本木・赤坂エリア（南東）
@@ -2644,6 +2663,7 @@ function buildTokyoLandmarks() {
       building.rotation.y = Math.random() * Math.PI * 2
       building.scale.setScalar(0.8 + Math.random() * 0.7)
       scene.add(building)
+      tokyoObjects.push(building)
     }
 
     // 皇居周辺・丸の内オフィス街（南）
@@ -2658,6 +2678,7 @@ function buildTokyoLandmarks() {
       building.rotation.y = Math.random() * Math.PI * 2
       building.scale.setScalar(0.7 + Math.random() * 0.6)
       scene.add(building)
+      tokyoObjects.push(building)
     }
 
     // 上野・秋葉原エリア（北東）
@@ -2672,6 +2693,7 @@ function buildTokyoLandmarks() {
       building.rotation.y = Math.random() * Math.PI * 2
       building.scale.setScalar(0.6 + Math.random() * 0.6)
       scene.add(building)
+      tokyoObjects.push(building)
     }
 
     // 押上・スカイツリー周辺（東）
@@ -2686,6 +2708,7 @@ function buildTokyoLandmarks() {
       building.rotation.y = Math.random() * Math.PI * 2
       building.scale.setScalar(0.5 + Math.random() * 0.5)  // 下町は低め
       scene.add(building)
+      tokyoObjects.push(building)
     }
 
     // お台場・臨海副都心（南東、湾岸）
@@ -2700,6 +2723,7 @@ function buildTokyoLandmarks() {
       building.rotation.y = Math.random() * Math.PI * 2
       building.scale.setScalar(0.6 + Math.random() * 0.6)
       scene.add(building)
+      tokyoObjects.push(building)
     }
   }
 
@@ -2708,6 +2732,27 @@ function buildTokyoLandmarks() {
 
 function switchMap(map: GameMap) {
   console.log(`Switched to ${map} map`)
+
+  // 地形メッシュの再生成
+  scene.remove(ground)
+  ground.geometry.dispose()
+  ;(ground.material as THREE.Material).dispose()
+  ground = generateTerrainMesh()
+  scene.add(ground)
+
+  // 東京オブジェクトをクリア
+  tokyoObjects.forEach(obj => {
+    scene.remove(obj)
+    if (obj instanceof THREE.Mesh) {
+      obj.geometry.dispose()
+      if (Array.isArray(obj.material)) {
+        obj.material.forEach(mat => mat.dispose())
+      } else {
+        obj.material.dispose()
+      }
+    }
+  })
+  tokyoObjects.length = 0
 
   if (map === 'tokyo') {
     // Tokyo MAPのランドマーク配置
