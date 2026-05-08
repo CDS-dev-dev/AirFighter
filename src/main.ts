@@ -3,6 +3,12 @@ import { Sky } from 'three/addons/objects/Sky.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 
+// ===== VERSION =====
+const VERSION = '1.0.0'
+const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
+console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
+console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
+
 // 縦画面強制横向き: CSS rotate(90deg)で回転するため canvas も landscape サイズで初期化する
 function isPortraitMode() {
   return navigator.maxTouchPoints > 0 && window.innerHeight > window.innerWidth
