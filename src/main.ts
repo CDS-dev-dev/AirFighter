@@ -26,7 +26,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'hi
 renderer.setSize(initW, initH)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.shadowMap.type = THREE.BasicShadowMap  // PCFSoftShadowMap → BasicShadowMap（パフォーマンス改善）
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.toneMappingExposure = 0.78
@@ -82,7 +82,7 @@ scene.remove(cubeCamera)
 const sun = new THREE.DirectionalLight(0xffecd0, 4.5)
 sun.position.copy(sunVec).multiplyScalar(600)
 sun.castShadow = true
-sun.shadow.mapSize.set(2048, 2048)
+sun.shadow.mapSize.set(1024, 1024)  // 2048 → 1024（パフォーマンス改善）
 sun.shadow.camera.near = 1; sun.shadow.camera.far = 2000
 sun.shadow.camera.left = -600; sun.shadow.camera.right = 600
 sun.shadow.camera.top = 600; sun.shadow.camera.bottom = -600
@@ -2686,6 +2686,16 @@ async function switchMap(map: GameMap) {
       }
       if (isEnemy) continue
 
+      // 補給ポイントは保護
+      let isSupply = false
+      for (const sm of supplyMeshes) {
+        if (sm === obj || obj.parent === sm) {
+          isSupply = true
+          break
+        }
+      }
+      if (isSupply) continue
+
       // 東京MAPオブジェクトは保護
       if (obj.name?.includes('Tokyo')) continue
 
@@ -2740,6 +2750,18 @@ async function switchMap(map: GameMap) {
     player.rotation.set(0, 0, 0)
     console.log('✈️ プレイヤーを東京・渋谷上空500mに配置')
 
+    // ステップ4: 補給ポイントを東京MAP用の位置に再配置
+    const tokyoSupplyPositions = [
+      new THREE.Vector3(0, 250, 0),        // 渋谷中心上空
+      new THREE.Vector3(1500, 200, 1500),  // 東側エリア
+      new THREE.Vector3(-1500, 200, -1500), // 西側エリア
+    ]
+    for (let i = 0; i < Math.min(supplyMeshes.length, tokyoSupplyPositions.length); i++) {
+      SUPPLY_POSITIONS[i].copy(tokyoSupplyPositions[i])
+      supplyMeshes[i].position.copy(tokyoSupplyPositions[i])
+    }
+    console.log('✅ 補給ポイントを東京MAP用に再配置')
+
     console.log('✅ 東京MAP切り替え完了')
 
   } else {
@@ -2783,6 +2805,19 @@ async function switchMap(map: GameMap) {
     // プレイヤー位置をオリジナルMAP用に設定
     player.position.set(0, terrainH(0, 0) + 150, 0)
     console.log('✈️ プレイヤーをオリジナルMAP上空に配置')
+
+    // 補給ポイントをオリジナルMAP用の位置に再配置
+    const originalSupplyPositions = [
+      new THREE.Vector3(-200,  0,  480),   // 中央平野
+      new THREE.Vector3(1200,  0, -380),   // 東部プラトー
+      new THREE.Vector3(-1080, 0, -720),   // 北西高地
+    ]
+    for (let i = 0; i < Math.min(supplyMeshes.length, originalSupplyPositions.length); i++) {
+      originalSupplyPositions[i].y = terrainH(originalSupplyPositions[i].x, originalSupplyPositions[i].z) + 18
+      SUPPLY_POSITIONS[i].copy(originalSupplyPositions[i])
+      supplyMeshes[i].position.copy(originalSupplyPositions[i])
+    }
+    console.log('✅ 補給ポイントをオリジナルMAP用に再配置')
 
     console.log('✅ オリジナルMAP切り替え完了')
   }
@@ -3448,14 +3483,16 @@ function updateSupplyPoints(dt: number) {
 
     const dist = player.position.distanceTo(SUPPLY_POSITIONS[i])
     if (dist < 38 && supplyCooldowns[i] <= 0) {
-      const prevMsl = missileAmmo, prevFlr = flareAmmo
+      const prevMsl = missileAmmo, prevFlr = flareAmmo, prevHP = playerHP
       missileAmmo = Math.min(6, missileAmmo + 3)
       flareAmmo   = Math.min(8, flareAmmo   + 4)
-      if (missileAmmo !== prevMsl || flareAmmo !== prevFlr) {
+      playerHP    = Math.min(100, playerHP  + 50)  // HP回復：最大50
+      if (missileAmmo !== prevMsl || flareAmmo !== prevFlr || playerHP !== prevHP) {
         missileEl.textContent = missileAmmo.toString()
         flareEl.textContent   = flareAmmo.toString()
         updatePips(missilePips, missileAmmo, 'on')
         updatePips(flarePips,   flareAmmo,   'flare-on')
+        updateHPDisplay()  // HP表示を更新
         supplyCooldowns[i] = 20
         supplyIndicatorTimer = 1.8
       }
