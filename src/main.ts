@@ -3534,20 +3534,48 @@ function drawEnemyBrackets() {
       if (intersects.length > 0 && gt !== lockedTarget) continue  // 遮蔽されている場合はスキップ
 
       const [sx, sy, vis] = projectToScreen(gt.group.position)
-      if (!vis) continue
-      const inR = dist < MISSILE_LOCK_RANGE
-      ctx.strokeStyle = inR ? 'rgba(255,155,40,0.9)' : 'rgba(200,120,40,0.35)'
-      ctx.lineWidth = inR ? 1.5 : 1
-      _drawCornerBrackets(ctx, sx, sy, 18, 6)
-      if (inR) {
-        // 射程内は二重ブラケット
-        ctx.strokeStyle = 'rgba(255,155,40,0.4)'
-        _drawCornerBrackets(ctx, sx, sy, 24, 8)
+      if (!vis) {
+        // ロック中は画面外でも矢印表示
+        if (gt === lockedTarget) _drawOffscreenArrow(ctx, gt.group.position, w, h)
+        continue
       }
-      ctx.fillStyle = inR ? 'rgba(255,175,60,0.9)' : 'rgba(180,120,50,0.45)'
-      ctx.font = inR ? 'bold 12px monospace' : 'bold 11px monospace'
-      ctx.textAlign = 'center'
-      ctx.fillText(`${Math.round(dist)}m`, sx, sy + 18 + 16)
+
+      const isLocked = gt === lockedTarget
+      const inR = dist < MISSILE_LOCK_RANGE
+
+      // ロック中は航空機と同じ表示（赤い円形）
+      if (isLocked) {
+        const pulse = 0.65 + 0.35 * Math.sin(t * 0.007)
+        const r = 28
+        const col = `rgba(255,70,70,${pulse})`
+        ctx.strokeStyle = col; ctx.lineWidth = 2
+        ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.stroke()
+        ctx.strokeStyle = col.replace(/[\d.]+\)$/, `${pulse * 0.5})`); ctx.lineWidth = 1
+        ctx.beginPath(); ctx.arc(sx, sy, r * 0.65, 0, Math.PI * 2); ctx.stroke()
+        ctx.fillStyle = col; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'
+        ctx.fillText('LOCKED', sx, sy + r + 14)
+        ctx.font = 'bold 14px monospace'
+        ctx.fillText(`${Math.round(dist)}m`, sx, sy + r + 28)
+        if (!inR) {
+          ctx.fillStyle = 'rgba(255,80,80,0.9)'
+          ctx.font = '9px monospace'
+          ctx.fillText('OUT OF RANGE', sx, sy - r - 8)
+        }
+      } else {
+        // ロックしていない場合は従来の表示（黄色いブラケット）
+        ctx.strokeStyle = inR ? 'rgba(255,210,60,0.8)' : 'rgba(200,120,40,0.35)'
+        ctx.lineWidth = inR ? 1.5 : 1
+        _drawCornerBrackets(ctx, sx, sy, 18, 6)
+        if (inR) {
+          // 射程内は二重ブラケット
+          ctx.strokeStyle = 'rgba(255,210,60,0.4)'
+          _drawCornerBrackets(ctx, sx, sy, 24, 8)
+        }
+        ctx.fillStyle = inR ? 'rgba(255,210,60,0.9)' : 'rgba(180,120,50,0.45)'
+        ctx.font = inR ? 'bold 12px monospace' : 'bold 11px monospace'
+        ctx.textAlign = 'center'
+        ctx.fillText(`${Math.round(dist)}m`, sx, sy + 18 + 16)
+      }
     }
   }
 }
