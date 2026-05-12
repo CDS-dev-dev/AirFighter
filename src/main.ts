@@ -1359,6 +1359,7 @@ interface GroundTarget {
   patrolCenter?: THREE.Vector3  // ヘリ専用: 旋回中心
 }
 interface SmokeParticle { mesh: THREE.Mesh; vel: THREE.Vector3; life: number; maxLife: number }
+interface MissileTrail { mesh: THREE.Mesh; life: number }
 
 const bullets: Projectile[] = []
 const playerMissiles: HomingMissile[] = []
@@ -1368,6 +1369,7 @@ const flares: Projectile[] = []
 const enemies: Enemy[] = []
 const allies: Ally[] = []
 const smokeParticles: SmokeParticle[] = []
+const missileTrails: MissileTrail[] = []  // ミサイル軌跡パーティクル
 const heliBlades: THREE.Group[] = []  // ヘリローター回転用
 const explosions: Explosion[] = []
 const groundTargets: GroundTarget[] = []
@@ -1382,8 +1384,8 @@ let lockedTarget: { group: THREE.Group } | null = null  // Enemy | GroundTarget 
 let playerHP = 3, invincibleTimer = 0, respawnFlash = 0, respawnTimer = 0
 const MAX_HP = 3
 
-const bulletMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffdd00, emissiveIntensity: 18.0, roughness: 0.1, metalness: 0 })
-const playerMissileMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xff8800, emissiveIntensity: 6.0, roughness: 0.3, metalness: 0.7 })
+const bulletMat = new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xffdd00, emissiveIntensity: 28.0, roughness: 0.1, metalness: 0 })
+const playerMissileMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xff8800, emissiveIntensity: 12.0, roughness: 0.3, metalness: 0.7 })
 const enemyMissileMat = new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xcc2200, emissiveIntensity: 2.0, roughness: 0.5, metalness: 0.3 })
 const allyMissileMat  = new THREE.MeshStandardMaterial({ color: 0x44ff88, emissive: 0x00cc44, emissiveIntensity: 3.0, roughness: 0.5, metalness: 0.3 })
 const _fwd = new THREE.Vector3(0, 0, -1)
@@ -1550,7 +1552,7 @@ function fireGun() {
 
   for (const side of [-0.7, 0.7]) {
     const offset = new THREE.Vector3(side, 0, -3).applyQuaternion(player.quaternion)
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.32, 6, 6), bulletMat)
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), bulletMat)
     mesh.position.copy(player.position).add(offset)
     scene.add(mesh)
     bullets.push({ mesh, vel: aimDir.clone().multiplyScalar(230), life: 1.8 })
@@ -2402,6 +2404,7 @@ function startGame(mode: GameMode) {
   for (const b of [...bullets]) scene.remove(b.mesh); bullets.length = 0
   for (const m of [...playerMissiles]) { if (m.light) scene.remove(m.light); scene.remove(m.mesh) }; playerMissiles.length = 0
   for (const m of [...enemyMissiles]) scene.remove(m.mesh); enemyMissiles.length = 0
+  for (const t of [...missileTrails]) scene.remove(t.mesh); missileTrails.length = 0
   lockedTarget = null
   score = 0; scoreEl.textContent = '0'
   missileAmmo = 6; flareAmmo = 8
@@ -3006,6 +3009,15 @@ function updateHoming(m: HomingMissile, dt: number) {
   m.mesh.position.addScaledVector(m.vel, dt)
   if (m.light) m.light.position.copy(m.mesh.position)
   if (m.vel.lengthSq() > 0.01) m.mesh.quaternion.setFromUnitVectors(_fwd, m.vel.clone().normalize())
+
+  // ミサイル軌跡（煙トレイル）を生成
+  if (Math.random() < 0.3) {  // 30%の確率で煙パーティクル生成
+    const trailMat = new THREE.MeshBasicMaterial({ color: 0xffaa44, transparent: true, opacity: 0.8 })
+    const trailMesh = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 6), trailMat)
+    trailMesh.position.copy(m.mesh.position)
+    scene.add(trailMesh)
+    missileTrails.push({ mesh: trailMesh, life: 0.6 })
+  }
 }
 
 // ===== EXPLOSIONS =====
@@ -3118,6 +3130,21 @@ function updateExplosions(dt: number) {
       mat.opacity = Math.max(0, ex.life / 1.3); mat.emissiveIntensity = ex.life * 3.5
     }
     if (ex.life <= 0) { ex.particles.forEach(p => scene.remove(p.mesh)); explosions.splice(i, 1) }
+  }
+}
+
+function updateMissileTrails(dt: number) {
+  for (let i = missileTrails.length - 1; i >= 0; i--) {
+    const trail = missileTrails[i]
+    trail.life -= dt
+    const mat = trail.mesh.material as THREE.MeshBasicMaterial
+    mat.opacity = Math.max(0, trail.life / 0.6)
+    trail.mesh.scale.multiplyScalar(1 + dt * 2)  // 徐々に拡大
+    if (trail.life <= 0) {
+      scene.remove(trail.mesh)
+      mat.dispose()
+      missileTrails.splice(i, 1)
+    }
   }
 }
 
@@ -3864,6 +3891,7 @@ function loop() {
   }
   updateGroundTargets(dt)
   updateExplosions(dt)
+  updateMissileTrails(dt)
   updateContrails()
   if (currentMode !== null) updateSupplyPoints(dt)
   if (currentMode === 'dogfight') setObjective(`敵機を撃墜せよ — SCORE: ${score}`)
