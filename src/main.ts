@@ -1571,6 +1571,7 @@ function firePlayerMissile() {
   pMissileCooldown = 1.5; missileAmmo--
   missileEl.textContent = missileAmmo.toString()
   updatePips(missilePips, missileAmmo, 'on')
+  updateMobileAmmo()  // スマホ版ボタン内の残量更新
 
   const target: THREE.Object3D | null = lockedTarget?.group ?? (() => {
     let nearest: THREE.Object3D | null = null, minD = Infinity
@@ -1612,6 +1613,7 @@ function _dropSingleFlare() {
   flareAmmo--
   flareEl.textContent = flareAmmo.toString()
   updatePips(flarePips, flareAmmo, 'flare-on')
+  updateMobileAmmo()  // スマホ版ボタン内の残量更新
   const mat = new THREE.MeshStandardMaterial({ color: 0xff8800, emissive: 0xff5500, emissiveIntensity: 9.0, roughness: 0.4 })
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.32, 7, 7), mat)
   mesh.position.copy(player.position).add(new THREE.Vector3((Math.random()-0.5)*1.5, -0.5, 2.5).applyQuaternion(player.quaternion))
@@ -3212,6 +3214,8 @@ const speedEl    = document.getElementById('speed')!
 const altEl      = document.getElementById('altitude')!
 const missileEl  = document.getElementById('missiles')!
 const flareEl    = document.getElementById('flares')!
+const mslCountEl = document.getElementById('msl-count')  // スマホ版ボタン内の残量表示
+const flrCountEl = document.getElementById('flr-count')  // スマホ版ボタン内の残量表示
 const scoreEl    = document.getElementById('score')!
 const hitOverlay = document.getElementById('hit-overlay') as HTMLDivElement
 const respawnOverlay = document.getElementById('respawn-overlay') as HTMLDivElement
@@ -3243,6 +3247,12 @@ initPips(flarePips, 8, 'flare-on')
 function updatePips(el: HTMLElement, current: number, cls: string) {
   const pips = el.querySelectorAll<HTMLElement>('.pip')
   pips.forEach((p, i) => { p.classList.toggle(cls, i < current) })
+}
+
+// スマホ版ボタン内の残量表示を更新
+function updateMobileAmmo() {
+  if (mslCountEl) mslCountEl.textContent = missileAmmo.toString()
+  if (flrCountEl) flrCountEl.textContent = flareAmmo.toString()
 }
 
 function updateReticle() {
@@ -3527,6 +3537,7 @@ function updateSupplyPoints(dt: number) {
         flareEl.textContent   = flareAmmo.toString()
         updatePips(missilePips, missileAmmo, 'on')
         updatePips(flarePips,   flareAmmo,   'flare-on')
+        updateMobileAmmo()  // スマホ版ボタン内の残量更新
         updateHPDisplay()  // HP表示を更新
         supplyCooldowns[i] = 20
         supplyIndicatorTimer = 1.8
@@ -3890,7 +3901,10 @@ function loop() {
 
   // Camera – quaternion slerp でジンバルロック解消
   // 速度連動プルバック（高速時はカメラを遠ざける）
-  const targetCamZ = 18 + (speed / 550) * 28  // 最高速時+28m引く
+  // スマホではカメラを近づけて機体を見やすくする
+  const isMobile = 'ontouchstart' in window
+  const baseCamZ = isMobile ? 13 : 18  // スマホは13、PCは18
+  const targetCamZ = baseCamZ + (speed / 550) * 28  // 最高速時+28m引く
   cameraOffset.z += (targetCamZ - cameraOffset.z) * dt * 3
   // カメラシェイク
   camShakeAmt *= Math.exp(-dt * 8)
