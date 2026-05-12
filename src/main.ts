@@ -82,7 +82,7 @@ scene.remove(cubeCamera)
 const sun = new THREE.DirectionalLight(0xffecd0, 4.5)
 sun.position.copy(sunVec).multiplyScalar(600)
 sun.castShadow = true
-sun.shadow.mapSize.set(1024, 1024)  // 2048 → 1024（パフォーマンス改善）
+sun.shadow.mapSize.set(512, 512)  // 2048 → 512（パフォーマンス改善）
 sun.shadow.camera.near = 1; sun.shadow.camera.far = 2000
 sun.shadow.camera.left = -600; sun.shadow.camera.right = 600
 sun.shadow.camera.top = 600; sun.shadow.camera.bottom = -600

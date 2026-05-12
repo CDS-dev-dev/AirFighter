@@ -312,6 +312,51 @@ export class TokyoMapSystem {
   }
 
   /**
+   * 窓テクスチャを生成（オフィスビル用）
+   */
+  private createWindowTexture(buildingType: string): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas')
+    canvas.width = 256
+    canvas.height = 256
+    const ctx = canvas.getContext('2d')!
+
+    // 建物タイプごとの窓の配置と色
+    const windowConfig = {
+      office: { rows: 12, cols: 8, spacing: 4, lightColor: '#b0d0ff', darkColor: '#304050' },
+      financial: { rows: 14, cols: 10, spacing: 3, lightColor: '#c8e0ff', darkColor: '#203040' },
+      commercial: { rows: 10, cols: 6, spacing: 5, lightColor: '#ffe0a0', darkColor: '#403020' },
+      residential: { rows: 8, cols: 5, spacing: 6, lightColor: '#ffd080', darkColor: '#302820' }
+    }
+
+    const config = windowConfig[buildingType as keyof typeof windowConfig] || windowConfig.office
+
+    // 背景（建物の壁）
+    ctx.fillStyle = '#808890'
+    ctx.fillRect(0, 0, 256, 256)
+
+    // 窓を描画
+    const windowW = (256 - config.spacing * (config.cols + 1)) / config.cols
+    const windowH = (256 - config.spacing * (config.rows + 1)) / config.rows
+
+    for (let row = 0; row < config.rows; row++) {
+      for (let col = 0; col < config.cols; col++) {
+        const x = config.spacing + col * (windowW + config.spacing)
+        const y = config.spacing + row * (windowH + config.spacing)
+
+        // ランダムに点灯/消灯
+        const isLit = Math.random() > 0.3
+        ctx.fillStyle = isLit ? config.lightColor : config.darkColor
+        ctx.fillRect(x, y, windowW, windowH)
+      }
+    }
+
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.wrapS = THREE.RepeatWrapping
+    texture.wrapT = THREE.RepeatWrapping
+    return texture
+  }
+
+  /**
    * 地区ごとの建物群を生成（実際の東京をモデルにした色彩）
    */
   private createDistrictBuildings(
@@ -396,7 +441,23 @@ export class TokyoMapSystem {
       const height = minHeight + Math.random() * (maxHeight - minHeight)
 
       const geometry = new THREE.BoxGeometry(width, height, depth)
-      const material = materials[Math.floor(Math.random() * materials.length)]
+
+      // テクスチャ付きマテリアルを作成（高さ80m以上のビルのみ）
+      let material: THREE.Material
+      if (height > 80) {
+        const baseMat = materials[Math.floor(Math.random() * materials.length)]
+        const texture = this.createWindowTexture(type)
+        texture.repeat.set(width / 30, height / 40)
+        material = new THREE.MeshStandardMaterial({
+          color: baseMat.color,
+          map: texture,
+          roughness: baseMat.roughness,
+          metalness: baseMat.metalness
+        })
+      } else {
+        material = materials[Math.floor(Math.random() * materials.length)]
+      }
+
       const mesh = new THREE.Mesh(geometry, material)
 
       mesh.position.set(x, height / 2, z)
