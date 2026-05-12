@@ -1395,6 +1395,7 @@ let dfEnemyCount = 3
 let missileAmmo = 6, flareAmmo = 3, score = 0
 let gunCooldown = 0, pMissileCooldown = 0, flareCooldown = 0
 let gunFireTime = 0  // マシンガンを連続発射している時間
+let gunLeadPosition: THREE.Vector3 | null = null  // マシンガン予測位置（表示用）
 let hitFlashTimer = 0, gunSoundCooldown = 0, trailFrame = 0, radarFrame = 0
 let lockedTarget: { group: THREE.Group } | null = null  // Enemy | GroundTarget どちらもロック可能
 let playerHP = 3, invincibleTimer = 0, respawnFlash = 0, respawnTimer = 0
@@ -1582,7 +1583,12 @@ function fireGun() {
     // 前方60度以内なら予測照準を適用
     if (fwd.angleTo(toLeadPos) < Math.PI / 3) {
       aimDir = toLeadPos
+      gunLeadPosition = leadPos.clone()  // 予測位置を保存（表示用）
+    } else {
+      gunLeadPosition = null
     }
+  } else {
+    gunLeadPosition = null
   }
 
   for (const side of [-0.7, 0.7]) {
@@ -3104,14 +3110,17 @@ function updateEnemies(dt: number) {
     const allThreats = [...playerMissiles, ...allyMissiles]
     for (const m of allThreats) {
       const dist = m.mesh.position.distanceTo(enemy.group.position)
-      if (dist < 80 && m.target === enemy.group) {  // 80m以内で自分を狙っているミサイルを検知
+      if (dist < 100 && m.target === enemy.group) {  // 100m以内で自分を狙っているミサイルを検知
         evading = true
-        // ミサイルから垂直方向に回避
-        const toMissile = m.mesh.position.clone().sub(enemy.group.position)
-        const evadeDir = new THREE.Vector3(-toMissile.z, 20, toMissile.x).normalize()  // 垂直方向
-        tx = enemy.group.position.x + evadeDir.x * 150
-        ty = enemy.group.position.y + evadeDir.y * 150
-        tz = enemy.group.position.z + evadeDir.z * 150
+        // 自然な回避機動：円軌道の接線方向に急旋回（ミサイルを振り切る）
+        const evadeAngle = enemy.orbitAngle + Math.PI / 2
+        const evadeRadius = 200  // 急旋回半径
+        const orbitBase = (currentMode === 'dogfight' && allies.length > 0 && i % 3 === 2)
+          ? allies[i % allies.length].group.position
+          : player.position
+        tx = orbitBase.x + Math.cos(evadeAngle) * evadeRadius
+        tz = orbitBase.z + Math.sin(evadeAngle) * evadeRadius
+        ty = enemy.group.position.y + 30  // 上昇しながら回避
         break
       }
     }
@@ -3621,6 +3630,29 @@ function updateSupplyPoints(dt: number) {
   supplyIndicator.style.display = supplyIndicatorTimer > 0 ? 'block' : 'none'
 }
 
+// ===== GUN LEAD INDICATOR =====
+function updateGunLeadIndicator() {
+  if (!gunLeadReticleEl) return
+
+  if (gunLeadPosition && gunFireTime > 1.0) {
+    // 3D位置をスクリーン座標に変換
+    const screenPos = gunLeadPosition.clone().project(camera)
+    const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth
+    const y = (-screenPos.y * 0.5 + 0.5) * window.innerHeight
+
+    // 画面内にあるか確認
+    if (screenPos.z < 1 && x > 0 && x < window.innerWidth && y > 0 && y < window.innerHeight) {
+      gunLeadReticleEl.style.display = 'block'
+      gunLeadReticleEl.style.left = `${x}px`
+      gunLeadReticleEl.style.top = `${y}px`
+    } else {
+      gunLeadReticleEl.style.display = 'none'
+    }
+  } else {
+    gunLeadReticleEl.style.display = 'none'
+  }
+}
+
 // ===== RADAR =====
 const RADAR_RANGE = 900
 const RADAR_R = 70
@@ -4017,6 +4049,7 @@ function loop() {
   updateReticle()
   updateWarning()
   drawEnemyBrackets()
+  updateGunLeadIndicator()
   // レーダー描画を3フレームに1回に制限（パフォーマンス改善）
   if (++radarFrame % 3 === 0) drawRadar()
 

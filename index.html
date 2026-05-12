@@ -99,18 +99,19 @@
       #center-xhair .xh-dot { width: 3px; height: 3px; border-radius: 50%; top: 50%; left: 50%; margin: -1.5px 0 0 -1.5px; background: rgba(0,255,120,0.8); }
       @media (pointer: coarse) { #center-xhair { display: none !important; } }
 
-      /* ── マシンガン予測照準レティクル ── */
+      /* ── マシンガン予測照準レティクル（[]型インジケーター） ── */
       #gun-lead-reticle {
         position: fixed;
-        width: 24px; height: 24px;
+        width: 32px; height: 32px;
         pointer-events: none; z-index: 99;
         display: none;
+        transform: translate(-50%, -50%);
       }
       #gun-lead-reticle .lead-bracket {
         position: absolute;
-        width: 8px; height: 8px;
-        border: 2px solid rgba(255, 220, 0, 0.9);
-        border-radius: 1px;
+        width: 12px; height: 12px;
+        border: 2.5px solid rgba(255, 200, 0, 0.95);
+        border-radius: 2px;
       }
       #gun-lead-reticle .lead-tl { top: 0; left: 0; border-right: none; border-bottom: none; }
       #gun-lead-reticle .lead-tr { top: 0; right: 0; border-left: none; border-bottom: none; }
@@ -118,9 +119,10 @@
       #gun-lead-reticle .lead-br { bottom: 0; right: 0; border-left: none; border-top: none; }
       #gun-lead-reticle .lead-center {
         position: absolute; top: 50%; left: 50%;
-        width: 3px; height: 3px; margin: -1.5px 0 0 -1.5px;
-        background: rgba(255, 220, 0, 0.95);
+        width: 4px; height: 4px; margin: -2px 0 0 -2px;
+        background: rgba(255, 200, 0, 0.9);
         border-radius: 50%;
+        box-shadow: 0 0 6px rgba(255, 200, 0, 0.8);
       }
 
       /* ── ロックオン照準 ── */
@@ -764,7 +766,7 @@
 
     <!-- ゲームモード＆MAP選択 -->
     <div id="mode-screen">
-      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v3.10.0</span></div>
+      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v3.11.0</span></div>
       <div class="ms-sub">SELECT MAP & MISSION MODE</div>
 
       <!-- MAP選択 -->
