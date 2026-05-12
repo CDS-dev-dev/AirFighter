@@ -3661,8 +3661,22 @@ function loop() {
 
   // 自動水平復帰（入力がない時のみ）
   if (pitchInput === 0 && Math.abs(yawInput) < 0.05) {
+    // ロール（横回転）の復帰
     const dampQuat = new THREE.Quaternion().setFromAxisAngle(fwdAxis, -targetBankZ * dt * 0.88)
     player.quaternion.multiply(dampQuat)
+
+    // ピッチ（上下角度）の自動水平復帰
+    const rightLocal = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion)
+
+    // 現在のピッチ角度を計算（前方ベクトルのY成分から推定）
+    const fwdLocal = _fwd.clone().applyQuaternion(player.quaternion)
+    const pitchAngle = Math.asin(fwdLocal.y)  // -π/2 ～ π/2
+
+    // ピッチ角度を徐々に0（水平）に戻す
+    if (Math.abs(pitchAngle) > 0.02) {  // 約1度以上傾いている場合のみ補正
+      const levelQuat = new THREE.Quaternion().setFromAxisAngle(rightLocal, -pitchAngle * dt * 1.5)
+      player.quaternion.multiply(levelQuat)
+    }
   }
   player.quaternion.normalize()
 
