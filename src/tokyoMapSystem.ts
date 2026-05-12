@@ -559,101 +559,389 @@ export class TokyoMapSystem {
 
   private createTokyoTower(): void {
     const x = 800, z = -800  // 六本木近く
-    // タワー本体（赤と白）
-    const towerMat = new THREE.MeshStandardMaterial({
+    const group = new THREE.Group()
+
+    // 鉄骨構造を模した4本の脚
+    const redMat = new THREE.MeshStandardMaterial({
       color: 0xff5533,
       emissive: 0xff2200,
-      emissiveIntensity: 0.3,
-      roughness: 0.4,
+      emissiveIntensity: 0.4,
+      roughness: 0.3,
+      metalness: 0.7
+    })
+    const whiteMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.2,
       metalness: 0.6
     })
-    const tower = new THREE.Mesh(new THREE.CylinderGeometry(10, 30, 333, 6), towerMat)
-    tower.position.set(x, 166.5, z)
-    this.scene.add(tower)
-    this.buildingMeshes.push(tower)
 
-    // 白い帯（上部）
-    const whiteMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.3 })
-    const whiteSection = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 80, 6), whiteMat)
-    whiteSection.position.set(x, 280, z)
-    this.scene.add(whiteSection)
-    this.buildingMeshes.push(whiteSection)
+    // 下部（赤）0-150m
+    for (let i = 0; i < 4; i++) {
+      const angle = (i / 4) * Math.PI * 2
+      const legX = Math.cos(angle) * 25
+      const legZ = Math.sin(angle) * 25
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(2, 4, 150, 6), redMat)
+      leg.position.set(legX, 75, legZ)
+      group.add(leg)
+      this.buildingMeshes.push(leg)
+    }
+
+    // 中部（白）150-250m
+    for (let i = 0; i < 4; i++) {
+      const angle = (i / 4) * Math.PI * 2
+      const legX = Math.cos(angle) * 15
+      const legZ = Math.sin(angle) * 15
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2, 100, 6), whiteMat)
+      leg.position.set(legX, 200, legZ)
+      group.add(leg)
+      this.buildingMeshes.push(leg)
+    }
+
+    // 大展望台（150m地点）
+    const mainDeck = new THREE.Mesh(new THREE.CylinderGeometry(18, 22, 15, 8), redMat)
+    mainDeck.position.y = 150
+    group.add(mainDeck)
+    this.buildingMeshes.push(mainDeck)
+
+    // 特別展望台（250m地点）
+    const specialDeck = new THREE.Mesh(new THREE.CylinderGeometry(12, 14, 12, 8), whiteMat)
+    specialDeck.position.y = 250
+    group.add(specialDeck)
+    this.buildingMeshes.push(specialDeck)
+
+    // アンテナ（赤）250-333m
+    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 1, 83, 6), redMat)
+    antenna.position.y = 291.5
+    group.add(antenna)
+    this.buildingMeshes.push(antenna)
+
+    // 横梁（トラス構造を模擬）
+    for (let h = 30; h < 250; h += 40) {
+      const beam = new THREE.Mesh(
+        new THREE.TorusGeometry(h < 150 ? 22 : 16, 0.8, 4, 8),
+        h < 150 ? redMat : whiteMat
+      )
+      beam.rotation.x = Math.PI / 2
+      beam.position.y = h
+      group.add(beam)
+      this.buildingMeshes.push(beam)
+    }
+
+    group.position.set(x, 0, z)
+    this.scene.add(group)
   }
 
   private createSkytree(): void {
     const x = 4000, z = 1500  // 墨田区方面
-    const skyMat = new THREE.MeshStandardMaterial({
-      color: 0xc0c8d0,
-      roughness: 0.2,
-      metalness: 0.8
-    })
-    const skytree = new THREE.Mesh(new THREE.CylinderGeometry(8, 25, 634, 6), skyMat)
-    skytree.position.set(x, 317, z)
-    this.scene.add(skytree)
-    this.buildingMeshes.push(skytree)
+    const group = new THREE.Group()
 
-    // 展望台（明るい部分）
-    const obsDecMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      emissive: 0x6688ff,
-      emissiveIntensity: 0.4
+    const baseMat = new THREE.MeshStandardMaterial({
+      color: 0xc8d0d8,
+      roughness: 0.15,
+      metalness: 0.85
     })
-    const obsDeck = new THREE.Mesh(new THREE.CylinderGeometry(15, 15, 40, 8), obsDecMat)
-    obsDeck.position.set(x, 350, z)
-    this.scene.add(obsDeck)
-    this.buildingMeshes.push(obsDeck)
+    const glassMat = new THREE.MeshStandardMaterial({
+      color: 0xe0f0ff,
+      emissive: 0x4488cc,
+      emissiveIntensity: 0.5,
+      roughness: 0.1,
+      metalness: 0.9,
+      transparent: true,
+      opacity: 0.9
+    })
+
+    // 三角形断面のタワー本体（3セクション）
+    // 下部 0-350m
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2
+      const baseX = Math.cos(angle) * 20
+      const baseZ = Math.sin(angle) * 20
+      const topX = Math.cos(angle) * 10
+      const topZ = Math.sin(angle) * 10
+
+      const geometry = new THREE.CylinderGeometry(2, 3, 350, 6)
+      const pillar = new THREE.Mesh(geometry, baseMat)
+      pillar.position.set((baseX + topX) / 2, 175, (baseZ + topZ) / 2)
+
+      pillar.rotation.z = Math.atan2(topX - baseX, 350) * 0.3
+
+      group.add(pillar)
+      this.buildingMeshes.push(pillar)
+    }
+
+    // 第一展望台（天望デッキ 350m）
+    const deck1 = new THREE.Mesh(new THREE.CylinderGeometry(15, 18, 30, 8), glassMat)
+    deck1.position.y = 350
+    group.add(deck1)
+    this.buildingMeshes.push(deck1)
+
+    // 中部 350-450m
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2
+      const x1 = Math.cos(angle) * 10
+      const z1 = Math.sin(angle) * 10
+      const x2 = Math.cos(angle) * 6
+      const z2 = Math.sin(angle) * 6
+
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2, 100, 6), baseMat)
+      pillar.position.set((x1 + x2) / 2, 400, (z1 + z2) / 2)
+      group.add(pillar)
+      this.buildingMeshes.push(pillar)
+    }
+
+    // 第二展望台（天望回廊 450m）
+    const deck2 = new THREE.Mesh(new THREE.CylinderGeometry(12, 14, 25, 8), glassMat)
+    deck2.position.y = 450
+    group.add(deck2)
+    this.buildingMeshes.push(deck2)
+
+    // 上部 450-634m（アンテナ含む）
+    const topSection = new THREE.Mesh(new THREE.CylinderGeometry(1, 6, 184, 8), baseMat)
+    topSection.position.y = 542
+    group.add(topSection)
+    this.buildingMeshes.push(topSection)
+
+    // 避雷針
+    const lightning = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 20, 6), baseMat)
+    lightning.position.y = 644
+    group.add(lightning)
+    this.buildingMeshes.push(lightning)
+
+    // 装飾リング
+    for (let h = 100; h < 500; h += 80) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(h / 30, 0.5, 6, 12),
+        baseMat
+      )
+      ring.rotation.x = Math.PI / 2
+      ring.position.y = h
+      group.add(ring)
+      this.buildingMeshes.push(ring)
+    }
+
+    group.position.set(x, 0, z)
+    this.scene.add(group)
   }
 
   private createSensoji(): void {
     const x = 3500, z = 2000  // 浅草
-    // 本堂（伝統的な赤）
-    const templeMat = new THREE.MeshStandardMaterial({
-      color: 0xaa2222,
-      roughness: 0.6
+    const group = new THREE.Group()
+
+    const redMat = new THREE.MeshStandardMaterial({ color: 0xbb2222, roughness: 0.6 })
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.8 })
+    const goldMat = new THREE.MeshStandardMaterial({
+      color: 0xffd700,
+      emissive: 0xaa8800,
+      emissiveIntensity: 0.3,
+      roughness: 0.3,
+      metalness: 0.8
     })
-    const mainHall = new THREE.Mesh(new THREE.BoxGeometry(80, 35, 60), templeMat)
-    mainHall.position.set(x, 17.5, z)
-    this.scene.add(mainHall)
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x654321, roughness: 0.85 })
+
+    // === 雷門 ===
+    // 門柱
+    for (const px of [-12, 12]) {
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 20, 8), redMat)
+      pillar.position.set(px, 10, 80)
+      group.add(pillar)
+      this.buildingMeshes.push(pillar)
+    }
+    // 雷門屋根
+    const gateRoof = new THREE.Mesh(new THREE.ConeGeometry(22, 8, 4), roofMat)
+    gateRoof.position.set(0, 24, 80)
+    gateRoof.rotation.y = Math.PI / 4
+    group.add(gateRoof)
+    this.buildingMeshes.push(gateRoof)
+
+    // 大提灯（雷門）
+    const lantern = new THREE.Mesh(new THREE.CylinderGeometry(4, 5, 12, 16), redMat)
+    lantern.position.set(0, 14, 80)
+    group.add(lantern)
+    this.buildingMeshes.push(lantern)
+
+    // === 五重塔 ===
+    const pagodaX = -60
+    for (let i = 0; i < 5; i++) {
+      const size = 12 - i * 1.5
+      const height = 8
+      const y = 4 + i * 9
+
+      // 各層
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(size, height, size), redMat)
+      floor.position.set(pagodaX, y, -20)
+      group.add(floor)
+      this.buildingMeshes.push(floor)
+
+      // 各層の屋根
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(size * 0.8, 4, 4), roofMat)
+      roof.position.set(pagodaX, y + height / 2 + 2, -20)
+      roof.rotation.y = Math.PI / 4
+      group.add(roof)
+      this.buildingMeshes.push(roof)
+    }
+
+    // 相輪（塔の先端）
+    const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.8, 10, 8), goldMat)
+    spire.position.set(pagodaX, 52, -20)
+    group.add(spire)
+    this.buildingMeshes.push(spire)
+
+    // === 本堂 ===
+    // 基壇
+    const platform = new THREE.Mesh(new THREE.BoxGeometry(90, 3, 70), woodMat)
+    platform.position.set(0, 1.5, 0)
+    group.add(platform)
+    this.buildingMeshes.push(platform)
+
+    // 本堂建物
+    const mainHall = new THREE.Mesh(new THREE.BoxGeometry(85, 30, 65), redMat)
+    mainHall.position.set(0, 18, 0)
+    group.add(mainHall)
     this.buildingMeshes.push(mainHall)
 
-    // 屋根（濃い灰色・瓦）
-    const roofMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.7 })
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(50, 15, 4), roofMat)
-    roof.position.set(x, 42, z)
-    roof.rotation.y = Math.PI / 4
-    this.scene.add(roof)
-    this.buildingMeshes.push(roof)
+    // 本堂屋根（入母屋造り風）
+    const mainRoof = new THREE.Mesh(new THREE.ConeGeometry(60, 18, 4), roofMat)
+    mainRoof.position.set(0, 42, 0)
+    mainRoof.rotation.y = Math.PI / 4
+    group.add(mainRoof)
+    this.buildingMeshes.push(mainRoof)
 
-    // 雷門（赤い門）
-    const gateMat = new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.5 })
-    const gate = new THREE.Mesh(new THREE.BoxGeometry(30, 25, 8), gateMat)
-    gate.position.set(x, 12.5, z + 80)
-    this.scene.add(gate)
-    this.buildingMeshes.push(gate)
+    // 破風（屋根の装飾）
+    const gable = new THREE.Mesh(new THREE.BoxGeometry(40, 8, 2), goldMat)
+    gable.position.set(0, 38, 33)
+    group.add(gable)
+    this.buildingMeshes.push(gable)
+
+    // 柱（本堂前）
+    for (let i = -3; i <= 3; i++) {
+      if (i === 0) continue
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 30, 8), redMat)
+      pillar.position.set(i * 12, 15, 35)
+      group.add(pillar)
+      this.buildingMeshes.push(pillar)
+    }
+
+    group.position.set(x, 0, z)
+    this.scene.add(group)
   }
 
   private createImperialPalace(): void {
     const x = 1200, z = 1500  // 千代田区
-    // 緑地（広大な敷地）
+    const group = new THREE.Group()
+
     const parkMat = new THREE.MeshStandardMaterial({ color: 0x2a5520, roughness: 0.9 })
-    const park = new THREE.Mesh(new THREE.BoxGeometry(400, 2, 400), parkMat)
-    park.position.set(x, 1, z)
-    this.scene.add(park)
-    this.buildingMeshes.push(park)
+    const waterMat = new THREE.MeshStandardMaterial({
+      color: 0x334455,
+      roughness: 0.2,
+      metalness: 0.6
+    })
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.4 })
+    const roofMat = new THREE.MeshStandardMaterial({
+      color: 0x4a7c59,
+      roughness: 0.5,
+      metalness: 0.4
+    })
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8 })
 
-    // 宮殿本体（伝統的な建築・白壁）
-    const palaceMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.4 })
-    const palace = new THREE.Mesh(new THREE.BoxGeometry(60, 20, 40), palaceMat)
-    palace.position.set(x, 10, z)
-    this.scene.add(palace)
-    this.buildingMeshes.push(palace)
+    // 外堀（お堀）
+    const moat = new THREE.Mesh(new THREE.TorusGeometry(220, 30, 8, 32), waterMat)
+    moat.rotation.x = Math.PI / 2
+    moat.position.y = -2
+    group.add(moat)
+    this.buildingMeshes.push(moat)
 
-    // 屋根（緑青色・銅板）
-    const copperRoofMat = new THREE.MeshStandardMaterial({ color: 0x4a7c59, roughness: 0.5, metalness: 0.3 })
-    const roofPalace = new THREE.Mesh(new THREE.ConeGeometry(40, 12, 4), copperRoofMat)
-    roofPalace.position.set(x, 26, z)
-    roofPalace.rotation.y = Math.PI / 4
-    this.scene.add(roofPalace)
-    this.buildingMeshes.push(roofPalace)
+    // 石垣
+    for (let i = 0; i < 16; i++) {
+      const angle = (i / 16) * Math.PI * 2
+      const wallX = Math.cos(angle) * 190
+      const wallZ = Math.sin(angle) * 190
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(30, 12, 10), stoneMat)
+      wall.position.set(wallX, 6, wallZ)
+      wall.rotation.y = angle
+      group.add(wall)
+      this.buildingMeshes.push(wall)
+    }
+
+    // 内苑の緑地
+    const innerPark = new THREE.Mesh(new THREE.CylinderGeometry(180, 180, 3, 32), parkMat)
+    innerPark.position.y = 1.5
+    group.add(innerPark)
+    this.buildingMeshes.push(innerPark)
+
+    // === 宮殿（本体） ===
+    // 中央棟
+    const centralWing = new THREE.Mesh(new THREE.BoxGeometry(70, 18, 50), wallMat)
+    centralWing.position.y = 9
+    group.add(centralWing)
+    this.buildingMeshes.push(centralWing)
+
+    // 中央棟の屋根
+    const centralRoof = new THREE.Mesh(new THREE.ConeGeometry(45, 15, 4), roofMat)
+    centralRoof.position.y = 26
+    centralRoof.rotation.y = Math.PI / 4
+    group.add(centralRoof)
+    this.buildingMeshes.push(centralRoof)
+
+    // 東西の翼棟
+    for (const side of [-1, 1]) {
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(40, 15, 35), wallMat)
+      wing.position.set(side * 55, 7.5, 0)
+      group.add(wing)
+      this.buildingMeshes.push(wing)
+
+      const wingRoof = new THREE.Mesh(new THREE.ConeGeometry(28, 10, 4), roofMat)
+      wingRoof.position.set(side * 55, 20, 0)
+      wingRoof.rotation.y = Math.PI / 4
+      group.add(wingRoof)
+      this.buildingMeshes.push(wingRoof)
+    }
+
+    // 渡り廊下
+    for (const side of [-1, 1]) {
+      const corridor = new THREE.Mesh(new THREE.BoxGeometry(15, 8, 15), wallMat)
+      corridor.position.set(side * 25, 4, 0)
+      group.add(corridor)
+      this.buildingMeshes.push(corridor)
+    }
+
+    // === 二重橋（有名な石橋） ===
+    const bridgeZ = 190
+    const bridge1 = new THREE.Mesh(new THREE.BoxGeometry(50, 3, 25), stoneMat)
+    bridge1.position.set(0, 1.5, bridgeZ)
+    group.add(bridge1)
+    this.buildingMeshes.push(bridge1)
+
+    // 橋の欄干
+    for (const side of [-1, 1]) {
+      const railing = new THREE.Mesh(new THREE.BoxGeometry(50, 2, 1), stoneMat)
+      railing.position.set(0, 3, bridgeZ + side * 12)
+      group.add(railing)
+      this.buildingMeshes.push(railing)
+    }
+
+    // === 桜の木（簡易表現） ===
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2
+      const treeX = Math.cos(angle) * 140
+      const treeZ = Math.sin(angle) * 140
+
+      // 幹
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1, 2, 15, 6), stoneMat)
+      trunk.position.set(treeX, 7.5, treeZ)
+      group.add(trunk)
+      this.buildingMeshes.push(trunk)
+
+      // 桜の葉（ピンク）
+      const foliage = new THREE.Mesh(
+        new THREE.SphereGeometry(8, 8, 8),
+        new THREE.MeshStandardMaterial({ color: 0xffb0c0, roughness: 0.9 })
+      )
+      foliage.position.set(treeX, 18, treeZ)
+      group.add(foliage)
+      this.buildingMeshes.push(foliage)
+    }
+
+    group.position.set(x, 0, z)
+    this.scene.add(group)
   }
 }
