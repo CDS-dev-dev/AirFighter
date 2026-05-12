@@ -1403,6 +1403,12 @@ function cycleLock() {
 function spawnEnemyAt(sx: number, sz: number) {
   const group = createAircraft(0xcc2222, 0x661111)
   group.position.set(sx, terrainH(sx, sz) + 75 + Math.random() * 55, sz)
+
+  // 前方が開けた方向を向く（南側にスポーンするので北向き）
+  if (currentMode === 'dogfight') {
+    group.rotation.y = 0  // 北向き（z負方向）
+  }
+
   scene.add(group)
   const angle = Math.atan2(sz, sx)
   enemies.push({ group, health: 2, orbitAngle: angle, fireCooldown: 8 + Math.random() * 7, missileAmmo: 4, seekingSupply: false })
@@ -1416,6 +1422,10 @@ function spawnEnemy() {
 function spawnAlly(sx: number, sz: number) {
   const group = createAircraft(0x22cc55, 0x116633)
   group.position.set(sx, terrainH(sx, sz) + 75 + Math.random() * 55, sz)
+
+  // 前方が開けた方向を向く（北側にスポーンするので南向き）
+  group.rotation.y = Math.PI  // 南向き（z正方向）
+
   scene.add(group)
   allies.push({ group, health: 2, orbitAngle: Math.atan2(sz, sx), fireCooldown: 3 + Math.random() * 3, missileAmmo: 8 })
 }
@@ -2433,7 +2443,10 @@ function startGame(mode: GameMode) {
         dfSpawnZ = Math.sin(a) * r
         player.position.set(dfSpawnX, terrainH(dfSpawnX, dfSpawnZ) + 200, dfSpawnZ)
       }
+      // 前方が開けた方向を向く（北側にスポーンするので南向き）
+      player.rotation.y = Math.PI  // 南向き（z正方向）
       player.quaternion.identity()
+      player.rotation.y = Math.PI
       camQuat.identity()
       speed = 200  // ゲーム開始時も巡航速度
       break
