@@ -1377,7 +1377,7 @@ const groundTargets: GroundTarget[] = []
 let dfAllyCount = 2
 let dfEnemyCount = 3
 
-let missileAmmo = 6, flareAmmo = 8, score = 0
+let missileAmmo = 6, flareAmmo = 3, score = 0
 let gunCooldown = 0, pMissileCooldown = 0, flareCooldown = 0
 let gunFireTime = 0  // マシンガンを連続発射している時間
 let hitFlashTimer = 0, gunSoundCooldown = 0, trailFrame = 0
@@ -2427,7 +2427,7 @@ function startGame(mode: GameMode) {
   for (const t of [...missileTrails]) scene.remove(t.mesh); missileTrails.length = 0
   lockedTarget = null
   score = 0; scoreEl.textContent = '0'
-  missileAmmo = 6; flareAmmo = 8
+  missileAmmo = 6; flareAmmo = 3
   playerHP = MAX_HP; invincibleTimer = 0
   updateHPDisplay()
   updatePips(missilePips, missileAmmo, 'on')
@@ -3597,7 +3597,7 @@ function updateSupplyPoints(dt: number) {
     if (dist < 38 && supplyCooldowns[i] <= 0) {
       const prevMsl = missileAmmo, prevFlr = flareAmmo, prevHP = playerHP
       missileAmmo = Math.min(6, missileAmmo + 3)
-      flareAmmo   = Math.min(8, flareAmmo   + 4)
+      flareAmmo   = Math.min(3, flareAmmo   + 2)
       playerHP    = Math.min(100, playerHP  + 50)  // HP回復：最大50
       if (missileAmmo !== prevMsl || flareAmmo !== prevFlr || playerHP !== prevHP) {
         missileEl.textContent = missileAmmo.toString()
