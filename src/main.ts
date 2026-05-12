@@ -1116,6 +1116,9 @@ scene.add(new THREE.Points(trailGeo, new THREE.PointsMaterial({
 const player = createAircraft(0x2255cc, 0x112244)
 player.position.set(0, terrainH(0, 0) + 150, 0)  // 初期位置を高く（90→150m）
 player.rotation.y = Math.PI  // 南向き（北の山とは反対方向）に初期化
+// スマホでは機体を大きく表示
+const isMobileDevice = 'ontouchstart' in window
+if (isMobileDevice) player.scale.setScalar(1.5)
 scene.add(player)
 let cameraOffset = new THREE.Vector3(0, 5, 20)
 const camQuat = new THREE.Quaternion()
@@ -1380,7 +1383,7 @@ let dfEnemyCount = 3
 let missileAmmo = 6, flareAmmo = 3, score = 0
 let gunCooldown = 0, pMissileCooldown = 0, flareCooldown = 0
 let gunFireTime = 0  // マシンガンを連続発射している時間
-let hitFlashTimer = 0, gunSoundCooldown = 0, trailFrame = 0
+let hitFlashTimer = 0, gunSoundCooldown = 0, trailFrame = 0, radarFrame = 0
 let lockedTarget: { group: THREE.Group } | null = null  // Enemy | GroundTarget どちらもロック可能
 let playerHP = 3, invincibleTimer = 0, respawnFlash = 0, respawnTimer = 0
 const MAX_HP = 3
@@ -2154,9 +2157,9 @@ const _smokeMat = new THREE.MeshStandardMaterial({
 })
 
 function spawnSmoke(pos: THREE.Vector3, radius = 3.5, col = 0x1a1a1a): void {
-  if (smokeParticles.length > 160) return  // 上限
+  if (smokeParticles.length > 80) return  // 上限を削減（160→80）
   const mat = _smokeMat.clone(); mat.color.set(col)
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 5, 5), mat)
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 4, 4), mat)  // ポリゴン削減（5→4）
   mesh.position.copy(pos).add(new THREE.Vector3(
     (Math.random()-0.5)*4, 0, (Math.random()-0.5)*4
   ))
@@ -3030,10 +3033,10 @@ function updateHoming(m: HomingMissile, dt: number) {
   if (m.light) m.light.position.copy(m.mesh.position)
   if (m.vel.lengthSq() > 0.01) m.mesh.quaternion.setFromUnitVectors(_fwd, m.vel.clone().normalize())
 
-  // ミサイル軌跡（煙トレイル）を生成
-  if (Math.random() < 0.3) {  // 30%の確率で煙パーティクル生成
+  // ミサイル軌跡（煙トレイル）を生成（パフォーマンス改善：確率を下げる）
+  if (Math.random() < 0.15) {  // 30%→15%に削減
     const trailMat = new THREE.MeshBasicMaterial({ color: 0xffaa44, transparent: true, opacity: 0.8 })
-    const trailMesh = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 6), trailMat)
+    const trailMesh = new THREE.Mesh(new THREE.SphereGeometry(0.3, 4, 4), trailMat)  // 6→4ポリゴン削減
     trailMesh.position.copy(m.mesh.position)
     scene.add(trailMesh)
     missileTrails.push({ mesh: trailMesh, life: 0.6 })
@@ -3043,7 +3046,7 @@ function updateHoming(m: HomingMissile, dt: number) {
 // ===== EXPLOSIONS =====
 function createExplosion(pos: THREE.Vector3, scale = 1.0) {
   const particles: Array<{ mesh: THREE.Mesh; vel: THREE.Vector3 }> = []
-  const count = Math.floor(6 + scale * 4)  // パーティクル数を半分に削減
+  const count = Math.floor(4 + scale * 2)  // パーティクル数をさらに削減（6+4→4+2）
   for (let i = 0; i < count; i++) {
     const core = i < count * 0.5
     const mat = new THREE.MeshStandardMaterial({
@@ -3189,7 +3192,7 @@ function updateMissileTrails(dt: number) {
 }
 
 function updateContrails() {
-  if (++trailFrame % 2 !== 0 || speed < 150) return  // 150m/s（540km/h）以上で飛行機雲生成
+  if (++trailFrame % 3 !== 0 || speed < 150) return  // 更新頻度削減（2フレーム→3フレームごと）
   for (const wo of [new THREE.Vector3(-2.8, 0, 2.1), new THREE.Vector3(2.8, 0, 2.1)]) {
     const p = wo.clone().applyQuaternion(player.quaternion).add(player.position)
     if (trailSize < TRAIL_CAP) {
@@ -4011,7 +4014,8 @@ function loop() {
   updateReticle()
   updateWarning()
   drawEnemyBrackets()
-  drawRadar()
+  // レーダー描画を3フレームに1回に制限（パフォーマンス改善）
+  if (++radarFrame % 3 === 0) drawRadar()
 
   waterUniforms.time.value += dt
   radarDishes.forEach(d => { d.rotation.y += dt * 0.65 })
