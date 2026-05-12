@@ -299,39 +299,17 @@ function terrainH(x: number, z: number): number {
   // ── テクスチャノイズ ─────────────────────────────────
   h += (fbm(x * 0.006 + 5.1, z * 0.006 - 3.8, 4) - 0.5) * 105
 
-  // ── 追加の大規模起伏（中央並みの激しい地形に）─────────
-  // 大規模な波状地形（振幅を中央峡谷並みに）
-  h += Math.sin(x * 0.0025 + 2.3) * 180 + Math.cos(z * 0.0032 + 1.7) * 150
-  h += Math.sin((x + z) * 0.0018 + 0.9) * 220
-  h += Math.sin((x - z) * 0.0021 + 1.5) * 200
+  // ── 適度な起伏を追加（自然でリアルな地形）─────────────
+  // 中規模な波状地形（戦闘に影響する適度な起伏）
+  h += Math.sin(x * 0.0025 + 2.3) * 120 + Math.cos(z * 0.0032 + 1.7) * 100
+  h += Math.sin((x + z) * 0.0018 + 0.9) * 80
+  h += Math.sin((x - z) * 0.0021 + 1.5) * 70
 
-  // 大規模な山塊を散在させる（高さを中央峡谷深さ並みに）
-  h += gauss2d(x, z,  -400,  350, 180, 160, 320)  // 350m級の山
-  h += gauss2d(x, z,   650,  120, 160, 145, 290)
-  h += gauss2d(x, z,  -250, -350, 140, 130, 270)
-  h += gauss2d(x, z,   320, -580, 155, 140, 310)
-  h += gauss2d(x, z,   820,  480, 125, 115, 260)
-  h += gauss2d(x, z, -1000,  200, 170, 160, 300)
-
-  // 激しい起伏を追加（高さを3-4倍に増強）
-  h += gauss2d(x, z,  -800, -200, 220, 200, 380)  // 北西部の大尾根（380m）
-  h += gauss2d(x, z,   400,  700, 200, 180, 360)  // 北東部の高台（360m）
-  h += gauss2d(x, z,  -600,  600, 190, 170, 340)  // 北部の山塊（340m）
-  h += gauss2d(x, z,   900, -300, 210, 190, 370)  // 東部の大山塊（370m）
-  h += gauss2d(x, z,   100, -200, 175, 160, 330)  // 中央部の起伏（330m）
-
-  // 新規追加：さらなる大規模山塊
-  h += gauss2d(x, z,  -200, -800, 200, 180, 350)  // 南西部の山（350m）
-  h += gauss2d(x, z,   500, -150, 190, 170, 340)  // 中央東部の山（340m）
-  h += gauss2d(x, z, -1200,  -50, 210, 190, 330)  // 西部の山（330m）
-
-  // 波状の地形パターン（振幅を5倍に増強：戦闘に影響するレベル）
-  h += Math.sin(x * 0.004) * Math.cos(z * 0.003) * 400
-  h += Math.sin(x * 0.006 + z * 0.005) * 350
-  h += Math.sin(x * 0.003 + 1.5) * Math.sin(z * 0.004 + 2.1) * 320
-
-  // 全域に激しい高低差を追加（基準高度を2倍に）
-  h *= 1.8
+  // 追加の山塊（控えめに）
+  h += gauss2d(x, z,  -400,  350, 180, 160, 200)  // 西部の山
+  h += gauss2d(x, z,   650,  120, 160, 145, 180)  // 東部の山
+  h += gauss2d(x, z,  -250, -350, 140, 130, 170)  // 北西の丘陵
+  h += gauss2d(x, z,   320, -580, 155, 140, 190)  // 北東の山塊
 
   return h
 }
@@ -839,19 +817,16 @@ let glbHangar: THREE.Group | null = null
 let glbControlTower: THREE.Group | null = null
 let glbRadarDish: THREE.Group | null = null
 let glbFuelTank: THREE.Group | null = null
-let glbWarehouse: THREE.Group | null = null
 let glbDam: THREE.Group | null = null
 let glbCityBuilding01: THREE.Group | null = null
 let glbCityBuilding02: THREE.Group | null = null
 let glbCityBuilding03: THREE.Group | null = null
 let glbCityBuilding04: THREE.Group | null = null
 let glbCityBuilding05: THREE.Group | null = null
-let glbDefenseBunker: THREE.Group | null = null
-let glbMountainRadarBase: THREE.Group | null = null
 // Tokyo MAP用のGLBはTokyoMapSystemが管理するため、ここでは不要
 
 let _bldgGLBsLoaded = 0
-const _totalBuildingGLBs = 13  // オリジナルMAP用のビルディングGLB数
+const _totalBuildingGLBs = 10  // オリジナルMAP用のビルディングGLB数
 function _onBuildingGLBLoaded() {
   _bldgGLBsLoaded++
   if (_bldgGLBsLoaded >= _totalBuildingGLBs) {
@@ -870,11 +845,7 @@ function buildWorldStructures() {
   // ===== 空軍基地 =====
   buildAirBase(   0,  -60, 0,           'A')   // 中央基地 Alpha
   buildAirBase(1100, -280, Math.PI*0.1, 'B')   // 東部高原基地 Bravo
-  buildAirBase( 400,  200, Math.PI*0.25,'C')   // 中央東部平原基地 Charlie（新規）
-
-  // ===== 港湾 =====
-  buildPort(   -130,  920, 0)                  // 南部湾 軍港
-  buildPort(  -1600,  350, Math.PI*0.3)        // 西部沿岸港（新規）
+  buildAirBase( 400,  200, Math.PI*0.25,'C')   // 中央東部平原基地 Charlie
 
   // ===== ダム =====
   addDam(  120, -800, 180, Math.PI/2)          // 北部渓谷ダム
@@ -884,14 +855,7 @@ function buildWorldStructures() {
   addCityArea( -600,  100, 150, 25)            // 西部都市
   addCityArea(  650,  450, 120, 18)            // 東部都市
 
-  // ===== 山岳レーダー基地 =====
-  addMountainRadarBase(  200, -1820)           // Peak A 最高峰
-  addMountainRadarBase( -720, -1570)           // Peak B 北西峰
-  addMountainRadarBase(  980, -1350)           // Peak C 北東峰
-
-  // ===== 防空陣地 =====
-  addDefensePosition( -180, -640, 4)           // 中央北部高地防空陣地
-  addDefensePosition( 1100, -380, 3)           // 東部プラトー防空陣地
+  // 港湾、山岳レーダー基地、防空陣地は削除（極限地形では配置が不自然になるため）
 }
 
 function _glbSetShadow(g: THREE.Group) {
@@ -902,15 +866,12 @@ function _glbSetShadow(g: THREE.Group) {
   ['models/control_tower.glb',         (g: THREE.Group) => { glbControlTower       = g }],
   ['models/radar_dish.glb',            (g: THREE.Group) => { glbRadarDish          = g }],
   ['models/fuel_tank.glb',             (g: THREE.Group) => { glbFuelTank           = g }],
-  ['models/warehouse.glb',             (g: THREE.Group) => { glbWarehouse          = g }],
   ['models/dam.glb',                   (g: THREE.Group) => { glbDam                = g }],
   ['models/city_building_01.glb',      (g: THREE.Group) => { glbCityBuilding01     = g }],
   ['models/city_building_02.glb',      (g: THREE.Group) => { glbCityBuilding02     = g }],
   ['models/city_building_03.glb',      (g: THREE.Group) => { glbCityBuilding03     = g }],
   ['models/city_building_04.glb',      (g: THREE.Group) => { glbCityBuilding04     = g }],
   ['models/city_building_05.glb',      (g: THREE.Group) => { glbCityBuilding05     = g }],
-  ['models/defense_bunker.glb',        (g: THREE.Group) => { glbDefenseBunker      = g }],
-  ['models/mountain_radar_base.glb',   (g: THREE.Group) => { glbMountainRadarBase  = g }],
 ].forEach(([url, setter]) => {
   gltfLoader.load(import.meta.env.BASE_URL + (url as string), (gltf) => {
     const g = gltf.scene; _glbSetShadow(g); (setter as (g: THREE.Group) => void)(g)
@@ -1994,80 +1955,6 @@ function buildAirBase(cx: number, cz: number, rotY: number, label: 'A' | 'B' | '
   addPerimeterWall(cx, cz + 28, baseY, 155, 148, rotY)
 }
 
-function addDockPlatform(cx: number, cz: number, baseY: number, w: number, d: number): void {
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(w, 3, d), concMat)
-  deck.position.set(cx, baseY + 1.5, cz); deck.receiveShadow = true; deck.castShadow = true; scene.add(deck)
-  // 杭（ピリング）
-  const pn = Math.ceil(w / 28)
-  for (let i = 0; i < pn; i++) {
-    const px = cx - w/2 + (i + 0.5) * (w/pn)
-    for (const pz of [cz - d/2 + 5, cz + d/2 - 5]) {
-      const pile = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.6, 14, 6), concMat)
-      pile.position.set(px, baseY - 5, pz); scene.add(pile)
-    }
-  }
-  // ボラード（係留柱）
-  const steelB = new THREE.MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.6, metalness: 0.8 })
-  for (let i = 0; i < 7; i++) {
-    const bx = cx - w/2 + (i + 0.5) * (w/7)
-    const bollard = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 2.2, 8), steelB)
-    bollard.position.set(bx, baseY + 3.5, cz - d/2 + 1); scene.add(bollard)
-  }
-}
-
-function addCrane(cx: number, cz: number, baseY: number, rotY: number): void {
-  const g2 = new THREE.Group()
-  const tower = new THREE.Mesh(new THREE.BoxGeometry(5, 45, 5), steelMat)
-  tower.position.y = 22.5; tower.castShadow = true; g2.add(tower)
-  const boom = new THREE.Mesh(new THREE.BoxGeometry(40, 2.5, 2.5), steelMat)
-  boom.position.set(14, 46, 0); g2.add(boom)
-  const counter = new THREE.Mesh(new THREE.BoxGeometry(16, 2.5, 2.5), steelMat)
-  counter.position.set(-10, 46, 0); g2.add(counter)
-  const cw = new THREE.Mesh(new THREE.BoxGeometry(5, 6, 4), concMat)
-  cw.position.set(-17, 43, 0); g2.add(cw)
-  const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 30, 4), steelMat)
-  cable.position.set(25, 31, 0); g2.add(cable)
-  const hook = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.35, 6, 12, Math.PI), steelMat)
-  hook.position.set(25, 16, 0); hook.rotation.z = Math.PI/2; g2.add(hook)
-  const warnL = new THREE.Mesh(new THREE.SphereGeometry(0.6, 6, 6),
-    new THREE.MeshStandardMaterial({ color: 0xff7700, emissive: 0xff5500, emissiveIntensity: 10 }))
-  warnL.position.set(34, 47.5, 0); g2.add(warnL)
-  g2.position.set(cx, baseY, cz); g2.rotation.y = rotY; scene.add(g2)
-}
-
-function addWarehouse(cx: number, cz: number, w: number, h: number, d: number, rotY: number, baseY: number): void {
-  if (glbWarehouse) {
-    // GLB warehouse: W=32, D=20, H=9
-    const inst = glbWarehouse.clone()
-    inst.scale.set(w / 32, h / 9, d / 20)
-    inst.position.set(cx, baseY, cz)
-    inst.rotation.y = rotY
-    scene.add(inst)
-    return
-  }
-  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), milGreen)
-  body.position.set(cx, baseY + h/2, cz); body.rotation.y = rotY
-  body.castShadow = true; body.receiveShadow = true; scene.add(body)
-  const roofMat2 = new THREE.MeshStandardMaterial({ color: 0x5a3c28, roughness: 0.90, metalness: 0.18 })
-  const ridge = new THREE.Mesh(new THREE.BoxGeometry(w + 2.5, 1, d + 2.5), roofMat2)
-  ridge.position.set(cx, baseY + h + 0.5, cz); ridge.rotation.y = rotY; scene.add(ridge)
-}
-
-function buildPort(cx: number, cz: number, _rotY: number): void {
-  const baseY = Math.max(terrainH(cx, cz), WATER_LEVEL + 3.5)
-  addDockPlatform(cx, cz, baseY, 175, 65)
-  // 倉庫群
-  addWarehouse(cx - 50, cz + 58, 55, 15, 30, 0, terrainH(cx - 50, cz + 58))
-  addWarehouse(cx + 50, cz + 58, 55, 15, 30, 0, terrainH(cx + 50, cz + 58))
-  addWarehouse(cx,      cz + 95, 65, 13, 24, 0, terrainH(cx,      cz + 95))
-  // クレーン x3
-  for (let i = -1; i <= 1; i++) addCrane(cx + i * 52, cz - 22, baseY + 3, Math.PI/2)
-  // 燃料タンク
-  addFuelTanks(cx + 100, cz + 45, terrainH(cx + 100, cz + 45), 3)
-  // 港湾レーダー
-  addRadarDish(cx - 95, cz + 35, terrainH(cx - 95, cz + 35))
-}
-
 function buildBridge(cx: number, cz: number, span: number, rotY: number): void {
   const w = 20
   const yN = terrainH(cx + (rotY===0 ? 0 : -span/2), cz + (rotY===0 ? -span/2 : 0))
@@ -2168,50 +2055,6 @@ function addCityArea(cx: number, cz: number, radius: number, buildingCount: numb
 
     // 屋上ライト（夜間用、現在は昼間なので控えめ）
     // パフォーマンス改善：装飾ライト削除
-  }
-}
-
-// ===== MOUNTAIN RADAR BASE =====
-function addMountainRadarBase(cx: number, cz: number): void {
-  if (!glbMountainRadarBase) return  // GLB未ロードならスキップ
-  const baseY = terrainH(cx, cz)
-
-  const base = glbMountainRadarBase.clone()
-  base.position.set(cx, baseY, cz)
-  base.rotation.y = Math.random() * Math.PI * 2
-  scene.add(base)
-
-  // パフォーマンス改善：レーダードームライト削除
-}
-
-// ===== DEFENSE POSITION (Multiple SAMs) =====
-function addDefensePosition(cx: number, cz: number, samCount: number): void {
-  if (!glbDefenseBunker) return  // GLB未ロードならスキップ
-  const baseY = terrainH(cx, cz)
-
-  // 中央バンカー
-  const bunker = glbDefenseBunker.clone()
-  bunker.position.set(cx, baseY, cz)
-  scene.add(bunker)
-
-  // SAM配置（円形配列）
-  for (let i = 0; i < samCount; i++) {
-    const angle = (i / samCount) * Math.PI * 2
-    const sx = cx + Math.cos(angle) * 25
-    const sz = cz + Math.sin(angle) * 25
-    const sy = terrainH(sx, sz)
-
-    // SAMランチャー（簡易版）
-    const samBase = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.5, 1.5, 8), steelMat)
-    samBase.position.set(sx, sy + 0.75, sz)
-    samBase.castShadow = true
-    scene.add(samBase)
-
-    const samLauncher = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 4), steelMat)
-    samLauncher.position.set(sx, sy + 2.5, sz)
-    samLauncher.rotation.x = -Math.PI / 6
-    samLauncher.castShadow = true
-    scene.add(samLauncher)
   }
 }
 
