@@ -1612,7 +1612,9 @@ function firePlayerMissile() {
   const mLight = new THREE.PointLight(0xff8800, 4, 30)  // 強度6→4、範囲55→30に削減
   mLight.position.copy(mesh.position)
   scene.add(mLight)
-  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(90), life: 12, target, diverted: false, spd: 140, turnRate: 3.5, light: mLight })  // 追尾性能向上: spd 110→140, turnRate 2.5→3.5
+  // ミサイル速度 = プレイヤー速度 + 相対速度200 m/s
+  const missileAbsoluteSpeed = speed + 200
+  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(missileAbsoluteSpeed), life: 12, target, diverted: false, spd: missileAbsoluteSpeed, turnRate: 3.5, light: mLight })
   camShakeAmt = Math.max(camShakeAmt, 0.22)
   playMissileSound()
 }
@@ -1630,7 +1632,9 @@ function fireEnemyMissile(enemy: Enemy) {
   const toTarget = target.position.clone().sub(enemy.group.position).normalize()
   mesh.quaternion.setFromUnitVectors(_fwd, toTarget)
   scene.add(mesh)
-  enemyMissiles.push({ mesh, vel: toTarget.clone().multiplyScalar(65), life: 15, target, diverted: false, spd: 70, turnRate: 0.85, light: null })
+  // 敵ミサイル速度 = 敵速度180 + 相対速度120 = 300 m/s
+  const enemyMissileSpeed = 180 + 120
+  enemyMissiles.push({ mesh, vel: toTarget.clone().multiplyScalar(enemyMissileSpeed), life: 15, target, diverted: false, spd: enemyMissileSpeed, turnRate: 0.85, light: null })
 }
 
 function _dropSingleFlare() {
