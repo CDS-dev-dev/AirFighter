@@ -1379,6 +1379,7 @@ let dfEnemyCount = 3
 
 let missileAmmo = 6, flareAmmo = 8, score = 0
 let gunCooldown = 0, pMissileCooldown = 0, flareCooldown = 0
+let gunFireTime = 0  // マシンガンを連続発射している時間
 let hitFlashTimer = 0, gunSoundCooldown = 0, trailFrame = 0
 let lockedTarget: { group: THREE.Group } | null = null  // Enemy | GroundTarget どちらもロック可能
 let playerHP = 3, invincibleTimer = 0, respawnFlash = 0, respawnTimer = 0
@@ -1440,7 +1441,7 @@ function fireAllyMissile(ally: Ally, target: Enemy) {
   const toTarget = target.group.position.clone().sub(ally.group.position).normalize()
   mesh.quaternion.setFromUnitVectors(_fwd, toTarget)
   scene.add(mesh)
-  allyMissiles.push({ mesh, vel: toTarget.clone().multiplyScalar(90), life: 14, target: target.group, diverted: false, spd: 110, turnRate: 2.5, light: null })  // 追尾性能向上: spd 95→110, turnRate 1.8→2.5
+  allyMissiles.push({ mesh, vel: toTarget.clone().multiplyScalar(90), life: 14, target: target.group, diverted: false, spd: 140, turnRate: 3.5, light: null })  // 追尾性能向上: spd 110→140, turnRate 2.5→3.5
 }
 
 function killEnemy(ei: number) {
@@ -1535,20 +1536,39 @@ function fireGun() {
   const fwd = _fwd.clone().applyQuaternion(player.quaternion)
   let aimDir = fwd.clone()
 
-  // ロック中は予測位置に照準
-  // 予測機能を一旦無効化（2026-05-12）
-  /*
-  if (lockedTarget) {
-    const leadPos = calculateGunLeadPosition(lockedTarget)
-    if (leadPos) {
-      const toLeadPos = leadPos.clone().sub(player.position).normalize()
-      // 前方60度以内なら予測照準を適用
-      if (fwd.angleTo(toLeadPos) < Math.PI / 3) {
-        aimDir = toLeadPos
+  // 1秒以上連続発射している場合、ロック中の敵への予測射撃を行う
+  if (gunFireTime > 1.0 && lockedTarget) {
+    const targetPos = lockedTarget.group.position.clone()
+    const targetVel = new THREE.Vector3()
+
+    // 敵の移動方向を推定（enemiesリストから該当するEnemyを探す）
+    const enemy = enemies.find(e => e.group === lockedTarget!.group)
+    if (enemy) {
+      // 円軌道の接線方向から速度推定
+      const angle = enemy.orbitAngle
+      const r = 110
+      targetVel.set(-Math.sin(angle) * r * 0.22, Math.cos(angle * 0.6) * 0.6 * 20 * 0.22, Math.cos(angle) * r * 0.22)
+    } else {
+      // 地上目標の場合は速度を簡易推定（前フレームとの差分は取れないので固定値）
+      const gt = groundTargets.find(g => g.group === lockedTarget!.group)
+      if (gt && gt.vel) {
+        targetVel.copy(gt.vel)
       }
     }
+
+    const bulletSpeed = 230
+    const dist = targetPos.distanceTo(player.position)
+    const timeToHit = dist / bulletSpeed
+
+    // 予測位置 = 現在位置 + 速度 × 到達時間
+    const leadPos = targetPos.add(targetVel.multiplyScalar(timeToHit))
+    const toLeadPos = leadPos.sub(player.position).normalize()
+
+    // 前方60度以内なら予測照準を適用
+    if (fwd.angleTo(toLeadPos) < Math.PI / 3) {
+      aimDir = toLeadPos
+    }
   }
-  */
 
   for (const side of [-0.7, 0.7]) {
     const offset = new THREE.Vector3(side, 0, -3).applyQuaternion(player.quaternion)
@@ -1589,7 +1609,7 @@ function firePlayerMissile() {
   const mLight = new THREE.PointLight(0xff8800, 4, 30)  // 強度6→4、範囲55→30に削減
   mLight.position.copy(mesh.position)
   scene.add(mLight)
-  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(90), life: 12, target, diverted: false, spd: 110, turnRate: 2.5, light: mLight })  // 追尾性能向上: spd 95→110, turnRate 1.8→2.5
+  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(90), life: 12, target, diverted: false, spd: 140, turnRate: 3.5, light: mLight })  // 追尾性能向上: spd 110→140, turnRate 2.5→3.5
   camShakeAmt = Math.max(camShakeAmt, 0.22)
   playMissileSound()
 }
@@ -3071,40 +3091,59 @@ function updateFlares(dt: number) {
 function updateEnemies(dt: number) {
   for (let i = 0; i < enemies.length; i++) {
     const enemy = enemies[i]
-    let tx: number, tz: number, ty: number
+    let tx = 0, tz = 0, ty = 0
+    let evading = false
 
-    if (enemy.seekingSupply) {
-      // 最寄りの補給ポイントへ向かう
-      let nearestIdx = 0, nearestDist = Infinity
-      for (let si = 0; si < SUPPLY_POSITIONS.length; si++) {
-        const d = enemy.group.position.distanceTo(SUPPLY_POSITIONS[si])
-        if (d < nearestDist) { nearestDist = d; nearestIdx = si }
+    // ミサイル回避チェック（プレイヤー＆味方のミサイルを検知）
+    const allThreats = [...playerMissiles, ...allyMissiles]
+    for (const m of allThreats) {
+      const dist = m.mesh.position.distanceTo(enemy.group.position)
+      if (dist < 80 && m.target === enemy.group) {  // 80m以内で自分を狙っているミサイルを検知
+        evading = true
+        // ミサイルから垂直方向に回避
+        const toMissile = m.mesh.position.clone().sub(enemy.group.position)
+        const evadeDir = new THREE.Vector3(-toMissile.z, 20, toMissile.x).normalize()  // 垂直方向
+        tx = enemy.group.position.x + evadeDir.x * 150
+        ty = enemy.group.position.y + evadeDir.y * 150
+        tz = enemy.group.position.z + evadeDir.z * 150
+        break
       }
-      const sp = SUPPLY_POSITIONS[nearestIdx]
-      tx = sp.x; tz = sp.z; ty = sp.y + 15
-      if (nearestDist < 40) {
-        enemy.missileAmmo = 4
-        enemy.seekingSupply = false
-      }
-    } else {
-      enemy.orbitAngle += dt * 0.22
-      const r = 110 + i * 25
-      // 味方がいる場合、一部の敵は味方を狙う（チーム戦AI）
-      const orbitBase = (currentMode === 'dogfight' && allies.length > 0 && i % 3 === 2)
-        ? allies[i % allies.length].group.position
-        : player.position
-      tx = orbitBase.x + Math.cos(enemy.orbitAngle) * r
-      tz = orbitBase.z + Math.sin(enemy.orbitAngle) * r
-      ty = orbitBase.y + 8 + Math.sin(enemy.orbitAngle * 0.6) * 20
+    }
 
-      enemy.fireCooldown -= dt
-      if (enemy.fireCooldown <= 0) {
-        if (enemy.missileAmmo > 0) {
-          enemy.fireCooldown = 9 + Math.random() * 7
-          fireEnemyMissile(enemy)
-        } else {
-          enemy.seekingSupply = true
-          enemy.fireCooldown = 3
+    if (!evading) {
+      if (enemy.seekingSupply) {
+        // 最寄りの補給ポイントへ向かう
+        let nearestIdx = 0, nearestDist = Infinity
+        for (let si = 0; si < SUPPLY_POSITIONS.length; si++) {
+          const d = enemy.group.position.distanceTo(SUPPLY_POSITIONS[si])
+          if (d < nearestDist) { nearestDist = d; nearestIdx = si }
+        }
+        const sp = SUPPLY_POSITIONS[nearestIdx]
+        tx = sp.x; tz = sp.z; ty = sp.y + 15
+        if (nearestDist < 40) {
+          enemy.missileAmmo = 4
+          enemy.seekingSupply = false
+        }
+      } else {
+        enemy.orbitAngle += dt * 0.22
+        const r = 110 + i * 25
+        // 味方がいる場合、一部の敵は味方を狙う（チーム戦AI）
+        const orbitBase = (currentMode === 'dogfight' && allies.length > 0 && i % 3 === 2)
+          ? allies[i % allies.length].group.position
+          : player.position
+        tx = orbitBase.x + Math.cos(enemy.orbitAngle) * r
+        tz = orbitBase.z + Math.sin(enemy.orbitAngle) * r
+        ty = orbitBase.y + 8 + Math.sin(enemy.orbitAngle * 0.6) * 20
+
+        enemy.fireCooldown -= dt
+        if (enemy.fireCooldown <= 0) {
+          if (enemy.missileAmmo > 0) {
+            enemy.fireCooldown = 9 + Math.random() * 7
+            fireEnemyMissile(enemy)
+          } else {
+            enemy.seekingSupply = true
+            enemy.fireCooldown = 3
+          }
         }
       }
     }
@@ -3112,10 +3151,11 @@ function updateEnemies(dt: number) {
     const dir = new THREE.Vector3(tx - enemy.group.position.x, ty - enemy.group.position.y, tz - enemy.group.position.z)
     if (dir.length() > 0.5) {
       dir.normalize()
-      enemy.group.position.addScaledVector(dir, 180 * dt)  // 敵機も180m/s（648km/h）で移動
+      const moveSpeed = evading ? 220 : 180  // 回避時は加速
+      enemy.group.position.addScaledVector(dir, moveSpeed * dt)
       const flat = new THREE.Vector3(dir.x, 0, dir.z)
       if (flat.lengthSq() > 0.01) enemy.group.quaternion.slerp(
-        new THREE.Quaternion().setFromUnitVectors(_fwd, flat.normalize()), 0.055
+        new THREE.Quaternion().setFromUnitVectors(_fwd, flat.normalize()), evading ? 0.12 : 0.055  // 回避時は素早く旋回
       )
     }
   }
@@ -3869,7 +3909,12 @@ function loop() {
   if (currentMode !== null && !missionComplete) {
     if (keysJustPressed.has('Tab') || touchState.lockPressed) cycleLock()
     if (keysJustPressed.has('Escape')) lockedTarget = null
-    if (keys['KeyZ'] || keys['KeyA'] || keys['KeyQ'] || touchState.gun) fireGun()
+    if (keys['KeyZ'] || keys['KeyA'] || keys['KeyQ'] || touchState.gun) {
+      fireGun()
+      gunFireTime += dt  // 連続発射時間を累積
+    } else {
+      gunFireTime = 0  // 発射していない時はリセット
+    }
     if (keysJustPressed.has('KeyX') || touchState.missilePressed) firePlayerMissile()
     if (keysJustPressed.has('KeyC') || touchState.flarePressed) triggerFlareBurst()
   }
