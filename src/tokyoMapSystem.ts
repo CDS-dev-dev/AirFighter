@@ -37,6 +37,9 @@ export class TokyoMapSystem {
     // 4. 建物群（リアルな色彩とデザイン）
     this.createBuildings()
 
+    // 5. ランドマーク（東京タワー、スカイツリーなど）
+    this.createLandmarks()
+
     console.log('✅ 東京MAP初期化完了')
   }
 
@@ -267,7 +270,6 @@ export class TokyoMapSystem {
    */
   private createBuildings(): void {
     // 地区定義: [名前, 中心X, 中心Z, 範囲X, 範囲Z, 建物数, 最小高さ, 最大高さ, タイプ]
-    // パフォーマンス改善：建物数を約60%に削減（700棟→420棟）
     const districts: Array<[string, number, number, number, number, number, number, number, string]> = [
       // 都心部（超高層ビル）
       ['新宿西口', -2500, 800, 600, 600, 35, 180, 280, 'office'],
@@ -289,7 +291,17 @@ export class TokyoMapSystem {
       // 住宅地
       ['恵比寿', 600, -600, 500, 500, 30, 50, 110, 'residential'],
       ['中野', -3200, 1800, 700, 700, 30, 50, 100, 'residential'],
-      ['吉祥寺', -4800, 2800, 800, 800, 35, 40, 90, 'shopping']
+      ['吉祥寺', -4800, 2800, 800, 800, 35, 40, 90, 'shopping'],
+
+      // 空白地帯を埋める追加地区
+      ['目黒', -800, -1500, 600, 600, 25, 60, 120, 'residential'],
+      ['世田谷', -2800, -800, 900, 900, 30, 40, 85, 'residential'],
+      ['練馬', -4200, 3800, 800, 800, 25, 35, 75, 'residential'],
+      ['葛飾', 4500, 2500, 900, 900, 25, 40, 80, 'residential'],
+      ['江戸川', 5200, 800, 800, 800, 20, 40, 90, 'residential'],
+      ['板橋', -3500, 3200, 700, 700, 20, 45, 95, 'residential'],
+      ['足立', 1200, 4200, 1000, 1000, 20, 35, 70, 'residential'],
+      ['大田', 1500, -3800, 900, 900, 25, 50, 100, 'residential']
     ]
 
     for (const [name, cx, cz, rangeX, rangeZ, count, minH, maxH, type] of districts) {
@@ -465,5 +477,122 @@ export class TokyoMapSystem {
     this.waterMeshes = []
 
     console.log('✅ 東京MAPクリーンアップ完了')
+  }
+
+  /**
+   * 東京のランドマーク建造物を追加
+   */
+  private createLandmarks(): void {
+    // 東京タワー（赤と白のツートン）
+    this.createTokyoTower()
+
+    // スカイツリー（銀色）
+    this.createSkytree()
+
+    // 浅草寺（伝統的な赤）
+    this.createSensoji()
+
+    // 皇居（緑と伝統建築）
+    this.createImperialPalace()
+  }
+
+  private createTokyoTower(): void {
+    const x = 800, z = -800  // 六本木近く
+    // タワー本体（赤と白）
+    const towerMat = new THREE.MeshStandardMaterial({
+      color: 0xff5533,
+      emissive: 0xff2200,
+      emissiveIntensity: 0.3,
+      roughness: 0.4,
+      metalness: 0.6
+    })
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(10, 30, 333, 6), towerMat)
+    tower.position.set(x, 166.5, z)
+    this.scene.add(tower)
+    this.buildingMeshes.push(tower)
+
+    // 白い帯（上部）
+    const whiteMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.3 })
+    const whiteSection = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 80, 6), whiteMat)
+    whiteSection.position.set(x, 280, z)
+    this.scene.add(whiteSection)
+    this.buildingMeshes.push(whiteSection)
+  }
+
+  private createSkytree(): void {
+    const x = 4000, z = 1500  // 墨田区方面
+    const skyMat = new THREE.MeshStandardMaterial({
+      color: 0xc0c8d0,
+      roughness: 0.2,
+      metalness: 0.8
+    })
+    const skytree = new THREE.Mesh(new THREE.CylinderGeometry(8, 25, 634, 6), skyMat)
+    skytree.position.set(x, 317, z)
+    this.scene.add(skytree)
+    this.buildingMeshes.push(skytree)
+
+    // 展望台（明るい部分）
+    const obsDecMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0x6688ff,
+      emissiveIntensity: 0.4
+    })
+    const obsDeck = new THREE.Mesh(new THREE.CylinderGeometry(15, 15, 40, 8), obsDecMat)
+    obsDeck.position.set(x, 350, z)
+    this.scene.add(obsDeck)
+    this.buildingMeshes.push(obsDeck)
+  }
+
+  private createSensoji(): void {
+    const x = 3500, z = 2000  // 浅草
+    // 本堂（伝統的な赤）
+    const templeMat = new THREE.MeshStandardMaterial({
+      color: 0xaa2222,
+      roughness: 0.6
+    })
+    const mainHall = new THREE.Mesh(new THREE.BoxGeometry(80, 35, 60), templeMat)
+    mainHall.position.set(x, 17.5, z)
+    this.scene.add(mainHall)
+    this.buildingMeshes.push(mainHall)
+
+    // 屋根（濃い灰色・瓦）
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.7 })
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(50, 15, 4), roofMat)
+    roof.position.set(x, 42, z)
+    roof.rotation.y = Math.PI / 4
+    this.scene.add(roof)
+    this.buildingMeshes.push(roof)
+
+    // 雷門（赤い門）
+    const gateMat = new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.5 })
+    const gate = new THREE.Mesh(new THREE.BoxGeometry(30, 25, 8), gateMat)
+    gate.position.set(x, 12.5, z + 80)
+    this.scene.add(gate)
+    this.buildingMeshes.push(gate)
+  }
+
+  private createImperialPalace(): void {
+    const x = 1200, z = 1500  // 千代田区
+    // 緑地（広大な敷地）
+    const parkMat = new THREE.MeshStandardMaterial({ color: 0x2a5520, roughness: 0.9 })
+    const park = new THREE.Mesh(new THREE.BoxGeometry(400, 2, 400), parkMat)
+    park.position.set(x, 1, z)
+    this.scene.add(park)
+    this.buildingMeshes.push(park)
+
+    // 宮殿本体（伝統的な建築・白壁）
+    const palaceMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.4 })
+    const palace = new THREE.Mesh(new THREE.BoxGeometry(60, 20, 40), palaceMat)
+    palace.position.set(x, 10, z)
+    this.scene.add(palace)
+    this.buildingMeshes.push(palace)
+
+    // 屋根（緑青色・銅板）
+    const copperRoofMat = new THREE.MeshStandardMaterial({ color: 0x4a7c59, roughness: 0.5, metalness: 0.3 })
+    const roofPalace = new THREE.Mesh(new THREE.ConeGeometry(40, 12, 4), copperRoofMat)
+    roofPalace.position.set(x, 26, z)
+    roofPalace.rotation.y = Math.PI / 4
+    this.scene.add(roofPalace)
+    this.buildingMeshes.push(roofPalace)
   }
 }

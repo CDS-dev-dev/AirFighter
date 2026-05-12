@@ -299,6 +299,20 @@ function terrainH(x: number, z: number): number {
   // ── テクスチャノイズ ─────────────────────────────────
   h += (fbm(x * 0.006 + 5.1, z * 0.006 - 3.8, 4) - 0.5) * 105
 
+  // ── 追加の小規模起伏（どこを飛んでも面白い地形に）─────────
+  // 中規模の丘陵を全体に追加
+  h += Math.sin(x * 0.0025 + 2.3) * 35 + Math.cos(z * 0.0032 + 1.7) * 28
+  h += Math.sin((x + z) * 0.0018 + 0.9) * 42
+  h += Math.sin((x - z) * 0.0021 + 1.5) * 38
+
+  // 小規模な丘を散在させる
+  h += gauss2d(x, z,  -400,  350, 180, 160, 95)
+  h += gauss2d(x, z,   650,  120, 160, 145, 88)
+  h += gauss2d(x, z,  -250, -350, 140, 130, 75)
+  h += gauss2d(x, z,   320, -580, 155, 140, 82)
+  h += gauss2d(x, z,   820,  480, 125, 115, 70)
+  h += gauss2d(x, z, -1000,  200, 170, 160, 85)
+
   return h
 }
 
@@ -796,9 +810,7 @@ SUPPLY_POSITIONS.forEach(pos => {
     new THREE.MeshStandardMaterial({ color: 0x00ffaa, emissive: 0x00bb66, emissiveIntensity: 1.5, roughness: 0.5 })
   )
   ring.position.copy(pos); ring.rotation.x = Math.PI / 2; scene.add(ring)
-
-  const light = new THREE.PointLight(0x00ffaa, 3, 60)
-  light.position.copy(pos); scene.add(light)
+  // パフォーマンス改善：補給ポイントのライトを削除（emissiveで代用）
 })
 
 // ===== BUILDING GLB PROTOTYPES =====
@@ -2100,11 +2112,7 @@ function addCityArea(cx: number, cz: number, radius: number, buildingCount: numb
     scene.add(building)
 
     // 屋上ライト（夜間用、現在は昼間なので控えめ）
-    if (Math.random() > 0.7) {
-      const light = new THREE.PointLight(0xffaa66, 0.8, 25)
-      light.position.set(bx, by + 40, bz)
-      scene.add(light)
-    }
+    // パフォーマンス改善：装飾ライト削除
   }
 }
 
@@ -2118,10 +2126,7 @@ function addMountainRadarBase(cx: number, cz: number): void {
   base.rotation.y = Math.random() * Math.PI * 2
   scene.add(base)
 
-  // レーダードーム発光
-  const domeLight = new THREE.PointLight(0x66aaff, 3, 50)
-  domeLight.position.set(cx, baseY + 22, cz)
-  scene.add(domeLight)
+  // パフォーマンス改善：レーダードームライト削除
 }
 
 // ===== DEFENSE POSITION (Multiple SAMs) =====
@@ -2570,13 +2575,7 @@ function spawnSouryokusen() {
     carrierGroup.rotation.y = Math.PI * 0.15
     carrierGroup.scale.setScalar(1.0)
     scene.add(carrierGroup)
-    // エンジンポッドのグロー照明
-    const glowL = new THREE.PointLight(0x66aaff, 6, 120)
-    glowL.position.set(0, 0, 70)
-    carrierGroup.add(glowL)
-    const glowR = new THREE.PointLight(0x66aaff, 6, 120)
-    glowR.position.set(0, 0, -70)
-    carrierGroup.add(glowR)
+    // パフォーマンス改善：エンジングローライト削除
     groundTargets.push({
       group: carrierGroup,
       health: 200, maxHealth: 200,
