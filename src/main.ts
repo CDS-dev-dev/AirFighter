@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { Sky } from 'three/addons/objects/Sky.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
-import { TokyoMapSystem } from './tokyoMapSystem'
+import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 
 // ===== VERSION =====
 const VERSION = '3.3.5'
@@ -110,7 +110,7 @@ const radarDishes: THREE.Group[] = []  // 回転アニメ用
 // ===== MAP SYSTEM =====
 type GameMap = 'original' | 'tokyo'
 let currentMap: GameMap = 'original' as GameMap  // デフォルトMAP
-let tokyoMapSystem: TokyoMapSystem | null = null  // 東京MAPシステム
+let neoTokyoMapSystem: NeoTokyoMapSystem | null = null  // NEO東京MAPシステム
 let terrainGLB: THREE.Group | null = null  // terrain.glbのシーン参照
 
 // ===== TERRAIN =====
@@ -179,8 +179,8 @@ function gauss2d(x: number, z: number, ax: number, az: number, rx: number, rz: n
 // MAP別地形関数の切り替え
 function terrainH(x: number, z: number): number {
   if (currentMap === 'tokyo') {
-    // 東京MAPシステムを使用（完全独立）
-    return tokyoMapSystem ? tokyoMapSystem.getTerrainHeight(x, z) : 0
+    // NEO東京MAPシステムを使用
+    return neoTokyoMapSystem ? neoTokyoMapSystem.getTerrainHeight(x, z) : 0
   }
   // Original MAP
   // ── ベース: 平野部を広く確保（基地配置用）─────────────────
@@ -2521,8 +2521,8 @@ function startGame(mode: GameMode) {
         spawnAlly(Math.cos(a) * r, Math.sin(a) * r)
       }
       // プレイヤーも味方側（北）にスポーン
-      if (currentMap === 'tokyo' && tokyoMapSystem) {
-        const safePos = tokyoMapSystem.getSafeSpawnPosition()
+      if (currentMap === 'tokyo' && neoTokyoMapSystem) {
+        const safePos = neoTokyoMapSystem.getSafeSpawnPosition()
         dfSpawnX = safePos.x
         dfSpawnZ = safePos.z
         player.position.set(safePos.x, safePos.y, safePos.z)
@@ -2758,8 +2758,8 @@ async function switchMap(map: GameMap) {
   console.log(`🗺️ MAP切り替え開始: ${map}`)
 
   if (map === 'tokyo') {
-    // ===== 東京MAP =====
-    console.log('🗼 東京MAPに切り替え（完全新規実装）')
+    // ===== NEO東京MAP =====
+    console.log('🌃 NEO東京MAPに切り替え（サイバーパンク）')
 
     // ステップ1: オリジナルMAPのすべてのオブジェクトを削除
     const to_remove: THREE.Object3D[] = []
@@ -2794,8 +2794,8 @@ async function switchMap(map: GameMap) {
       }
       if (isSupply) continue
 
-      // 東京MAPオブジェクトは保護
-      if (obj.name?.includes('Tokyo')) continue
+      // 東京/NEO東京MAPオブジェクトは保護
+      if (obj.name?.includes('Tokyo') || obj.name?.includes('Neo') || obj.name?.includes('Mega') || obj.name?.includes('Skyway') || obj.name?.includes('Hologram')) continue
 
       // それ以外はすべて削除（オリジナルMAP）
       to_remove.push(obj)
@@ -2837,11 +2837,11 @@ async function switchMap(map: GameMap) {
       console.log(`  - 残存: ${obj.name || obj.type}`)
     })
 
-    // ステップ2: 東京MAPを初期化
-    if (!tokyoMapSystem) {
-      tokyoMapSystem = new TokyoMapSystem(scene, gltfLoader)
+    // ステップ2: NEO東京MAPを初期化
+    if (!neoTokyoMapSystem) {
+      neoTokyoMapSystem = new NeoTokyoMapSystem(scene)
     }
-    await tokyoMapSystem.initialize()
+    await neoTokyoMapSystem.initialize()
 
     // ステップ3: プレイヤーを東京上空に配置
     player.position.set(0, 500, 0)
@@ -2866,10 +2866,10 @@ async function switchMap(map: GameMap) {
     // ===== オリジナルMAP =====
     console.log('🏔️ オリジナルMAPに切り替え')
 
-    // 東京MAPを完全削除
-    if (tokyoMapSystem) {
-      tokyoMapSystem.dispose()
-      tokyoMapSystem = null
+    // NEO東京MAPを完全削除
+    if (neoTokyoMapSystem) {
+      neoTokyoMapSystem.cleanup()
+      neoTokyoMapSystem = null
     }
 
     // 東京オブジェクトをクリア（念のため）
@@ -3564,9 +3564,9 @@ function drawEnemyBrackets() {
     raycaster.set(player.position, toENorm)
     raycaster.far = dist - 5
     let blockedByTerrain = false
-    if (currentMap === 'tokyo' && tokyoMapSystem) {
+    if (currentMap === 'tokyo' && neoTokyoMapSystem) {
       // 東京MAP: ビル・ランドマークによる遮蔽判定
-      const intersects = raycaster.intersectObjects(tokyoMapSystem.getCollisionObjects(), true)
+      const intersects = raycaster.intersectObjects(neoTokyoMapSystem.getCollisionObjects(), true)
       blockedByTerrain = intersects.length > 0
     } else {
       // オリジナルMAP: 地形による遮蔽判定
@@ -3718,8 +3718,8 @@ function respawnPlayer() {
   let ry = 200
 
   // 東京MAPの場合は安全なスポーン位置を使用
-  if (currentMap === 'tokyo' && tokyoMapSystem) {
-    const safePos = tokyoMapSystem.getSafeSpawnPosition()
+  if (currentMap === 'tokyo' && neoTokyoMapSystem) {
+    const safePos = neoTokyoMapSystem.getSafeSpawnPosition()
     rx = safePos.x
     ry = safePos.y
     rz = safePos.z
@@ -4033,8 +4033,8 @@ function loop() {
   const collisionRadius = 8  // プレイヤーの衝突半径
 
   // 東京MAPの建物・ランドマークとの衝突
-  if (currentMap === 'tokyo' && tokyoMapSystem) {
-    const collisionObjects = tokyoMapSystem.getCollisionObjects()
+  if (currentMap === 'tokyo' && neoTokyoMapSystem) {
+    const collisionObjects = neoTokyoMapSystem.getCollisionObjects()
     for (const obj of collisionObjects) {
       if (!(obj as any).isMesh) continue
       const mesh = obj as THREE.Mesh
