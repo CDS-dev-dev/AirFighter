@@ -322,8 +322,17 @@
         /* スコア/HP：LOCKボタン（top:12+56=68px）の下へ */
         #hud-score { top: 76px; right: 12px; bottom: auto; padding: 8px 12px; min-width: 0; }
         #hud-score .score-val { font-size: 22px; }
-        /* 兵装ピップは戦闘ボタンと重なるため非表示 */
-        #hud-weapons { display: none; }
+        /* 兵装ピップ：戦闘ボタンの左に配置 */
+        #hud-weapons {
+          display: block;
+          bottom: 14px; right: 104px;
+          padding: 6px 10px;
+          min-width: 0;
+          font-size: 9px;
+        }
+        #hud-weapons .row { line-height: 1.8; }
+        #hud-weapons .label { font-size: 9px; }
+        #hud-weapons .pip { width: 7px; height: 7px; }
         /* 飛行データ：フォント縮小 */
         #hud-flight { bottom: 14px; left: 10px; padding: 8px 12px; min-width: 0; }
         #hud-flight .val { font-size: 18px; }
@@ -498,6 +507,24 @@
       #rotate-hint .ri-text { font-size: 13px; letter-spacing: 3px; }
       @keyframes ri-spin {
         0%, 35% { transform: rotate(0deg); } 65%, 100% { transform: rotate(90deg); }
+      }
+      /* スマホ横画面：モード選択画面をコンパクトに */
+      @media (pointer: coarse) and (orientation: landscape) {
+        #mode-screen { gap: 10px; padding: 10px; }
+        .ms-title { font-size: 28px; letter-spacing: 8px; }
+        .ms-sub { font-size: 8px; letter-spacing: 3px; }
+        .map-select-btn { padding: 6px 16px; font-size: 11px; }
+        .map-select-btn span:first-child { font-size: 18px; }
+        .ms-grid { gap: 8px; max-width: 100%; grid-template-columns: repeat(3, 1fr); }
+        .ms-card { padding: 10px 8px; gap: 6px; }
+        .ms-icon { font-size: 20px; }
+        .ms-name { font-size: 11px; }
+        .ms-desc { font-size: 8px; }
+        .ms-start { padding: 6px 16px; font-size: 10px; }
+        .ms-cfg-row { gap: 6px; }
+        .ms-cfg-val { font-size: 14px; }
+        .ms-adj { width: 22px; height: 22px; font-size: 14px; }
+        #mode-screen > div[style*="display: flex"] { margin-bottom: 8px; }
       }
       /* 縦画面でも強制横向き表示 */
       @media (pointer: coarse) and (orientation: portrait) {

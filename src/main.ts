@@ -1115,6 +1115,7 @@ scene.add(new THREE.Points(trailGeo, new THREE.PointsMaterial({
 // ===== PLAYER =====
 const player = createAircraft(0x2255cc, 0x112244)
 player.position.set(0, terrainH(0, 0) + 150, 0)  // 初期位置を高く（90→150m）
+player.rotation.y = Math.PI  // 南向き（北の山とは反対方向）に初期化
 scene.add(player)
 let cameraOffset = new THREE.Vector3(0, 5, 20)
 const camQuat = new THREE.Quaternion()
@@ -1490,6 +1491,8 @@ function updateAllies(dt: number) {
 
 // ===== WEAPONS =====
 // マシンガン予測照準：敵の移動先を先読みして照準
+// 予測機能を一旦無効化（2026-05-12）
+/*
 function calculateGunLeadPosition(target: { group: THREE.Group }): THREE.Vector3 | null {
   const bulletSpeed = 230  // マシンガン弾速
   const targetPos = target.group.position.clone()
@@ -1508,6 +1511,7 @@ function calculateGunLeadPosition(target: { group: THREE.Group }): THREE.Vector3
   // 予測位置 = 現在位置 + 速度 * 到達時間
   return targetPos.add(enemyVel.multiplyScalar(timeToHit))
 }
+*/
 
 function fireGun() {
   if (gunCooldown > 0) return
@@ -1518,6 +1522,8 @@ function fireGun() {
   let aimDir = fwd.clone()
 
   // ロック中は予測位置に照準
+  // 予測機能を一旦無効化（2026-05-12）
+  /*
   if (lockedTarget) {
     const leadPos = calculateGunLeadPosition(lockedTarget)
     if (leadPos) {
@@ -1528,6 +1534,7 @@ function fireGun() {
       }
     }
   }
+  */
 
   for (const side of [-0.7, 0.7]) {
     const offset = new THREE.Vector3(side, 0, -3).applyQuaternion(player.quaternion)
@@ -2419,8 +2426,11 @@ function startGame(mode: GameMode) {
         dfSpawnZ = safePos.z
         player.position.set(safePos.x, safePos.y, safePos.z)
       } else {
-        dfSpawnX = (Math.random() - 0.5) * 120
-        dfSpawnZ = -(200 + Math.random() * 150)
+        // 味方と同じ範囲に配置（r=550-900、北側）
+        const a = (Math.random() - 0.5) * 1.2
+        const r = 550 + Math.random() * 350
+        dfSpawnX = Math.cos(a) * r
+        dfSpawnZ = Math.sin(a) * r
         player.position.set(dfSpawnX, terrainH(dfSpawnX, dfSpawnZ) + 200, dfSpawnZ)
       }
       player.quaternion.identity()
@@ -3186,6 +3196,8 @@ function updateReticle() {
   reticleEl.style.top = ((-pos.y + 1) / 2 * rH) + 'px'
 
   // マシンガン予測照準レティクル
+  // 予測機能を一旦無効化（2026-05-12）
+  /*
   const leadPos = calculateGunLeadPosition(lockedTarget)
   if (leadPos) {
     const leadPosCam = leadPos.clone().sub(camera.position)
@@ -3201,6 +3213,8 @@ function updateReticle() {
   } else {
     gunLeadReticleEl.style.display = 'none'
   }
+  */
+  gunLeadReticleEl.style.display = 'none'
 }
 
 function updateWarning() {
@@ -3602,11 +3616,17 @@ function loop() {
       new THREE.Vector3(0, 1, 0), -yawInput * 1.5 * dt))
 
   // バンキング: ヨー入力 → ロール（自然なバンク旋回）+ 自動水平復帰
-  const _bEuler = new THREE.Euler().setFromQuaternion(player.quaternion, 'YXZ')
+  // ジンバルロック回避のため、クォータニオンのみで処理
   const targetBankZ = -yawInput * 0.72
-  _bEuler.z += (targetBankZ - _bEuler.z) * dt * 5
-  if (pitchInput === 0 && Math.abs(yawInput) < 0.05) _bEuler.z *= 0.88
-  player.quaternion.setFromEuler(_bEuler)
+  const fwdAxis = _fwd.clone().applyQuaternion(player.quaternion)
+  const currentRollQuat = new THREE.Quaternion().setFromAxisAngle(fwdAxis, targetBankZ * dt * 5)
+  player.quaternion.multiply(currentRollQuat)
+
+  // 自動水平復帰（入力がない時のみ）
+  if (pitchInput === 0 && Math.abs(yawInput) < 0.05) {
+    const dampQuat = new THREE.Quaternion().setFromAxisAngle(fwdAxis, -targetBankZ * dt * 0.88)
+    player.quaternion.multiply(dampQuat)
+  }
   player.quaternion.normalize()
 
   // 移動前の位置を保存

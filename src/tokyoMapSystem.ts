@@ -168,7 +168,7 @@ export class TokyoMapSystem {
     geometry.rotateX(-Math.PI / 2)
 
     const mesh = new THREE.Mesh(geometry, material)
-    mesh.position.set(cx, 0.1, cz)
+    mesh.position.set(cx, 0.5, cz)  // Z-fighting回避のため0.1→0.5に変更
     mesh.receiveShadow = true
     mesh.name = `TokyoRoad_${name}`
     this.scene.add(mesh)
@@ -186,7 +186,7 @@ export class TokyoMapSystem {
     geometry.rotateY(-angle)
 
     const mesh = new THREE.Mesh(geometry, material)
-    mesh.position.set((x1 + x2) / 2, 0.1, (z1 + z2) / 2)
+    mesh.position.set((x1 + x2) / 2, 0.5, (z1 + z2) / 2)  // Z-fighting回避のため0.1→0.5に変更
     mesh.receiveShadow = true
     mesh.name = `TokyoRoad_${name}`
     this.scene.add(mesh)
@@ -217,7 +217,7 @@ export class TokyoMapSystem {
     const bayGeometry = new THREE.PlaneGeometry(5000, 4000)
     bayGeometry.rotateX(-Math.PI / 2)
     const bayMesh = new THREE.Mesh(bayGeometry, waterMaterial)
-    bayMesh.position.set(3500, 0.05, -3800)
+    bayMesh.position.set(3500, 0.2, -3800)  // Z-fighting回避のため0.05→0.2に変更
     bayMesh.name = 'TokyoBay'
     this.scene.add(bayMesh)
     this.waterMeshes.push(bayMesh)
@@ -255,7 +255,7 @@ export class TokyoMapSystem {
       geometry.rotateY(-angle)
 
       const mesh = new THREE.Mesh(geometry, material)
-      mesh.position.set((p1.x + p2.x) / 2, 0.05, (p1.z + p2.z) / 2)
+      mesh.position.set((p1.x + p2.x) / 2, 0.2, (p1.z + p2.z) / 2)  // Z-fighting回避のため0.05→0.2に変更
       mesh.name = `Tokyo${name}_${i}`
       this.scene.add(mesh)
       this.waterMeshes.push(mesh)
