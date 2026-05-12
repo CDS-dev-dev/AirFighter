@@ -37,7 +37,10 @@ export class TokyoMapSystem {
     // 4. 建物群（リアルな色彩とデザイン）
     this.createBuildings()
 
-    // 5. ランドマーク（東京タワー、スカイツリーなど）
+    // 5. 大規模公園と樹木
+    this.createMajorParks()
+
+    // 6. ランドマーク（東京タワー、スカイツリーなど）
     this.createLandmarks()
 
     console.log('✅ 東京MAP初期化完了')
@@ -54,8 +57,50 @@ export class TokyoMapSystem {
     geometry.rotateX(-Math.PI / 2)
 
     const positions = geometry.attributes.position.array as Float32Array
+
+    // 実際の東京の地形高低を再現
     for (let i = 0; i < positions.length; i += 3) {
-      positions[i + 1] = 0
+      const x = positions[i]
+      const z = positions[i + 2]
+
+      // 基準高度：皇居を20mに設定
+      let height = 20
+
+      // 山の手台地（西側が高い：40-60m）
+      const yamanoteHeight = Math.max(0, -x * 0.012)  // 西に行くほど高くなる
+      height += yamanoteHeight
+
+      // 多摩丘陵（西部の丘陵地帯：最大80m）
+      if (x < -3000) {
+        const tamaHills = Math.max(0, (-x - 3000) * 0.025) *
+                         Math.exp(-Math.abs(z) / 2500)
+        height += tamaHills
+      }
+
+      // 下町低地（東側が低い：0-10m）
+      if (x > 1000) {
+        const shitamachiLowland = -(x - 1000) * 0.015
+        height += shitamachiLowland
+      }
+
+      // 荒川・隅田川の河川低地（さらに低い）
+      const distToSumida = Math.abs(x - 2500)
+      if (distToSumida < 400) {
+        const riverDepth = (1 - distToSumida / 400) * 12
+        height -= riverDepth
+      }
+
+      const distToArakawa = Math.abs(x - 3800)
+      if (distToArakawa < 500) {
+        const riverDepth = (1 - distToArakawa / 500) * 15
+        height -= riverDepth
+      }
+
+      // 武蔵野台地の緩やかな起伏
+      height += Math.sin(x * 0.0008) * Math.cos(z * 0.0006) * 8
+
+      // 最低高度を0mに制限
+      positions[i + 1] = Math.max(0, height)
     }
 
     // 実際の都市らしい色彩パターン
@@ -76,31 +121,54 @@ export class TokyoMapSystem {
         r = 0.28; g = 0.28; b = 0.30
       }
 
-      // 大通り（400m間隔）- 飛行しやすい
+      // 大通り（400m間隔）- 飛行しやすい（幅30m→60mに拡大）
       const majorRoadSize = 400
       const xMajor = Math.abs(x % majorRoadSize)
       const zMajor = Math.abs(z % majorRoadSize)
-      if (xMajor < 30 || zMajor < 30) {
-        // 幅広の道路: より暗いグレー
+      if (xMajor < 60 || zMajor < 60) {
+        // 幅広の道路: より暗いグレー（戦闘機が通りやすい）
         r = 0.22; g = 0.22; b = 0.24
       }
 
-      // 公園・緑地（実際の位置を参考）
+      // 公園・緑地（大規模公園15箇所 + 既存の緑地）
+      const parks = [
+        { x: -1500, z: 500, w: 580, h: 350 },    // 新宿御苑
+        { x: -800, z: 200, w: 540, h: 400 },     // 代々木公園
+        { x: -4500, z: 400, w: 430, h: 380 },    // 井の頭公園
+        { x: -3200, z: -1800, w: 600, h: 500 },  // 砧公園
+        { x: -4600, z: 3400, w: 600, h: 500 },   // 光が丘公園
+        { x: -4800, z: 3800, w: 400, h: 380 },   // 石神井公園
+        { x: -3800, z: 800, w: 350, h: 320 },    // 善福寺公園
+        { x: -1400, z: -2200, w: 500, h: 480 },  // 駒沢オリンピック公園
+        { x: 400, z: -2000, w: 380, h: 320 },    // 林試の森公園
+        { x: 5000, z: 3200, w: 700, h: 600 },    // 水元公園
+        { x: 2400, z: 5000, w: 600, h: 550 },    // 舎人公園
+        { x: 5600, z: -1800, w: 800, h: 700 },   // 葛西臨海公園
+        { x: -5400, z: 2200, w: 700, h: 600 },   // 小金井公園
+        { x: -5800, z: 400, w: 500, h: 450 },    // 府中の森公園
+        { x: -5000, z: 0, w: 450, h: 400 }       // 野川公園
+      ]
+
+      for (const park of parks) {
+        const dx = Math.abs(x - park.x)
+        const dz = Math.abs(z - park.z)
+        if (dx < park.w / 2 && dz < park.h / 2) {
+          r = 0.18; g = 0.34; b = 0.20  // 公園の緑
+          break
+        }
+      }
+
+      // 皇居
       if (Math.sqrt((x - 800) ** 2 + (z - 1200) ** 2) < 500) {
-        // 皇居: 濃い緑
         r = 0.18; g = 0.32; b = 0.20
       }
+      // 明治神宮
       if (Math.sqrt((x - 200) ** 2 + (z - 1000) ** 2) < 350) {
-        // 明治神宮: 深い森の緑
         r = 0.15; g = 0.28; b = 0.18
       }
+      // 上野公園
       if (Math.sqrt((x - 2600) ** 2 + (z - 2600) ** 2) < 300) {
-        // 上野公園: 明るい緑
         r = 0.22; g = 0.36; b = 0.24
-      }
-      if (Math.sqrt((x + 800) ** 2 + (z - 800) ** 2) < 280) {
-        // 代々木公園
-        r = 0.20; g = 0.34; b = 0.22
       }
 
       // 建物エリアの多様性
@@ -271,37 +339,82 @@ export class TokyoMapSystem {
   private createBuildings(): void {
     // 地区定義: [名前, 中心X, 中心Z, 範囲X, 範囲Z, 建物数, 最小高さ, 最大高さ, タイプ]
     const districts: Array<[string, number, number, number, number, number, number, number, string]> = [
-      // 都心部（超高層ビル）
-      ['新宿西口', -2500, 800, 600, 600, 35, 180, 280, 'office'],
-      ['新宿東口', -1800, 800, 500, 500, 30, 80, 180, 'commercial'],
-      ['渋谷駅前', 0, 0, 400, 400, 30, 120, 240, 'tech'],
-      ['六本木', 1800, -200, 700, 700, 30, 120, 260, 'office'],
-      ['丸の内', 800, 1200, 500, 400, 30, 150, 210, 'financial'],
-      ['銀座', 1400, 600, 600, 500, 35, 50, 120, 'luxury'],
+      // ===== 都心部（超高層ビル）=====
+      ['新宿西口', -2500, 800, 600, 600, 70, 180, 280, 'office'],
+      ['新宿東口', -1800, 800, 500, 500, 60, 80, 180, 'commercial'],
+      ['渋谷駅前', 0, 0, 400, 400, 60, 120, 240, 'tech'],
+      ['六本木', 1800, -200, 700, 700, 60, 120, 260, 'office'],
+      ['丸の内', 800, 1200, 500, 400, 60, 150, 210, 'financial'],
+      ['銀座', 1400, 600, 600, 500, 70, 50, 120, 'luxury'],
+      ['虎ノ門', 1200, 200, 500, 500, 55, 100, 200, 'office'],
 
-      // 副都心
-      ['池袋', -1800, 2800, 600, 600, 30, 100, 200, 'commercial'],
-      ['品川', 2000, -2000, 700, 700, 25, 100, 180, 'office'],
-      ['上野', 2800, 2200, 600, 600, 25, 60, 120, 'cultural'],
+      // ===== 副都心 =====
+      ['池袋', -1800, 2800, 600, 600, 60, 100, 200, 'commercial'],
+      ['品川', 2000, -2000, 700, 700, 50, 100, 180, 'office'],
+      ['上野', 2800, 2200, 600, 600, 50, 60, 120, 'cultural'],
+      ['立川', -5500, -1500, 700, 700, 50, 80, 150, 'commercial'],
+      ['錦糸町', 3000, 1000, 600, 600, 55, 70, 140, 'commercial'],
 
-      // 臨海部
-      ['お台場', 4200, -3200, 1000, 1000, 20, 80, 160, 'resort'],
-      ['豊洲', 3800, -1200, 800, 800, 25, 80, 150, 'modern'],
+      // ===== 臨海部 =====
+      ['お台場', 4200, -3200, 1000, 1000, 40, 80, 160, 'resort'],
+      ['豊洲', 3800, -1200, 800, 800, 50, 80, 150, 'modern'],
+      ['有明', 4500, -2200, 700, 700, 35, 60, 120, 'modern'],
+      ['辰巳', 4000, -500, 600, 600, 30, 50, 100, 'residential'],
 
-      // 住宅地
-      ['恵比寿', 600, -600, 500, 500, 30, 50, 110, 'residential'],
-      ['中野', -3200, 1800, 700, 700, 30, 50, 100, 'residential'],
-      ['吉祥寺', -4800, 2800, 800, 800, 35, 40, 90, 'shopping'],
+      // ===== 商業地 =====
+      ['恵比寿', 600, -600, 500, 500, 55, 50, 110, 'residential'],
+      ['中野', -3200, 1800, 700, 700, 60, 50, 100, 'residential'],
+      ['吉祥寺', -4800, 2800, 800, 800, 65, 40, 90, 'shopping'],
+      ['秋葉原', 2200, 800, 500, 500, 80, 40, 80, 'tech'],
+      ['下北沢', -1200, -400, 400, 400, 75, 30, 60, 'shopping'],
+      ['三軒茶屋', -400, -1200, 400, 400, 80, 35, 70, 'commercial'],
+      ['高円寺', -3800, 1200, 500, 500, 70, 35, 65, 'residential'],
+      ['荻窪', -4400, 1600, 600, 600, 65, 35, 70, 'residential'],
+      ['自由が丘', -1600, -1800, 500, 500, 70, 35, 75, 'shopping'],
 
-      // 空白地帯を埋める追加地区
-      ['目黒', -800, -1500, 600, 600, 25, 60, 120, 'residential'],
-      ['世田谷', -2800, -800, 900, 900, 30, 40, 85, 'residential'],
-      ['練馬', -4200, 3800, 800, 800, 25, 35, 75, 'residential'],
-      ['葛飾', 4500, 2500, 900, 900, 25, 40, 80, 'residential'],
-      ['江戸川', 5200, 800, 800, 800, 20, 40, 90, 'residential'],
-      ['板橋', -3500, 3200, 700, 700, 20, 45, 95, 'residential'],
-      ['足立', 1200, 4200, 1000, 1000, 20, 35, 70, 'residential'],
-      ['大田', 1500, -3800, 900, 900, 25, 50, 100, 'residential']
+      // ===== 住宅地（東京23区内）=====
+      ['目黒', -800, -1500, 700, 700, 60, 30, 80, 'residential'],
+      ['世田谷', -2800, -800, 1000, 1000, 80, 25, 70, 'residential'],
+      ['練馬', -4200, 3800, 900, 900, 70, 25, 65, 'residential'],
+      ['葛飾', 4500, 2500, 1000, 1000, 70, 25, 70, 'residential'],
+      ['江戸川', 5200, 800, 900, 900, 65, 25, 75, 'residential'],
+      ['板橋', -3500, 3200, 800, 800, 65, 30, 75, 'residential'],
+      ['足立', 1200, 4200, 1100, 1100, 70, 25, 65, 'residential'],
+      ['大田', 1500, -3800, 1000, 1000, 70, 30, 80, 'residential'],
+      ['杉並', -3600, 600, 900, 900, 75, 30, 70, 'residential'],
+      ['北区', 600, 3800, 800, 800, 60, 30, 75, 'residential'],
+      ['豊島', -2200, 2200, 600, 600, 65, 40, 90, 'residential'],
+      ['文京', 1400, 2400, 600, 600, 60, 35, 85, 'residential'],
+      ['台東', 2400, 1800, 600, 600, 65, 35, 80, 'residential'],
+      ['墨田', 3200, 600, 700, 700, 60, 30, 75, 'residential'],
+      ['荒川', 2000, 3400, 700, 700, 60, 30, 70, 'residential'],
+      ['中央区南部', 2200, -800, 600, 600, 65, 50, 110, 'commercial'],
+
+      // ===== 多摩地域（西部）=====
+      ['調布', -5200, -600, 800, 800, 55, 25, 60, 'residential'],
+      ['府中', -5600, 200, 800, 800, 55, 30, 65, 'residential'],
+      ['町田', -4000, -3000, 900, 900, 60, 30, 75, 'residential'],
+      ['八王子', -6200, -1200, 1000, 1000, 65, 30, 80, 'residential'],
+      ['多摩', -5800, 1400, 800, 800, 50, 25, 60, 'residential'],
+      ['国分寺', -5200, 1800, 700, 700, 50, 30, 65, 'residential'],
+      ['小平', -5000, 3000, 700, 700, 50, 25, 55, 'residential'],
+      ['東村山', -4800, 4200, 700, 700, 50, 25, 55, 'residential'],
+
+      // ===== 東部（千葉寄り）=====
+      ['小岩', 5400, 1800, 800, 800, 55, 25, 65, 'residential'],
+      ['亀戸', 3600, 600, 600, 600, 60, 35, 75, 'residential'],
+      ['押上', 3400, 1400, 500, 500, 65, 40, 90, 'residential'],
+
+      // ===== 北部 =====
+      ['赤羽', 800, 4800, 700, 700, 55, 35, 80, 'commercial'],
+      ['王子', 1200, 3600, 600, 600, 55, 30, 75, 'residential'],
+      ['西新井', 2400, 4800, 800, 800, 55, 30, 70, 'residential'],
+
+      // ===== 南西部 =====
+      ['蒲田', 2400, -3200, 800, 800, 65, 35, 85, 'commercial'],
+      ['武蔵小杉', -800, -2800, 600, 600, 70, 60, 140, 'modern'],
+      ['二子玉川', -2000, -2400, 600, 600, 60, 45, 95, 'shopping'],
+      ['成城学園', -3400, -1600, 700, 700, 55, 30, 65, 'residential']
     ]
 
     for (const [name, cx, cz, rangeX, rangeZ, count, minH, maxH, type] of districts) {
@@ -472,29 +585,65 @@ export class TokyoMapSystem {
   }
 
   /**
-   * 大通り（飛行用道路）上かどうかの判定
+   * 大通り（飛行用道路）上かどうかの判定（幅30m→60mに拡大）
    */
   private isOnMajorRoad(x: number, z: number): boolean {
     const distFromCenter = Math.sqrt(x * x + z * z)
 
-    // 環状道路チェック（幅広）
-    if (Math.abs(distFromCenter - 2000) < 80) return true
-    if (Math.abs(distFromCenter - 3500) < 90) return true
-    if (Math.abs(distFromCenter - 5000) < 100) return true
+    // 環状道路チェック（幅を2倍に拡大 - 飛行しやすく）
+    if (Math.abs(distFromCenter - 2000) < 160) return true
+    if (Math.abs(distFromCenter - 3500) < 180) return true
+    if (Math.abs(distFromCenter - 5000) < 200) return true
 
-    // 放射道路チェック（12方向・幅広）
+    // 放射道路チェック（12方向・幅を2倍に拡大）
     const angle = Math.atan2(z, x)
     for (let i = 0; i < 12; i++) {
       const roadAngle = (i / 12) * Math.PI * 2
       const angleDiff = Math.abs(((angle - roadAngle + Math.PI) % (Math.PI * 2)) - Math.PI)
-      if (angleDiff < 0.08 && distFromCenter < 6000) return true
+      if (angleDiff < 0.16 && distFromCenter < 6000) return true
     }
 
     return false
   }
 
-  getTerrainHeight(_x: number, _z: number): number {
-    return 0
+  getTerrainHeight(x: number, z: number): number {
+    // 実際の東京の地形高低を返す
+    let height = 20  // 基準高度（皇居）
+
+    // 山の手台地（西側）
+    const yamanoteHeight = Math.max(0, -x * 0.012)
+    height += yamanoteHeight
+
+    // 多摩丘陵（西部）
+    if (x < -3000) {
+      const tamaHills = Math.max(0, (-x - 3000) * 0.025) *
+                       Math.exp(-Math.abs(z) / 2500)
+      height += tamaHills
+    }
+
+    // 下町低地（東側）
+    if (x > 1000) {
+      const shitamachiLowland = -(x - 1000) * 0.015
+      height += shitamachiLowland
+    }
+
+    // 河川低地
+    const distToSumida = Math.abs(x - 2500)
+    if (distToSumida < 400) {
+      const riverDepth = (1 - distToSumida / 400) * 12
+      height -= riverDepth
+    }
+
+    const distToArakawa = Math.abs(x - 3800)
+    if (distToArakawa < 500) {
+      const riverDepth = (1 - distToArakawa / 500) * 15
+      height -= riverDepth
+    }
+
+    // 武蔵野台地の起伏
+    height += Math.sin(x * 0.0008) * Math.cos(z * 0.0006) * 8
+
+    return Math.max(0, height)
   }
 
   getCollisionObjects(): THREE.Object3D[] {
@@ -538,6 +687,82 @@ export class TokyoMapSystem {
     this.waterMeshes = []
 
     console.log('✅ 東京MAPクリーンアップ完了')
+  }
+
+  /**
+   * 大規模公園と樹木を配置
+   */
+  private createMajorParks(): void {
+    const parks = [
+      { name: '新宿御苑', x: -1500, z: 500, w: 580, h: 350, trees: 150 },
+      { name: '代々木公園', x: -800, z: 200, w: 540, h: 400, trees: 180 },
+      { name: '井の頭公園', x: -4500, z: 400, w: 430, h: 380, trees: 140 },
+      { name: '砧公園', x: -3200, z: -1800, w: 600, h: 500, trees: 160 },
+      { name: '光が丘公園', x: -4600, z: 3400, w: 600, h: 500, trees: 150 },
+      { name: '石神井公園', x: -4800, z: 3800, w: 400, h: 380, trees: 130 },
+      { name: '善福寺公園', x: -3800, z: 800, w: 350, h: 320, trees: 100 },
+      { name: '駒沢オリンピック公園', x: -1400, z: -2200, w: 500, h: 480, trees: 120 },
+      { name: '林試の森公園', x: 400, z: -2000, w: 380, h: 320, trees: 110 },
+      { name: '水元公園', x: 5000, z: 3200, w: 700, h: 600, trees: 180 },
+      { name: '舎人公園', x: 2400, z: 5000, w: 600, h: 550, trees: 150 },
+      { name: '葛西臨海公園', x: 5600, z: -1800, w: 800, h: 700, trees: 160 },
+      { name: '小金井公園', x: -5400, z: 2200, w: 700, h: 600, trees: 170 },
+      { name: '府中の森公園', x: -5800, z: 400, w: 500, h: 450, trees: 130 },
+      { name: '野川公園', x: -5000, z: 0, w: 450, h: 400, trees: 120 }
+    ]
+
+    const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.85 })
+    const treeFoliageMat = new THREE.MeshStandardMaterial({ color: 0x2a5520, roughness: 0.7 })
+
+    for (const park of parks) {
+      // 公園の地面（芝生）
+      const parkGround = new THREE.Mesh(
+        new THREE.PlaneGeometry(park.w, park.h),
+        new THREE.MeshStandardMaterial({ color: 0x2a5a2a, roughness: 0.9 })
+      )
+      parkGround.rotateX(-Math.PI / 2)
+      const parkY = this.getTerrainHeight(park.x, park.z)
+      parkGround.position.set(park.x, parkY + 0.5, park.z)
+      parkGround.receiveShadow = true
+      parkGround.name = `Park_${park.name}_Ground`
+      this.scene.add(parkGround)
+
+      // 樹木を配置
+      for (let i = 0; i < park.trees; i++) {
+        const treeX = park.x + (Math.random() - 0.5) * park.w * 0.9
+        const treeZ = park.z + (Math.random() - 0.5) * park.h * 0.9
+        const treeY = this.getTerrainHeight(treeX, treeZ)
+        const treeHeight = 8 + Math.random() * 6
+
+        const tree = new THREE.Group()
+
+        // 幹
+        const trunk = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.3, 0.45, treeHeight * 0.35, 6),
+          treeTrunkMat
+        )
+        trunk.position.y = treeHeight * 0.175
+        trunk.castShadow = true
+        tree.add(trunk)
+
+        // 葉（3段の円錐）
+        for (let j = 0; j < 3; j++) {
+          const foliage = new THREE.Mesh(
+            new THREE.ConeGeometry(treeHeight * 0.18, treeHeight * 0.28, 8),
+            treeFoliageMat
+          )
+          foliage.position.y = treeHeight * (0.4 + j * 0.18)
+          foliage.castShadow = true
+          tree.add(foliage)
+        }
+
+        tree.position.set(treeX, treeY, treeZ)
+        tree.name = `Tree_${park.name}_${i}`
+        this.scene.add(tree)
+      }
+    }
+
+    console.log(`✅ 大規模公園作成完了: ${parks.length}箇所、樹木${parks.reduce((sum, p) => sum + p.trees, 0)}本`)
   }
 
   /**

@@ -299,19 +299,35 @@ function terrainH(x: number, z: number): number {
   // ── テクスチャノイズ ─────────────────────────────────
   h += (fbm(x * 0.006 + 5.1, z * 0.006 - 3.8, 4) - 0.5) * 105
 
-  // ── 追加の小規模起伏（どこを飛んでも面白い地形に）─────────
-  // 中規模の丘陵を全体に追加
-  h += Math.sin(x * 0.0025 + 2.3) * 35 + Math.cos(z * 0.0032 + 1.7) * 28
-  h += Math.sin((x + z) * 0.0018 + 0.9) * 42
-  h += Math.sin((x - z) * 0.0021 + 1.5) * 38
+  // ── 追加の大規模起伏（中央並みの激しい地形に）─────────
+  // 大規模な波状地形（振幅を中央峡谷並みに）
+  h += Math.sin(x * 0.0025 + 2.3) * 180 + Math.cos(z * 0.0032 + 1.7) * 150
+  h += Math.sin((x + z) * 0.0018 + 0.9) * 220
+  h += Math.sin((x - z) * 0.0021 + 1.5) * 200
 
-  // 小規模な丘を散在させる
-  h += gauss2d(x, z,  -400,  350, 180, 160, 95)
-  h += gauss2d(x, z,   650,  120, 160, 145, 88)
-  h += gauss2d(x, z,  -250, -350, 140, 130, 75)
-  h += gauss2d(x, z,   320, -580, 155, 140, 82)
-  h += gauss2d(x, z,   820,  480, 125, 115, 70)
-  h += gauss2d(x, z, -1000,  200, 170, 160, 85)
+  // 大規模な山塊を散在させる（高さを中央峡谷深さ並みに）
+  h += gauss2d(x, z,  -400,  350, 180, 160, 320)  // 350m級の山
+  h += gauss2d(x, z,   650,  120, 160, 145, 290)
+  h += gauss2d(x, z,  -250, -350, 140, 130, 270)
+  h += gauss2d(x, z,   320, -580, 155, 140, 310)
+  h += gauss2d(x, z,   820,  480, 125, 115, 260)
+  h += gauss2d(x, z, -1000,  200, 170, 160, 300)
+
+  // 激しい起伏を追加（高さを3-4倍に増強）
+  h += gauss2d(x, z,  -800, -200, 220, 200, 380)  // 北西部の大尾根（380m）
+  h += gauss2d(x, z,   400,  700, 200, 180, 360)  // 北東部の高台（360m）
+  h += gauss2d(x, z,  -600,  600, 190, 170, 340)  // 北部の山塊（340m）
+  h += gauss2d(x, z,   900, -300, 210, 190, 370)  // 東部の大山塊（370m）
+  h += gauss2d(x, z,   100, -200, 175, 160, 330)  // 中央部の起伏（330m）
+
+  // 新規追加：さらなる大規模山塊
+  h += gauss2d(x, z,  -200, -800, 200, 180, 350)  // 南西部の山（350m）
+  h += gauss2d(x, z,   500, -150, 190, 170, 340)  // 中央東部の山（340m）
+  h += gauss2d(x, z, -1200,  -50, 210, 190, 330)  // 西部の山（330m）
+
+  // 波状の地形パターン（振幅を3倍に）
+  h += Math.sin(x * 0.004) * Math.cos(z * 0.003) * 195
+  h += Math.sin(x * 0.006 + z * 0.005) * 165
 
   return h
 }
@@ -1017,16 +1033,21 @@ function createAircraft(bodyColor: number, darkColor: number): THREE.Group {
   return g
 }
 
+// ===== ミサイルジオメトリプール（パフォーマンス最適化：発射時のフリーズ防止） =====
+const missileBodyGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.0, 8)
+const missileTipGeo = new THREE.ConeGeometry(0.08, 0.35, 8)
+const missileExhaustGeo = new THREE.ConeGeometry(0.07, 0.45, 8)
+const missileExhaustMat = new THREE.MeshStandardMaterial({
+  color: 0xff5500, emissive: 0xff3300, emissiveIntensity: 5.0, roughness: 0.4
+})
+
 function createMissileModel(mat: THREE.Material): THREE.Group {
   const g = new THREE.Group()
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.0, 8), mat)
+  const body = new THREE.Mesh(missileBodyGeo, mat)
   body.rotation.x = Math.PI / 2; g.add(body)
-  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.35, 8), mat)
+  const tip = new THREE.Mesh(missileTipGeo, mat)
   tip.rotation.x = Math.PI / 2; tip.position.z = -0.67; g.add(tip)
-  const exhaustMat = new THREE.MeshStandardMaterial({
-    color: 0xff5500, emissive: 0xff3300, emissiveIntensity: 5.0, roughness: 0.4
-  })
-  const exhaust = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.45, 8), exhaustMat)
+  const exhaust = new THREE.Mesh(missileExhaustGeo, missileExhaustMat)
   exhaust.rotation.x = -Math.PI / 2; exhaust.position.z = 0.72; g.add(exhaust)
   return g
 }
@@ -1362,8 +1383,8 @@ let modeObjectiveKilled = 0
 
 interface Projectile { mesh: THREE.Object3D; vel: THREE.Vector3; life: number }
 interface HomingMissile extends Projectile { mesh: THREE.Group; target: THREE.Object3D | null; diverted: boolean; spd: number; turnRate: number; light: THREE.PointLight | null }
-interface Enemy { group: THREE.Group; health: number; orbitAngle: number; fireCooldown: number; missileAmmo: number; seekingSupply: boolean }
-interface Ally { group: THREE.Group; health: number; orbitAngle: number; fireCooldown: number; missileAmmo: number }
+interface Enemy { group: THREE.Group; health: number; fireCooldown: number; missileAmmo: number; seekingSupply: boolean; evadeDelay: number; lastPos: THREE.Vector3; velocity: THREE.Vector3 }
+interface Ally { group: THREE.Group; health: number; fireCooldown: number; missileAmmo: number }
 interface Explosion { particles: Array<{ mesh: THREE.Mesh; vel: THREE.Vector3 }>; life: number }
 interface GroundTarget {
   group: THREE.Group; health: number; maxHealth: number; vel: THREE.Vector3
@@ -1431,8 +1452,11 @@ function spawnEnemyAt(sx: number, sz: number) {
   }
 
   scene.add(group)
-  const angle = Math.atan2(sz, sx)
-  enemies.push({ group, health: 2, orbitAngle: angle, fireCooldown: 8 + Math.random() * 7, missileAmmo: 4, seekingSupply: false })
+  enemies.push({
+    group, health: 2, fireCooldown: 8 + Math.random() * 7,
+    missileAmmo: 4, seekingSupply: false, evadeDelay: 0,
+    lastPos: group.position.clone(), velocity: new THREE.Vector3()
+  })
 }
 
 function spawnEnemy() {
@@ -1448,7 +1472,7 @@ function spawnAlly(sx: number, sz: number) {
   group.rotation.y = Math.PI  // 南向き（z正方向）
 
   scene.add(group)
-  allies.push({ group, health: 2, orbitAngle: Math.atan2(sz, sx), fireCooldown: 3 + Math.random() * 3, missileAmmo: 8 })
+  allies.push({ group, health: 2, fireCooldown: 3 + Math.random() * 3, missileAmmo: 8 })
 }
 
 function fireAllyMissile(ally: Ally, target: Enemy) {
@@ -1485,24 +1509,42 @@ function updateAllies(dt: number) {
 
     let tx: number, ty: number, tz: number
     if (target) {
-      ally.orbitAngle += dt * 0.38
-      const r = 90 + Math.sin(ally.orbitAngle * 0.3) * 20
-      tx = target.group.position.x + Math.cos(ally.orbitAngle) * r
-      tz = target.group.position.z + Math.sin(ally.orbitAngle) * r
-      ty = target.group.position.y + 8 + Math.sin(ally.orbitAngle * 0.6) * 18
+      // 味方も攻撃的AI：敵を積極的に追跡
+      const toTarget = target.group.position.clone().sub(ally.group.position)
+      const dist = toTarget.length()
 
+      // 味方は後方追跡型（敵の6時方向を狙う）
+      const targetFwd = _fwd.clone().applyQuaternion(target.group.quaternion)
+      const behindPos = target.group.position.clone().add(targetFwd.multiplyScalar(-120))
+      tx = behindPos.x
+      tz = behindPos.z
+      ty = target.group.position.y + 5
+
+      // ミサイル発射判定
       ally.fireCooldown -= dt
-      if (ally.fireCooldown <= 0 && ally.missileAmmo > 0 && minDist < 350) {
+      const angleToTarget = Math.acos(
+        toTarget.clone().normalize().dot(
+          _fwd.clone().applyQuaternion(ally.group.quaternion)
+        )
+      )
+      if (ally.fireCooldown <= 0 && ally.missileAmmo > 0 && dist > 150 && dist < 350 && angleToTarget < Math.PI / 5) {
         ally.missileAmmo--
         ally.fireCooldown = 5 + Math.random() * 5
         fireAllyMissile(ally, target)
       }
     } else {
-      ally.orbitAngle += dt * 0.18
-      const r = 150
-      tx = player.position.x + Math.cos(ally.orbitAngle) * r
-      tz = player.position.z + Math.sin(ally.orbitAngle) * r
-      ty = player.position.y + 10 + Math.sin(ally.orbitAngle * 0.5) * 15
+      // 敵がいない場合はプレイヤーの後方を編隊飛行
+      const formationOffset = new THREE.Vector3(
+        (i % 2 === 0 ? 1 : -1) * 40,  // 左右に配置
+        -10,
+        80 + Math.floor(i / 2) * 50  // 後方に配置
+      )
+      const formationPos = player.position.clone().add(
+        formationOffset.applyQuaternion(player.quaternion)
+      )
+      tx = formationPos.x
+      tz = formationPos.z
+      ty = formationPos.y
     }
 
     const dir = new THREE.Vector3(tx - ally.group.position.x, ty - ally.group.position.y, tz - ally.group.position.z)
@@ -1552,20 +1594,17 @@ function fireGun() {
   const fwd = _fwd.clone().applyQuaternion(player.quaternion)
   let aimDir = fwd.clone()
 
-  // 1秒以上連続発射している場合、ロック中の敵への予測射撃を行う
+  // 1秒以上連続発射している場合、ロック中の敵への高精度予測射撃を行う
   if (gunFireTime > 1.0 && lockedTarget) {
     const targetPos = lockedTarget.group.position.clone()
-    const targetVel = new THREE.Vector3()
+    let targetVel = new THREE.Vector3()
 
-    // 敵の移動方向を推定（enemiesリストから該当するEnemyを探す）
+    // 敵の実際の速度ベクトルを使用（高精度予測）
     const enemy = enemies.find(e => e.group === lockedTarget!.group)
     if (enemy) {
-      // 円軌道の接線方向から速度推定
-      const angle = enemy.orbitAngle
-      const r = 110
-      targetVel.set(-Math.sin(angle) * r * 0.22, Math.cos(angle * 0.6) * 0.6 * 20 * 0.22, Math.cos(angle) * r * 0.22)
+      targetVel.copy(enemy.velocity)
     } else {
-      // 地上目標の場合は速度を簡易推定（前フレームとの差分は取れないので固定値）
+      // 地上目標の場合は速度ベクトルを使用
       const gt = groundTargets.find(g => g.group === lockedTarget!.group)
       if (gt && gt.vel) {
         targetVel.copy(gt.vel)
@@ -1573,12 +1612,25 @@ function fireGun() {
     }
 
     const bulletSpeed = 230
-    const dist = targetPos.distanceTo(player.position)
-    const timeToHit = dist / bulletSpeed
 
-    // 予測位置 = 現在位置 + 速度 × 到達時間
-    const leadPos = targetPos.add(targetVel.multiplyScalar(timeToHit))
-    const toLeadPos = leadPos.sub(player.position).normalize()
+    // 距離と相対速度から到達時間を反復計算（より正確）
+    let dist = targetPos.distanceTo(player.position)
+    let timeToHit = dist / bulletSpeed
+    let leadPos = targetPos.clone()
+
+    // 3回反復して精度向上
+    for (let iter = 0; iter < 3; iter++) {
+      leadPos = targetPos.clone().add(targetVel.clone().multiplyScalar(timeToHit))
+      dist = leadPos.distanceTo(player.position)
+      timeToHit = dist / bulletSpeed
+    }
+
+    // 重力による弾道落下を補正（遠距離ほど影響大）
+    const gravity = 9.8
+    const drop = 0.5 * gravity * timeToHit * timeToHit
+    leadPos.y += drop * 0.3  // 重力補正（30%適用）
+
+    const toLeadPos = leadPos.clone().sub(player.position).normalize()
 
     // 前方60度以内なら予測照準を適用
     if (fwd.angleTo(toLeadPos) < Math.PI / 3) {
@@ -1599,13 +1651,7 @@ function fireGun() {
     bullets.push({ mesh, vel: aimDir.clone().multiplyScalar(230), life: 1.8 })
   }
   if (gunSoundCooldown <= 0) { playGunSound(); gunSoundCooldown = 0.06 }
-  // 砲口フラッシュ（パフォーマンス最適化：2発に1回のみ表示）
-  if (Math.random() < 0.5) {
-    const mFlash = new THREE.PointLight(0xffee00, 6, 20)
-    mFlash.position.copy(player.position).add(new THREE.Vector3(0, 0, -3.5).applyQuaternion(player.quaternion))
-    scene.add(mFlash)
-    setTimeout(() => scene.remove(mFlash), 40)
-  }
+  // 砲口フラッシュ削除（パフォーマンス最適化：ミサイル発射時のフリーズ防止）
 }
 
 function firePlayerMissile() {
@@ -1627,12 +1673,10 @@ function firePlayerMissile() {
   mesh.position.copy(player.position).add(new THREE.Vector3(0, -0.5, 2).applyQuaternion(player.quaternion))
   mesh.quaternion.copy(player.quaternion)
   scene.add(mesh)
-  const mLight = new THREE.PointLight(0xff8800, 4, 30)  // 強度6→4、範囲55→30に削減
-  mLight.position.copy(mesh.position)
-  scene.add(mLight)
+  // パフォーマンス最適化：PointLight削除（発射時のフリーズ防止）
   // ミサイル速度 = プレイヤー速度 + 相対速度200 m/s
   const missileAbsoluteSpeed = speed + 200
-  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(missileAbsoluteSpeed), life: 12, target, diverted: false, spd: missileAbsoluteSpeed, turnRate: 3.5, light: mLight })
+  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(missileAbsoluteSpeed), life: 12, target, diverted: false, spd: missileAbsoluteSpeed, turnRate: 3.5, light: null })
   camShakeAmt = Math.max(camShakeAmt, 0.22)
   playMissileSound()
 }
@@ -1665,9 +1709,7 @@ function _dropSingleFlare() {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.32, 7, 7), mat)
   mesh.position.copy(player.position).add(new THREE.Vector3((Math.random()-0.5)*1.5, -0.5, 2.5).applyQuaternion(player.quaternion))
   scene.add(mesh)
-  const fLight = new THREE.PointLight(0xff6600, 5, 18)
-  fLight.position.copy(mesh.position); scene.add(fLight)
-  setTimeout(() => scene.remove(fLight), 400)
+  // PointLight削除（パフォーマンス最適化：フリーズ防止）
   const backward = new THREE.Vector3(0, 0, 4).applyQuaternion(player.quaternion)
   backward.add(new THREE.Vector3((Math.random()-0.5)*32, -5+Math.random()*10, (Math.random()-0.5)*32))
   flares.push({ mesh, vel: backward, life: 7.0 })
@@ -2881,8 +2923,9 @@ console.log('🔧 MAP選択イベントを設定中...')
 async function handleMapSwitch(mapType: GameMap) {
   console.log(`🖱️ MAP切り替え開始: ${mapType}`)
 
-  // アクティブ状態の切り替え
-  document.querySelectorAll('.map-select-btn').forEach(b => b.classList.remove('active'))
+  // アクティブ状態の切り替え（MAPボタンのみ）
+  document.getElementById('map-btn-original')?.classList.remove('active')
+  document.getElementById('map-btn-tokyo')?.classList.remove('active')
   if (mapType === 'tokyo') {
     document.getElementById('map-btn-tokyo')?.classList.add('active')
   } else {
@@ -3110,18 +3153,40 @@ function updateEnemies(dt: number) {
     const allThreats = [...playerMissiles, ...allyMissiles]
     for (const m of allThreats) {
       const dist = m.mesh.position.distanceTo(enemy.group.position)
-      if (dist < 100 && m.target === enemy.group) {  // 100m以内で自分を狙っているミサイルを検知
+      // 人間らしい反応：60m以内で検知、反応遅延0.4秒、30%の確率で検知失敗
+      if (dist < 60 && m.target === enemy.group) {
+        // 検知失敗の確率（30%）
+        if (Math.random() < 0.3) continue
+
+        // 反応遅延がまだ残っている場合はカウントダウン
+        if (enemy.evadeDelay > 0) {
+          enemy.evadeDelay -= dt
+          continue
+        }
+
+        // 初めて検知した場合は遅延を設定（0.3-0.5秒）
+        if (enemy.evadeDelay === 0) {
+          enemy.evadeDelay = 0.3 + Math.random() * 0.2
+          continue
+        }
+
+        // 遅延が終わったので回避開始
         evading = true
-        // 自然な回避機動：円軌道の接線方向に急旋回（ミサイルを振り切る）
-        const evadeAngle = enemy.orbitAngle + Math.PI / 2
-        const evadeRadius = 200  // 急旋回半径
-        const orbitBase = (currentMode === 'dogfight' && allies.length > 0 && i % 3 === 2)
-          ? allies[i % allies.length].group.position
-          : player.position
-        tx = orbitBase.x + Math.cos(evadeAngle) * evadeRadius
-        tz = orbitBase.z + Math.sin(evadeAngle) * evadeRadius
-        ty = enemy.group.position.y + 30  // 上昇しながら回避
+        // 自然な回避機動：ミサイルと垂直方向に旋回（滑らかな動き）
+        const missileDir = m.mesh.position.clone().sub(enemy.group.position).normalize()
+        // ミサイルに対して垂直な方向を計算（左右どちらかにランダム回避）
+        const evadeDir = new THREE.Vector3(-missileDir.z, 0, missileDir.x)
+        if (Math.random() < 0.5) evadeDir.negate()
+
+        // 現在位置から回避方向に350m先を目標に
+        const evadeTarget = enemy.group.position.clone().add(evadeDir.multiplyScalar(350))
+        tx = evadeTarget.x
+        tz = evadeTarget.z
+        ty = enemy.group.position.y + 20  // 上昇しながら回避
         break
+      } else if (dist >= 60) {
+        // ミサイルが離れたら遅延をリセット
+        enemy.evadeDelay = 0
       }
     }
 
@@ -3140,18 +3205,55 @@ function updateEnemies(dt: number) {
           enemy.seekingSupply = false
         }
       } else {
-        enemy.orbitAngle += dt * 0.22
-        const r = 110 + i * 25
-        // 味方がいる場合、一部の敵は味方を狙う（チーム戦AI）
-        const orbitBase = (currentMode === 'dogfight' && allies.length > 0 && i % 3 === 2)
-          ? allies[i % allies.length].group.position
-          : player.position
-        tx = orbitBase.x + Math.cos(enemy.orbitAngle) * r
-        tz = orbitBase.z + Math.sin(enemy.orbitAngle) * r
-        ty = orbitBase.y + 8 + Math.sin(enemy.orbitAngle * 0.6) * 20
+        // 攻撃的ドッグファイトAI：プレイヤーを積極的に狙う
+        const target = (currentMode === 'dogfight' && allies.length > 0 && i % 3 === 2)
+          ? allies[i % allies.length].group
+          : player
 
+        const toTarget = target.position.clone().sub(enemy.group.position)
+        const dist = toTarget.length()
+
+        // 各敵機で異なる戦術を使う（個性付け）
+        const tacticType = i % 4
+
+        if (tacticType === 0) {
+          // タイプ0: 後方追跡型（6時方向から攻撃）
+          const targetFwd = _fwd.clone().applyQuaternion(target.quaternion)
+          const behindPos = target.position.clone().add(targetFwd.multiplyScalar(-150))
+          tx = behindPos.x
+          tz = behindPos.z
+          ty = target.position.y + 10
+        } else if (tacticType === 1) {
+          // タイプ1: 側面攻撃型（3時/9時方向から）
+          const targetRight = new THREE.Vector3(1, 0, 0).applyQuaternion(target.quaternion)
+          const sidePos = target.position.clone().add(targetRight.multiplyScalar((i % 2 === 0 ? 1 : -1) * 180))
+          tx = sidePos.x
+          tz = sidePos.z
+          ty = target.position.y + 20
+        } else if (tacticType === 2) {
+          // タイプ2: 高高度型（上空から急降下）
+          tx = target.position.x + (Math.random() - 0.5) * 100
+          tz = target.position.z + (Math.random() - 0.5) * 100
+          ty = target.position.y + 80
+        } else {
+          // タイプ3: 直接攻撃型（正面から）
+          const approachDist = dist > 200 ? 150 : 250
+          const approachDir = toTarget.clone().normalize().multiplyScalar(approachDist)
+          const approachPos = enemy.group.position.clone().add(approachDir)
+          tx = approachPos.x
+          tz = approachPos.z
+          ty = target.position.y + (Math.sin(Date.now() * 0.0008 + i) * 30)
+        }
+
+        // ミサイル発射判定（距離と角度を考慮）
         enemy.fireCooldown -= dt
-        if (enemy.fireCooldown <= 0) {
+        const angleToTarget = Math.acos(
+          toTarget.clone().normalize().dot(
+            _fwd.clone().applyQuaternion(enemy.group.quaternion)
+          )
+        )
+        // 距離200-400m、前方30度以内でミサイル発射
+        if (enemy.fireCooldown <= 0 && dist > 200 && dist < 400 && angleToTarget < Math.PI / 6) {
           if (enemy.missileAmmo > 0) {
             enemy.fireCooldown = 9 + Math.random() * 7
             fireEnemyMissile(enemy)
@@ -3166,11 +3268,17 @@ function updateEnemies(dt: number) {
     const dir = new THREE.Vector3(tx - enemy.group.position.x, ty - enemy.group.position.y, tz - enemy.group.position.z)
     if (dir.length() > 0.5) {
       dir.normalize()
-      const moveSpeed = evading ? 220 : 180  // 回避時は加速
+      const moveSpeed = evading ? 200 : 180  // 回避時の加速を控えめに（220→200m/s）
+
+      // 速度ベクトルを記録（マシンガン予測用）
+      const oldPos = enemy.lastPos.clone()
       enemy.group.position.addScaledVector(dir, moveSpeed * dt)
+      enemy.velocity.copy(enemy.group.position).sub(oldPos).divideScalar(dt)
+      enemy.lastPos.copy(enemy.group.position)
+
       const flat = new THREE.Vector3(dir.x, 0, dir.z)
       if (flat.lengthSq() > 0.01) enemy.group.quaternion.slerp(
-        new THREE.Quaternion().setFromUnitVectors(_fwd, flat.normalize()), evading ? 0.12 : 0.055  // 回避時は素早く旋回
+        new THREE.Quaternion().setFromUnitVectors(_fwd, flat.normalize()), evading ? 0.08 : 0.055  // 回避時の旋回速度を下げる（0.12→0.08）
       )
     }
   }
@@ -3621,6 +3729,16 @@ function respawnPlayer() {
   speed = 200  // リスポーン時も巡航速度
   invincibleTimer = 3.0
   respawnFlash = 0.8
+
+  // ミサイル・フレアを全回復
+  missileAmmo = 6
+  flareAmmo = 3
+  missileEl.textContent = missileAmmo.toString()
+  flareEl.textContent = flareAmmo.toString()
+  updatePips(missilePips, missileAmmo, 'on')
+  updatePips(flarePips, flareAmmo, 'flare-on')
+  updateMobileAmmo()
+
   // 近くの敵ミサイルを除去
   for (let i = enemyMissiles.length - 1; i >= 0; i--) {
     scene.remove(enemyMissiles[i].mesh); enemyMissiles.splice(i, 1)
@@ -3639,8 +3757,8 @@ function updateSupplyPoints(dt: number) {
     const dist = player.position.distanceTo(SUPPLY_POSITIONS[i])
     if (dist < 38 && supplyCooldowns[i] <= 0) {
       const prevMsl = missileAmmo, prevFlr = flareAmmo, prevHP = playerHP
-      missileAmmo = Math.min(6, missileAmmo + 3)
-      flareAmmo   = Math.min(3, flareAmmo   + 2)
+      missileAmmo = 6  // 全回復
+      flareAmmo   = 3  // 全回復
       playerHP    = Math.min(100, playerHP  + 50)  // HP回復：最大50
       if (missileAmmo !== prevMsl || flareAmmo !== prevFlr || playerHP !== prevHP) {
         missileEl.textContent = missileAmmo.toString()
