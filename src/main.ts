@@ -2093,10 +2093,13 @@ function buildBridge(cx: number, cz: number, span: number, rotY: number): void {
     for (let t = -0.38; t <= 0.38; t += 0.12) {
       const hx = Math.sin(t * Math.PI) * archR
       const topY = Math.sqrt(Math.max(0, archR*archR - hx*hx))
-      const hangerH = topY - archR + archR  // from bY to arch
+      const hangerH = topY  // アーチの高さ
       if (hangerH < 1) continue
       const hanger = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, hangerH, 4), archMat3)
-      hanger.position.set(lx, bY + hangerH/2, cz + t * span)
+      // 回転に応じて正しい位置に配置
+      const hangerX = rotY === 0 ? lx : cx + t * span
+      const hangerZ = rotY === 0 ? cz + t * span : lz
+      hanger.position.set(hangerX, bY + hangerH/2, hangerZ)
       scene.add(hanger)
     }
   }
