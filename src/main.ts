@@ -3721,12 +3721,30 @@ function drawRadar() {
     return [cx - (rx / norm) * scale * RADAR_R, cy - (rz / norm) * scale * RADAR_R]
   }
 
-  // 補給ポイント（緑菱形）
+  // 補給ポイント（緑菱形）- 常に表示、範囲外は縁に表示
   for (const sp of SUPPLY_POSITIONS) {
-    if (sp.distanceTo(player.position) > RADAR_RANGE * 1.2) continue
+    const dist = sp.distanceTo(player.position)
     const [px, py] = worldToRadar(sp)
-    ctx.fillStyle = '#0fa'
-    ctx.beginPath(); ctx.moveTo(px, py-4); ctx.lineTo(px+3, py); ctx.lineTo(px, py+4); ctx.lineTo(px-3, py); ctx.closePath(); ctx.fill()
+
+    // 範囲外の場合はレーダー縁にクリップ
+    const dx = px - cx
+    const dy = py - cy
+    const len = Math.hypot(dx, dy)
+    const finalPx = len > RADAR_R ? cx + (dx / len) * RADAR_R : px
+    const finalPy = len > RADAR_R ? cy + (dy / len) * RADAR_R : py
+
+    // 発光効果付き緑菱形
+    ctx.fillStyle = dist < RADAR_RANGE ? '#0fa' : '#0a8'
+    ctx.shadowColor = '#0fa'
+    ctx.shadowBlur = 4
+    ctx.beginPath()
+    ctx.moveTo(finalPx, finalPy - 5)
+    ctx.lineTo(finalPx + 4, finalPy)
+    ctx.lineTo(finalPx, finalPy + 5)
+    ctx.lineTo(finalPx - 4, finalPy)
+    ctx.closePath()
+    ctx.fill()
+    ctx.shadowBlur = 0
   }
 
   // 味方（青丸）
