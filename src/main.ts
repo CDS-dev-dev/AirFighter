@@ -3903,7 +3903,7 @@ function loop() {
   // 速度連動プルバック（高速時はカメラを遠ざける）
   // スマホではカメラを近づけて機体を見やすくする
   const isMobile = 'ontouchstart' in window
-  const baseCamZ = isMobile ? 13 : 18  // スマホは13、PCは18
+  const baseCamZ = isMobile ? 10 : 18  // スマホは10、PCは18（より近づけて機体を大きく表示）
   const targetCamZ = baseCamZ + (speed / 550) * 28  // 最高速時+28m引く
   cameraOffset.z += (targetCamZ - cameraOffset.z) * dt * 3
   // カメラシェイク
