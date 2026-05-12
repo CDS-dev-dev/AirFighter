@@ -1426,7 +1426,7 @@ function fireAllyMissile(ally: Ally, target: Enemy) {
   const toTarget = target.group.position.clone().sub(ally.group.position).normalize()
   mesh.quaternion.setFromUnitVectors(_fwd, toTarget)
   scene.add(mesh)
-  allyMissiles.push({ mesh, vel: toTarget.clone().multiplyScalar(80), life: 14, target: target.group, diverted: false, spd: 95, turnRate: 1.8, light: null })
+  allyMissiles.push({ mesh, vel: toTarget.clone().multiplyScalar(90), life: 14, target: target.group, diverted: false, spd: 110, turnRate: 2.5, light: null })  // 追尾性能向上: spd 95→110, turnRate 1.8→2.5
 }
 
 function killEnemy(ei: number) {
@@ -1574,7 +1574,7 @@ function firePlayerMissile() {
   const mLight = new THREE.PointLight(0xff8800, 4, 30)  // 強度6→4、範囲55→30に削減
   mLight.position.copy(mesh.position)
   scene.add(mLight)
-  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(80), life: 12, target, diverted: false, spd: 95, turnRate: 1.8, light: mLight })
+  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(90), life: 12, target, diverted: false, spd: 110, turnRate: 2.5, light: mLight })  // 追尾性能向上: spd 95→110, turnRate 1.8→2.5
   camShakeAmt = Math.max(camShakeAmt, 0.22)
   playMissileSound()
 }
@@ -2954,8 +2954,8 @@ function updateHoming(m: HomingMissile, dt: number) {
     const targetDir = toTarget.normalize()
     const angle = currentDir.angleTo(targetDir)
 
-    // 目標が後方120°超 → 追尾ロスト（Uターン不可）
-    if (angle > Math.PI * 0.67) {
+    // 目標が後方140°超 → 追尾ロスト（Uターン不可）
+    if (angle > Math.PI * 0.78) {  // 0.67 → 0.78（約120° → 140°）
       m.target = null
     } else {
       // 最大旋回角を dt ごとに制限（Uターン防止）
