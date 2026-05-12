@@ -299,17 +299,21 @@ function terrainH(x: number, z: number): number {
   // ── テクスチャノイズ ─────────────────────────────────
   h += (fbm(x * 0.006 + 5.1, z * 0.006 - 3.8, 4) - 0.5) * 105
 
-  // ── 適度な起伏を追加（自然でリアルな地形）─────────────
-  // 中規模な波状地形（戦闘に影響する適度な起伏）
-  h += Math.sin(x * 0.0025 + 2.3) * 120 + Math.cos(z * 0.0032 + 1.7) * 100
-  h += Math.sin((x + z) * 0.0018 + 0.9) * 80
-  h += Math.sin((x - z) * 0.0021 + 1.5) * 70
+  // ── 全域に激しい起伏を追加（戦闘に大きく影響）─────────────
+  // 大規模な波状地形（飛行に影響する強い起伏）
+  h += Math.sin(x * 0.0025 + 2.3) * 200 + Math.cos(z * 0.0032 + 1.7) * 180
+  h += Math.sin((x + z) * 0.0018 + 0.9) * 150
+  h += Math.sin((x - z) * 0.0021 + 1.5) * 130
+  h += Math.sin(x * 0.004) * Math.cos(z * 0.003) * 160
+  h += Math.sin(x * 0.007) * Math.sin(z * 0.006) * 120
 
-  // 追加の山塊（控えめに）
-  h += gauss2d(x, z,  -400,  350, 180, 160, 200)  // 西部の山
-  h += gauss2d(x, z,   650,  120, 160, 145, 180)  // 東部の山
-  h += gauss2d(x, z,  -250, -350, 140, 130, 170)  // 北西の丘陵
-  h += gauss2d(x, z,   320, -580, 155, 140, 190)  // 北東の山塊
+  // 追加の大規模山塊（全域に配置）
+  h += gauss2d(x, z,  -400,  350, 180, 160, 280)  // 西部の山
+  h += gauss2d(x, z,   650,  120, 160, 145, 260)  // 東部の山
+  h += gauss2d(x, z,  -250, -350, 140, 130, 240)  // 北西の丘陵
+  h += gauss2d(x, z,   320, -580, 155, 140, 270)  // 北東の山塊
+  h += gauss2d(x, z, -1000,  -50, 170, 160, 250)  // 西部山脈
+  h += gauss2d(x, z,   800,  600, 180, 170, 230)  // 南東の山
 
   return h
 }
@@ -837,10 +841,32 @@ function _onBuildingGLBLoaded() {
   }
 }
 function buildWorldStructures() {
-  // ===== 橋梁 =====
-  buildBridge(   80, -185, 220, 0)             // 東西峡谷橋
-  buildBridge( -350,  400, 180, Math.PI/2)     // 南北渓谷橋
-  buildBridge(  920,  100, 260, Math.PI/2)     // 東部大峡谷橋
+  // ===== 橋梁（20本）=====
+  // 主要峡谷横断橋（大型）
+  buildBridge(   80, -185, 220, 0)             // 東西峡谷橋 #1
+  buildBridge( -350,  400, 180, Math.PI/2)     // 南北渓谷橋 #2
+  buildBridge(  920,  100, 260, Math.PI/2)     // 東部大峡谷橋 #3
+
+  // 追加の峡谷橋（中型）
+  buildBridge(  -50, -300, 160, 0)             // 東西峡谷橋 #4
+  buildBridge(  200, -150, 140, Math.PI/4)     // 斜行橋 #5
+  buildBridge( -450,  200, 150, Math.PI/2)     // 南北渓谷橋 #6
+  buildBridge( -250,  600, 120, Math.PI/2)     // 南部渓谷橋 #7
+  buildBridge(  850,  -50, 180, Math.PI/2)     // 東部峡谷橋 #8
+  buildBridge(  950,  250, 150, Math.PI/3)     // 東部斜行橋 #9
+
+  // 小規模渓谷橋
+  buildBridge( -600, -100, 100, 0)             // 西部渓谷橋 #10
+  buildBridge(  400,  500, 110, Math.PI/2)     // 南東渓谷橋 #11
+  buildBridge(  100,  -50, 90, Math.PI/6)      // 中央斜行橋 #12
+  buildBridge( -150,   50, 100, -Math.PI/6)    // 中央西橋 #13
+  buildBridge(  600, -400, 120, 0)             // 北東橋 #14
+  buildBridge( -800,  300, 130, Math.PI/4)     // 西部大橋 #15
+  buildBridge(  300,  100, 80, Math.PI/3)      // 中央東橋 #16
+  buildBridge( -500, -300, 110, -Math.PI/4)    // 北西橋 #17
+  buildBridge(  700,  350, 100, Math.PI/2)     // 東部南橋 #18
+  buildBridge(   50,  250, 90, 0)              // 中央南橋 #19
+  buildBridge( -250, -150, 100, Math.PI/5)     // 中央北橋 #20
 
   // ===== 空軍基地 =====
   buildAirBase(   0,  -60, 0,           'A')   // 中央基地 Alpha
@@ -855,7 +881,8 @@ function buildWorldStructures() {
   addCityArea( -600,  100, 150, 25)            // 西部都市
   addCityArea(  650,  450, 120, 18)            // 東部都市
 
-  // 港湾、山岳レーダー基地、防空陣地は削除（極限地形では配置が不自然になるため）
+  // ===== 岩塔・巨岩配置 =====
+  createRockFormations()
 }
 
 function _glbSetShadow(g: THREE.Group) {
@@ -2056,6 +2083,93 @@ function addCityArea(cx: number, cz: number, radius: number, buildingCount: numb
     // 屋上ライト（夜間用、現在は昼間なので控えめ）
     // パフォーマンス改善：装飾ライト削除
   }
+}
+
+// ===== ROCK FORMATIONS（岩塔・巨岩）=====
+function createRockFormations(): void {
+  console.log('🪨 岩塔・巨岩の配置開始')
+
+  // 岩のマテリアル（茶色・灰色の自然な岩）
+  const rockMat1 = new THREE.MeshStandardMaterial({
+    color: 0x6a5a4a,
+    roughness: 0.95,
+    metalness: 0.05
+  })
+  const rockMat2 = new THREE.MeshStandardMaterial({
+    color: 0x5a4a3a,
+    roughness: 0.98,
+    metalness: 0.02
+  })
+  const rockMat3 = new THREE.MeshStandardMaterial({
+    color: 0x7a6a5a,
+    roughness: 0.92,
+    metalness: 0.08
+  })
+
+  // ===== 岩塔（Rock Pillars）: 100本配置 =====
+  for (let i = 0; i < 100; i++) {
+    // ランダム配置（中央5000x5000の範囲）
+    const x = (Math.random() - 0.5) * 5000
+    const z = (Math.random() - 0.5) * 5000
+    const baseY = terrainH(x, z)
+
+    // 水没回避
+    if (baseY < WATER_LEVEL + 5) continue
+
+    // 岩塔の高さ（30-80m）
+    const height = 30 + Math.random() * 50
+    const radius = 6 + Math.random() * 10
+
+    // 円柱形状（上部がやや細い）
+    const pillarGeo = new THREE.CylinderGeometry(
+      radius * 0.65,  // 上部半径
+      radius,          // 下部半径
+      height,          // 高さ
+      8,               // 側面セグメント（少なめで岩らしく）
+      1
+    )
+
+    const pillar = new THREE.Mesh(pillarGeo, i % 3 === 0 ? rockMat1 : i % 3 === 1 ? rockMat2 : rockMat3)
+    pillar.position.set(x, baseY + height / 2, z)
+    pillar.rotation.y = Math.random() * Math.PI * 2
+    pillar.castShadow = true
+    pillar.receiveShadow = true
+    pillar.name = `RockPillar_${i}`
+    scene.add(pillar)
+  }
+
+  console.log('✅ 岩塔100本配置完了')
+
+  // ===== 巨岩（Giant Boulders）: 300個配置 =====
+  for (let i = 0; i < 300; i++) {
+    // ランダム配置
+    const x = (Math.random() - 0.5) * 5000
+    const z = (Math.random() - 0.5) * 5000
+    const baseY = terrainH(x, z)
+
+    // 水没回避
+    if (baseY < WATER_LEVEL + 3) continue
+
+    // 巨岩のサイズ（10-30m）
+    const size = 10 + Math.random() * 20
+
+    // 不規則な形状（DodecahedronGeometry = 12面体）
+    const rockGeo = new THREE.DodecahedronGeometry(size, 0)
+
+    const boulder = new THREE.Mesh(rockGeo, i % 3 === 0 ? rockMat1 : i % 3 === 1 ? rockMat2 : rockMat3)
+    boulder.position.set(x, baseY + size * 0.4, z)  // 地面に半分埋まっている感じ
+    boulder.rotation.set(
+      Math.random() * Math.PI,
+      Math.random() * Math.PI,
+      Math.random() * Math.PI
+    )
+    boulder.castShadow = true
+    boulder.receiveShadow = true
+    boulder.name = `Boulder_${i}`
+    scene.add(boulder)
+  }
+
+  console.log('✅ 巨岩300個配置完了')
 }
 
 // ===== SMOKE PARTICLE SYSTEM =====
