@@ -3672,9 +3672,9 @@ function loop() {
   const currentRollQuat = new THREE.Quaternion().setFromAxisAngle(fwdAxis, targetBankZ * dt * 5)
   player.quaternion.multiply(currentRollQuat)
 
-  // 自動水平復帰（入力が小さい時 or ない時）
-  // マウスでも水平復帰するように、閾値を設定
-  const pitchInputSmall = Math.abs(pitchInput) < 0.15
+  // 自動水平復帰（旋回操作を完全に止めた時のみ）
+  // 閾値を小さく設定し、旋回中は水平復帰しない
+  const pitchInputSmall = Math.abs(pitchInput) < 0.03  // 0.15 → 0.03（ほぼ完全に止めた時のみ）
   if (pitchInputSmall && Math.abs(yawInput) < 0.05) {
     // ロール（横回転）の復帰
     const dampQuat = new THREE.Quaternion().setFromAxisAngle(fwdAxis, -targetBankZ * dt * 0.88)
