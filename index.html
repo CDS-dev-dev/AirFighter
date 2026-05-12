@@ -759,7 +759,7 @@
 
     <!-- ゲームモード＆MAP選択 -->
     <div id="mode-screen">
-      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v3.7.6</span></div>
+      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v3.8.0</span></div>
       <div class="ms-sub">SELECT MAP & MISSION MODE</div>
 
       <!-- MAP選択 -->
@@ -784,6 +784,19 @@
         <button id="audio-btn-on" class="map-select-btn" data-audio="on" style="padding: 8px 20px; font-size: 14px;">
           <span style="font-size: 18px;">🔊</span>
           <span>ON</span>
+        </button>
+      </div>
+
+      <!-- 操作モード設定 -->
+      <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center; justify-content: center;">
+        <span style="color: rgba(255,255,255,0.7); font-size: 14px;">操作:</span>
+        <button id="flight-btn-arcade" class="map-select-btn active" data-flight="arcade" style="padding: 8px 20px; font-size: 14px;">
+          <span style="font-size: 18px;">🎮</span>
+          <span>アーケード</span>
+        </button>
+        <button id="flight-btn-realistic" class="map-select-btn" data-flight="realistic" style="padding: 8px 20px; font-size: 14px;">
+          <span style="font-size: 18px;">✈️</span>
+          <span>リアル</span>
         </button>
       </div>
 

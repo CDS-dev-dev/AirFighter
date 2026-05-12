@@ -1335,7 +1335,9 @@ function playExplosionSound(scale = 1.0) {
 
 // ===== GAME OBJECTS =====
 type GameMode = 'dogfight' | 'souryokusen' | 'free'
+type FlightMode = 'arcade' | 'realistic'  // 操作モード
 let currentMode: GameMode | null = null
+let flightMode: FlightMode = 'arcade'  // デフォルトはアーケード（水平旋回）
 let isPaused = false  // ポーズ状態
 // dogfight: player spawn position (ally side)
 let dfSpawnX = 0, dfSpawnZ = 0
@@ -2905,6 +2907,26 @@ if (audioOffBtn && audioOnBtn) {
   })
 }
 
+// 操作モード設定ボタン
+const flightArcadeBtn = document.getElementById('flight-btn-arcade')
+const flightRealisticBtn = document.getElementById('flight-btn-realistic')
+
+if (flightArcadeBtn && flightRealisticBtn) {
+  flightArcadeBtn.addEventListener('click', () => {
+    flightMode = 'arcade'
+    flightArcadeBtn.classList.add('active')
+    flightRealisticBtn.classList.remove('active')
+    console.log('🎮 操作モード: アーケード（水平旋回）')
+  })
+
+  flightRealisticBtn.addEventListener('click', () => {
+    flightMode = 'realistic'
+    flightRealisticBtn.classList.add('active')
+    flightArcadeBtn.classList.remove('active')
+    console.log('✈️ 操作モード: リアル（バンキング）')
+  })
+}
+
 // モードボタンとbackボタンのイベント
 document.querySelectorAll<HTMLElement>('.ms-start').forEach(btn => {
   btn.addEventListener('click', () => startGame(btn.dataset.mode as GameMode))
@@ -3665,21 +3687,18 @@ function loop() {
     player.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(
       new THREE.Vector3(0, 1, 0), -yawInput * 1.5 * dt))
 
-  // バンキング: ヨー入力 → ロール（自然なバンク旋回）+ 自動水平復帰
-  // ジンバルロック回避のため、クォータニオンのみで処理
-  const targetBankZ = -yawInput * 0.72
-  const fwdAxis = _fwd.clone().applyQuaternion(player.quaternion)
-  const currentRollQuat = new THREE.Quaternion().setFromAxisAngle(fwdAxis, targetBankZ * dt * 5)
-  player.quaternion.multiply(currentRollQuat)
+  // フライトモードに応じた処理
+  if (flightMode === 'realistic') {
+    // リアルモード：バンキング（バンク旋回）
+    const targetBankZ = -yawInput * 0.72
+    const fwdAxis = _fwd.clone().applyQuaternion(player.quaternion)
+    const currentRollQuat = new THREE.Quaternion().setFromAxisAngle(fwdAxis, targetBankZ * dt * 5)
+    player.quaternion.multiply(currentRollQuat)
+  }
 
   // 自動水平復帰（旋回操作を完全に止めた時のみ）
-  // 閾値を小さく設定し、旋回中は水平復帰しない
-  const pitchInputSmall = Math.abs(pitchInput) < 0.03  // 0.15 → 0.03（ほぼ完全に止めた時のみ）
+  const pitchInputSmall = Math.abs(pitchInput) < 0.03
   if (pitchInputSmall && Math.abs(yawInput) < 0.05) {
-    // ロール（横回転）の復帰
-    const dampQuat = new THREE.Quaternion().setFromAxisAngle(fwdAxis, -targetBankZ * dt * 0.88)
-    player.quaternion.multiply(dampQuat)
-
     // ピッチ（上下角度）の自動水平復帰
     const rightLocal = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion)
 
@@ -3691,6 +3710,20 @@ function loop() {
     if (Math.abs(pitchAngle) > 0.02) {  // 約1度以上傾いている場合のみ補正
       const levelQuat = new THREE.Quaternion().setFromAxisAngle(rightLocal, -pitchAngle * dt * 1.5)
       player.quaternion.multiply(levelQuat)
+    }
+
+    // ロール（横回転）も水平に戻す
+    const upLocal = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion)
+    const upWorld = new THREE.Vector3(0, 1, 0)
+    const rollAngle = Math.acos(Math.max(-1, Math.min(1, upLocal.dot(upWorld))))
+
+    if (Math.abs(rollAngle) > 0.02 && !isNaN(rollAngle)) {
+      const cross = new THREE.Vector3().crossVectors(upLocal, upWorld)
+      if (cross.lengthSq() > 0.001) {
+        cross.normalize()
+        const rollQuat = new THREE.Quaternion().setFromAxisAngle(cross, rollAngle * dt * 1.5)
+        player.quaternion.multiply(rollQuat)
+      }
     }
   }
   player.quaternion.normalize()
