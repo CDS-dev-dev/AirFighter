@@ -508,23 +508,36 @@
       @keyframes ri-spin {
         0%, 35% { transform: rotate(0deg); } 65%, 100% { transform: rotate(90deg); }
       }
-      /* スマホ横画面：モード選択画面をコンパクトに */
+      /* スマホ横画面：モード選択画面をコンパクトに（1画面に収める） */
       @media (pointer: coarse) and (orientation: landscape) {
-        #mode-screen { gap: 10px; padding: 10px; }
-        .ms-title { font-size: 28px; letter-spacing: 8px; }
-        .ms-sub { font-size: 8px; letter-spacing: 3px; }
-        .map-select-btn { padding: 6px 16px; font-size: 11px; }
-        .map-select-btn span:first-child { font-size: 18px; }
-        .ms-grid { gap: 8px; max-width: 100%; grid-template-columns: repeat(3, 1fr); }
-        .ms-card { padding: 10px 8px; gap: 6px; }
-        .ms-icon { font-size: 20px; }
-        .ms-name { font-size: 11px; }
-        .ms-desc { font-size: 8px; }
-        .ms-start { padding: 6px 16px; font-size: 10px; }
-        .ms-cfg-row { gap: 6px; }
-        .ms-cfg-val { font-size: 14px; }
-        .ms-adj { width: 22px; height: 22px; font-size: 14px; }
-        #mode-screen > div[style*="display: flex"] { margin-bottom: 8px; }
+        #mode-screen {
+          gap: 4px;
+          padding: 8px 10px;
+          overflow-y: auto;
+          max-height: 100vh;
+        }
+        .ms-title { font-size: 22px; letter-spacing: 4px; margin-bottom: 2px; }
+        .ms-sub { font-size: 7px; letter-spacing: 2px; margin-bottom: 4px; }
+        .map-select-btn { padding: 4px 12px; font-size: 10px; }
+        .map-select-btn span:first-child { font-size: 16px; }
+        .ms-grid { gap: 6px; max-width: 100%; grid-template-columns: repeat(3, 1fr); }
+        .ms-card { padding: 6px 6px; gap: 4px; }
+        .ms-icon { font-size: 16px; }
+        .ms-name { font-size: 10px; }
+        .ms-desc { font-size: 7px; line-height: 1.2; }
+        .ms-start { padding: 4px 12px; font-size: 9px; margin-top: 2px; }
+        .ms-config { gap: 3px; }
+        .ms-cfg-row { gap: 4px; font-size: 9px; }
+        .ms-cfg-val { font-size: 12px; }
+        .ms-cfg-lbl { width: 24px; }
+        .ms-adj { width: 20px; height: 20px; font-size: 12px; }
+        #mode-screen > div[style*="display: flex"] {
+          margin-bottom: 4px;
+          gap: 10px;
+        }
+        #mode-screen > div[style*="display: flex"] span:first-child {
+          font-size: 12px;
+        }
       }
       /* 縦画面でも強制横向き表示 */
       @media (pointer: coarse) and (orientation: portrait) {
@@ -759,7 +772,7 @@
 
     <!-- ゲームモード＆MAP選択 -->
     <div id="mode-screen">
-      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v3.8.0</span></div>
+      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v3.8.1</span></div>
       <div class="ms-sub">SELECT MAP & MISSION MODE</div>
 
       <!-- MAP選択 -->
