@@ -238,6 +238,12 @@
         position: absolute; left: 0; top: 0; width: 50%; height: 100%;
         pointer-events: all; touch-action: none; z-index: 101;
       }
+
+      /* 右側：視点操作ゾーン（ボタンの背後） */
+      #camera-zone {
+        position: absolute; right: 0; top: 0; width: 50%; height: 100%;
+        pointer-events: all; touch-action: none; z-index: 100;
+      }
       #joystick-base {
         position: absolute; width: 110px; height: 110px;
         margin-left: -55px; margin-top: -55px; border-radius: 50%;
@@ -533,15 +539,10 @@
           font-size: 10px;
         }
       }
-      /* 縦画面でも強制横向き表示 */
+      /* 縦画面：横向きに回転促すメッセージは表示しない（自然に横向き推奨） */
       @media (pointer: coarse) and (orientation: portrait) {
-        html {
-          overflow: hidden;
-          position: fixed;
-          top: 100vh; left: 0;
-          width: 100vh; height: 100vw;
-          transform-origin: top left;
-          transform: rotate(90deg);
+        body {
+          /* 縦画面でも表示は維持（ユーザーが横向きにすることを期待） */
         }
       }
     </style>
@@ -619,6 +620,7 @@
     <!-- タッチコントロール -->
     <div id="touch-controls">
       <div id="joystick-zone"></div>
+      <div id="camera-zone"></div>
       <div id="joystick-base"></div>
       <div id="joystick-knob"></div>
       <!-- 右下：BOOST（右親指） -->

@@ -1126,6 +1126,7 @@ const touchState = {
   pitch: 0, yaw: 0,
   boost: false, gun: false,
   missilePressed: false, flarePressed: false, lockPressed: false,
+  cameraYaw: 0, cameraPitch: 0,  // 視点操作用
 }
 
 function setupTouchControls() {
@@ -1202,6 +1203,41 @@ function setupTouchControls() {
   tapBtn('btn-msl',  () => { touchState.missilePressed = true })
   tapBtn('btn-flr',  () => { touchState.flarePressed   = true })
   tapBtn('btn-lock', () => { touchState.lockPressed    = true })
+
+  // 右側：視点操作ゾーン
+  const camZone = document.getElementById('camera-zone')!
+  let camTouchId: number | null = null
+  let camStartX = 0, camStartY = 0
+
+  camZone.addEventListener('touchstart', (e) => {
+    e.preventDefault()
+    const t = e.changedTouches[0]
+    camTouchId = t.identifier
+    camStartX = t.clientX
+    camStartY = t.clientY
+  }, { passive: false })
+
+  camZone.addEventListener('touchmove', (e) => {
+    e.preventDefault()
+    for (const t of Array.from(e.changedTouches)) {
+      if (t.identifier !== camTouchId) continue
+      const dx = t.clientX - camStartX
+      const dy = t.clientY - camStartY
+      // 視点操作：画面上で上下左右に動かすとカメラが回転
+      touchState.cameraYaw = dx / 200    // 感度調整
+      touchState.cameraPitch = -dy / 200
+    }
+  }, { passive: false })
+
+  const endCam = (e: TouchEvent) => {
+    for (const t of Array.from(e.changedTouches)) {
+      if (t.identifier !== camTouchId) continue
+      camTouchId = null
+      touchState.cameraYaw = touchState.cameraPitch = 0
+    }
+  }
+  camZone.addEventListener('touchend',   endCam, { passive: false })
+  camZone.addEventListener('touchcancel', endCam, { passive: false })
 }
 setupTouchControls()
 
@@ -1698,7 +1734,8 @@ function handleRightLock() {
     const dist = toT.length()
     if (dist > MISSILE_LOCK_RANGE) continue  // ミサイル射程内のみロックオン可能
     const dot = toT.normalize().dot(fwdWorld)
-    if (dot > 0.3) {
+    // ロックオン範囲を狭く（前方45度以内、dot > 0.707）
+    if (dot > 0.707) {
       // 地形遮蔽チェック（プレイヤーから敵への直線上に地形がないか確認）
       raycaster.set(player.position, toT.normalize())
       raycaster.far = dist - 5  // 敵の手前までチェック
@@ -2085,8 +2122,8 @@ function createRockFormations(): void {
 
     if (baseY < WATER_LEVEL + 10) continue
 
-    const height = 40 + Math.random() * 60  // 40-100m（高め）
-    const radius = 8 + Math.random() * 14
+    const height = 60 + Math.random() * 80  // 60-140m（さらに高く、視認性向上）
+    const radius = 15 + Math.random() * 20  // 15-35m（より太く、回避しやすく）
 
     const pillarGeo = new THREE.CylinderGeometry(
       radius * 0.6,
@@ -2117,8 +2154,8 @@ function createRockFormations(): void {
 
     if (baseY < WATER_LEVEL + 10) continue
 
-    const height = 35 + Math.random() * 50
-    const radius = 7 + Math.random() * 12
+    const height = 55 + Math.random() * 70  // 55-125m（視認性向上）
+    const radius = 12 + Math.random() * 18  // 12-30m（回避しやすく）
 
     const pillarGeo = new THREE.CylinderGeometry(
       radius * 0.65,
@@ -2153,8 +2190,8 @@ function createRockFormations(): void {
 
       if (baseY < 500) continue  // 高地のみ
 
-      const height = 30 + Math.random() * 40
-      const radius = 6 + Math.random() * 10
+      const height = 50 + Math.random() * 60  // 50-110m（視認性向上）
+      const radius = 10 + Math.random() * 15  // 10-25m（回避しやすく）
 
       const pillarGeo = new THREE.CylinderGeometry(
         radius * 0.7,
@@ -4064,12 +4101,19 @@ function loop() {
   const yawInput   = keyYaw   !== 0 ? keyYaw   : (tYaw   !== 0 ? tYaw   : mouseYaw)
 
   // === FLIGHT PHYSICS ===
-  if (pitchInput !== 0)
+  // ピッチ（上下）: 機体のローカル右軸周りに回転
+  if (pitchInput !== 0) {
+    const rightAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion)
     player.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(1, 0, 0), pitchInput * 1.9 * dt))
-  if (yawInput !== 0)
-    player.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 1, 0), -yawInput * 1.5 * dt))
+      rightAxis, pitchInput * 1.9 * dt))
+  }
+
+  // ヨー（左右）: 機体のローカル上軸周りに回転（背面飛行時も正しく動作）
+  if (yawInput !== 0) {
+    const upAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion)
+    player.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(
+      upAxis, -yawInput * 1.5 * dt))
+  }
 
   // フライトモードに応じた処理
   if (flightMode === 'realistic') {
@@ -4083,50 +4127,59 @@ function loop() {
   // 自動水平復帰（旋回操作を完全に止めた時のみ）
   const pitchInputSmall = Math.abs(pitchInput) < 0.03
   if (pitchInputSmall && Math.abs(yawInput) < 0.05) {
-    // ピッチ（上下角度）の自動水平復帰
-    const rightLocal = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion)
-
-    // 現在のピッチ角度を計算（前方ベクトルのY成分から推定）
+    // 現在の前方向（水平成分のみ）
     const fwdLocal = _fwd.clone().applyQuaternion(player.quaternion)
-    const pitchAngle = Math.asin(fwdLocal.y)  // -π/2 ～ π/2
+    const fwdHorizontal = new THREE.Vector3(fwdLocal.x, 0, fwdLocal.z)
 
-    // ピッチ角度を徐々に0（水平）に戻す
-    if (Math.abs(pitchAngle) > 0.02) {  // 約1度以上傾いている場合のみ補正
-      const levelQuat = new THREE.Quaternion().setFromAxisAngle(rightLocal, -pitchAngle * dt * 1.5)
-      player.quaternion.multiply(levelQuat)
-    }
+    // 方向を保持したまま水平に戻す
+    if (fwdHorizontal.lengthSq() > 0.001) {
+      fwdHorizontal.normalize()
 
-    // ロール（横回転）も水平に戻す
-    const upLocal = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion)
-    const upWorld = new THREE.Vector3(0, 1, 0)
-    const rollAngle = Math.acos(Math.max(-1, Math.min(1, upLocal.dot(upWorld))))
+      // 目標となる水平姿勢のクォータニオン（方向は維持）
+      const targetQuat = new THREE.Quaternion()
+      targetQuat.setFromUnitVectors(_fwd, fwdHorizontal)
 
-    if (Math.abs(rollAngle) > 0.02 && !isNaN(rollAngle)) {
-      const cross = new THREE.Vector3().crossVectors(upLocal, upWorld)
-      if (cross.lengthSq() > 0.001) {
-        cross.normalize()
-        const rollQuat = new THREE.Quaternion().setFromAxisAngle(cross, rollAngle * dt * 1.5)
-        player.quaternion.multiply(rollQuat)
-      }
+      // 現在の姿勢から目標姿勢へ徐々に補間
+      player.quaternion.slerp(targetQuat, dt * 1.5)
     }
   }
   player.quaternion.normalize()
 
   // 移動前の位置を保存
   const prevPos = player.position.clone()
-  player.position.addScaledVector(_fwd.clone().applyQuaternion(player.quaternion), speed * dt)
+  const moveDir = _fwd.clone().applyQuaternion(player.quaternion)
+  const moveDist = speed * dt
 
-  // 衝突判定：地形との衝突
+  // 前方への衝突チェック（レイキャスター）
+  const collisionRay = new THREE.Raycaster()
+  collisionRay.set(prevPos, moveDir)
+  collisionRay.far = moveDist + 15  // 少し先まで検知
+  const groundHits = collisionRay.intersectObject(ground, false)
+
+  let collision = false
+  if (groundHits.length > 0 && groundHits[0].distance < moveDist + 10) {
+    // 地形に衝突する場合は移動を制限
+    collision = true
+    const safeDistance = Math.max(0, groundHits[0].distance - 10)
+    player.position.addScaledVector(moveDir, safeDistance)
+  } else {
+    // 通常移動
+    player.position.addScaledVector(moveDir, moveDist)
+  }
+
+  // 衝突判定：地形との衝突（高度チェック）
   const minAltitude = terrainH(player.position.x, player.position.z) + 10
   if (player.position.y < minAltitude) {
     player.position.y = minAltitude
-    // 地形衝突時はダメージ
-    if (player.position.y - prevPos.y < -5) {
-      playerHP -= 15
-      updateHPDisplay()
-      hitFlashTimer = 0.5
-      if (playerHP <= 0) respawnPlayer()
-    }
+    collision = true
+  }
+
+  // 衝突時のダメージ
+  if (collision && (player.position.clone().sub(prevPos).length() < moveDist * 0.5 || player.position.y - prevPos.y < -5)) {
+    playerHP -= 15
+    updateHPDisplay()
+    hitFlashTimer = 0.5
+    if (playerHP <= 0) respawnPlayer()
   }
 
   // 衝突判定：構造物との衝突（建物、地上目標）
@@ -4286,10 +4339,16 @@ function loop() {
   const speedPullback = isMobile ? 12 : 28  // スマホは速度による引きを半分以下に
   const targetCamZ = baseCamZ + (speed / 550) * speedPullback
   cameraOffset.z += (targetCamZ - cameraOffset.z) * dt * 3
+
+  // 視点操作（タッチによるカメラ回転）
+  const camYawOffset = touchState.cameraYaw * 25   // 左右視点
+  const camPitchOffset = touchState.cameraPitch * 15  // 上下視点
+  const viewOffset = cameraOffset.clone().add(new THREE.Vector3(camYawOffset, camPitchOffset, 0))
+
   // カメラシェイク
   camShakeAmt *= Math.exp(-dt * 8)
   const _sk = camShakeAmt
-  const desiredCamPos = cameraOffset.clone().applyQuaternion(player.quaternion)
+  const desiredCamPos = viewOffset.clone().applyQuaternion(player.quaternion)
     .add(player.position)
     .add(new THREE.Vector3((Math.random() - 0.5) * _sk, (Math.random() - 0.5) * _sk, 0))
   camera.position.lerp(desiredCamPos, 0.12)
