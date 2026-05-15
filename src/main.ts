@@ -4106,19 +4106,12 @@ function loop() {
   const yawInput   = keyYaw   !== 0 ? keyYaw   : (tYaw   !== 0 ? tYaw   : mouseYaw)
 
   // === FLIGHT PHYSICS ===
-  // ピッチ（上下）: 機体のローカル右軸周りに回転
-  if (pitchInput !== 0) {
-    const rightAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion)
+  if (pitchInput !== 0)
     player.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(
-      rightAxis, pitchInput * 1.9 * dt))
-  }
-
-  // ヨー（左右）: 機体のローカル上軸周りに回転（背面飛行時も正しく動作）
-  if (yawInput !== 0) {
-    const upAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion)
-    player.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(
-      upAxis, -yawInput * 1.5 * dt))
-  }
+      new THREE.Vector3(1, 0, 0), pitchInput * 1.9 * dt))
+  if (yawInput !== 0)
+    player.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 1, 0), -yawInput * 1.5 * dt))
 
   // フライトモードに応じた処理
   if (flightMode === 'realistic') {
@@ -4129,26 +4122,18 @@ function loop() {
     player.quaternion.multiply(currentRollQuat)
   }
 
-  // 自動水平復帰（ロールのみ戻す、ピッチは維持＝背面飛行可能）
+  // 自動水平復帰（操作を止めた時のみ、水平に戻す）
   const pitchInputSmall = Math.abs(pitchInput) < 0.03
   if (pitchInputSmall && Math.abs(yawInput) < 0.05) {
-    // 機体の上方向
-    const upLocal = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion)
-    const upWorld = new THREE.Vector3(0, 1, 0)
+    // 前方向の水平成分を取得
+    const fwdLocal = _fwd.clone().applyQuaternion(player.quaternion)
+    const fwdFlat = new THREE.Vector3(fwdLocal.x, 0, fwdLocal.z)
 
-    // ロール角度を計算
-    const rollAngle = Math.acos(Math.max(-1, Math.min(1, upLocal.dot(upWorld))))
-
-    // ロールが一定以上傾いている場合のみ補正（背面飛行は許容）
-    if (rollAngle > 0.05 && rollAngle < Math.PI - 0.05 && !isNaN(rollAngle)) {
-      const cross = new THREE.Vector3().crossVectors(upLocal, upWorld)
-
-      if (cross.lengthSq() > 0.001) {
-        cross.normalize()
-        // ロールのみを徐々に水平に戻す（ピッチは維持）
-        const rollQuat = new THREE.Quaternion().setFromAxisAngle(cross, rollAngle * dt * 1.2)
-        player.quaternion.multiply(rollQuat)
-      }
+    if (fwdFlat.lengthSq() > 0.001) {
+      fwdFlat.normalize()
+      // 方向を保持したまま水平姿勢へ
+      const targetQuat = new THREE.Quaternion().setFromUnitVectors(_fwd, fwdFlat)
+      player.quaternion.slerp(targetQuat, dt * 1.8)
     }
   }
   player.quaternion.normalize()
