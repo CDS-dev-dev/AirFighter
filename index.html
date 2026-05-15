@@ -544,12 +544,21 @@
       }
       /* 縦画面でも強制横向き表示（縦ロックされていても横持ちでプレイ可能） */
       @media (pointer: coarse) and (orientation: portrait) {
-        html {
-          transform-origin: 0 0;
-          transform: rotate(90deg) translateY(-100%);
+        html, body {
           width: 100vh;
           height: 100vw;
           overflow: hidden;
+        }
+        body {
+          transform-origin: 0 0;
+          transform: rotate(90deg) translateY(-100%);
+          position: fixed;
+          top: 0;
+          left: 0;
+        }
+        #app, canvas {
+          width: 100% !important;
+          height: 100% !important;
         }
       }
     </style>
