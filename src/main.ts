@@ -1307,8 +1307,10 @@ interface Enemy {
   evadeDelay: number;
   lastPos: THREE.Vector3;
   velocity: THREE.Vector3;
-  tacticTarget: THREE.Vector3 | null;  // 現在の目標位置（滑らかな動き用）
-  tacticUpdateTimer: number;            // 目標更新タイマー（2-3秒ごとに更新）
+  currentSpeed: number;              // 現在の速度（m/s）
+  tacticType: number;                // 戦術タイプ（0-3）
+  preferredDistance: number;         // 好む交戦距離
+  preferredHeightOffset: number;     // 好む相対高度
 }
 interface Ally { group: THREE.Group; health: number; fireCooldown: number; missileAmmo: number }
 interface Explosion { particles: Array<{ mesh: THREE.Mesh; vel: THREE.Vector3 }>; life: number }
@@ -1378,12 +1380,41 @@ function spawnEnemyAt(sx: number, sz: number) {
   }
 
   scene.add(group)
+
+  // 戦術タイプに応じた個性付け
+  const tacticType = enemies.length % 4
+  let preferredDistance, preferredHeightOffset
+
+  switch (tacticType) {
+    case 0:  // 後方追跡型
+      preferredDistance = 100
+      preferredHeightOffset = 0
+      break
+    case 1:  // 側面攻撃型
+      preferredDistance = 120
+      preferredHeightOffset = 5
+      break
+    case 2:  // 高高度型
+      preferredDistance = 150
+      preferredHeightOffset = 25
+      break
+    case 3:  // 接近戦型
+      preferredDistance = 80
+      preferredHeightOffset = -5
+      break
+    default:
+      preferredDistance = 100
+      preferredHeightOffset = 0
+  }
+
   enemies.push({
     group, health: 2, fireCooldown: 8 + Math.random() * 7,
     missileAmmo: 4, seekingSupply: false, evadeDelay: 0,
     lastPos: group.position.clone(), velocity: new THREE.Vector3(),
-    tacticTarget: null,  // 初期はnull、最初の更新で設定
-    tacticUpdateTimer: 0  // すぐに目標を計算
+    currentSpeed: 150,  // 初期速度150m/s
+    tacticType,
+    preferredDistance,
+    preferredHeightOffset
   })
 }
 
@@ -3138,207 +3169,217 @@ function updateFlares(dt: number) {
 function updateEnemies(dt: number) {
   for (let i = 0; i < enemies.length; i++) {
     const enemy = enemies[i]
-    let tx = 0, tz = 0, ty = 0
-    let evading = false
 
-    // 目標更新タイマーを減らす
-    enemy.tacticUpdateTimer -= dt
+    // 補給モード処理
+    let supplyTarget: THREE.Vector3 | null = null
+    if (enemy.seekingSupply) {
+      let nearestIdx = 0, nearestDist = Infinity
+      for (let si = 0; si < SUPPLY_POSITIONS.length; si++) {
+        const d = enemy.group.position.distanceTo(SUPPLY_POSITIONS[si])
+        if (d < nearestDist) { nearestDist = d; nearestIdx = si }
+      }
+      supplyTarget = SUPPLY_POSITIONS[nearestIdx]
 
-    // ミサイル回避チェック（プレイヤー＆味方のミサイルを検知）
+      // 補給ポイント到達判定
+      if (nearestDist < 40) {
+        enemy.missileAmmo = 4
+        enemy.seekingSupply = false
+        supplyTarget = null
+      }
+    }
+
+    // 戦闘ターゲットの決定
+    const target: THREE.Object3D = (currentMode === 'dogfight' && allies.length > 0 && i % 3 === 2)
+      ? allies[i % allies.length].group
+      : player
+
+    // ミサイル回避チェック
+    let evadeVector = new THREE.Vector3()
+    let isEvading = false
     const allThreats = [...playerMissiles, ...allyMissiles]
+
     for (const m of allThreats) {
       const dist = m.mesh.position.distanceTo(enemy.group.position)
-      // 人間らしい反応：60m以内で検知、反応遅延0.4秒、30%の確率で検知失敗
       if (dist < 60 && m.target === enemy.group) {
         // 検知失敗の確率（30%）
         if (Math.random() < 0.3) continue
 
-        // 反応遅延がまだ残っている場合はカウントダウン
+        // 反応遅延処理
         if (enemy.evadeDelay > 0) {
           enemy.evadeDelay -= dt
           continue
         }
 
-        // 初めて検知した場合は遅延を設定（0.3-0.5秒）
         if (enemy.evadeDelay === 0) {
           enemy.evadeDelay = 0.3 + Math.random() * 0.2
           continue
         }
 
-        // 遅延が終わったので回避開始
-        evading = true
-        // 自然な回避機動：ミサイルと垂直方向に旋回（滑らかな動き）
+        // 回避開始
+        isEvading = true
         const missileDir = m.mesh.position.clone().sub(enemy.group.position).normalize()
-        // ミサイルに対して垂直な方向を計算（左右どちらかにランダム回避）
-        const evadeDir = new THREE.Vector3(-missileDir.z, 0, missileDir.x)
-        if (Math.random() < 0.5) evadeDir.negate()
-
-        // 現在位置から回避方向に350m先を目標に
-        const evadeTarget = enemy.group.position.clone().add(evadeDir.multiplyScalar(350))
-        tx = evadeTarget.x
-        tz = evadeTarget.z
-        ty = Math.min(120, enemy.group.position.y + 20)  // 上昇しながら回避、高度制限付き
+        evadeVector.set(-missileDir.z, 0.3, missileDir.x)  // 横方向+少し上昇
+        if (Math.random() < 0.5) evadeVector.x *= -1
+        evadeVector.normalize()
         break
       } else if (dist >= 60) {
-        // ミサイルが離れたら遅延をリセット
         enemy.evadeDelay = 0
       }
     }
 
-    if (!evading) {
-      if (enemy.seekingSupply) {
-        // 最寄りの補給ポイントへ向かう
-        let nearestIdx = 0, nearestDist = Infinity
-        for (let si = 0; si < SUPPLY_POSITIONS.length; si++) {
-          const d = enemy.group.position.distanceTo(SUPPLY_POSITIONS[si])
-          if (d < nearestDist) { nearestDist = d; nearestIdx = si }
-        }
-        const sp = SUPPLY_POSITIONS[nearestIdx]
-        tx = sp.x; tz = sp.z; ty = Math.max(20, Math.min(120, sp.y + 15))  // 高度制限付き
-        if (nearestDist < 40) {
-          enemy.missileAmmo = 4
-          enemy.seekingSupply = false
-        }
-      } else {
-        // 攻撃的ドッグファイトAI：プレイヤーを積極的に狙う
-        const target = (currentMode === 'dogfight' && allies.length > 0 && i % 3 === 2)
-          ? allies[i % allies.length].group
-          : player
+    // 目標位置の決定（補給 or 戦闘ターゲット）
+    const goalPosition = supplyTarget ? supplyTarget : target.position
+    const toTarget = goalPosition.clone().sub(enemy.group.position)
+    const distToTarget = toTarget.length()
 
-        const toTarget = target.position.clone().sub(enemy.group.position)
-        const dist = toTarget.length()
+    // 希望する方向ベクトルを計算
+    let desiredDirection = new THREE.Vector3()
 
-        // タイマーが切れたら新しい目標位置を計算（2-3秒ごと）
-        if (enemy.tacticUpdateTimer <= 0 || !enemy.tacticTarget) {
-          enemy.tacticUpdateTimer = 2.0 + Math.random() * 1.0  // 2-3秒ごとに更新
+    if (isEvading) {
+      // 回避モード：回避方向へ
+      desiredDirection.copy(evadeVector)
+    } else if (enemy.seekingSupply) {
+      // 補給モード：補給ポイントへ直進
+      desiredDirection.copy(toTarget).normalize()
+    } else {
+      // 戦闘モード：戦術タイプに応じた位置取り
+      const targetFwd = _fwd.clone().applyQuaternion(target.quaternion)
+      const targetRight = new THREE.Vector3(1, 0, 0).applyQuaternion(target.quaternion)
 
-          // 各敵機で異なる戦術を使う（個性付け）
-          const tacticType = i % 4
+      // ターゲットの速度推定（プレイヤーの場合）
+      const targetVel = target === player
+        ? targetFwd.clone().multiplyScalar(speed)
+        : new THREE.Vector3()
 
-          // ターゲットの速度ベクトルを取得（先回り用）
-          const targetVel = target === player
-            ? _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(speed)
-            : new THREE.Vector3()
+      let idealOffset = new THREE.Vector3()
 
-          const targetFwd = _fwd.clone().applyQuaternion(target.quaternion)
+      switch (enemy.tacticType) {
+        case 0:  // 後方追跡型
+          // 後方に位置取り、距離を維持
+          const behindOffset = distToTarget < enemy.preferredDistance ? -1.2 : -1.0
+          idealOffset.copy(targetFwd).multiplyScalar(behindOffset * enemy.preferredDistance)
+          idealOffset.y = enemy.preferredHeightOffset
+          break
 
-          if (tacticType === 0) {
-            // タイプ0: 後方追跡型（6時方向から攻撃）- クラシックなドッグファイト
-            // 距離に応じて接近・離脱を判断
-            const behindDist = dist < 150 ? -80 : -100  // 近すぎたら少し離れる
-            const behindPos = target.position.clone()
-              .add(targetVel.multiplyScalar(0.4))  // 0.4秒先を予測
-              .add(targetFwd.multiplyScalar(behindDist))
-            enemy.tacticTarget = new THREE.Vector3(
-              behindPos.x,
-              Math.max(20, Math.min(120, target.position.y)),  // 高度制限付きで同じ高度で追尾
-              behindPos.z
-            )
-          } else if (tacticType === 1) {
-            // タイプ1: 側面攻撃型（3時/9時方向から）- 横からすれ違いながら攻撃
-            const targetRight = new THREE.Vector3(1, 0, 0).applyQuaternion(target.quaternion)
-            const sideMultiplier = (i % 2 === 0 ? 1 : -1)
-            const sidePos = target.position.clone()
-              .add(targetVel.multiplyScalar(0.8))  // 少し先回り
-              .add(targetRight.multiplyScalar(sideMultiplier * 120))
-            enemy.tacticTarget = new THREE.Vector3(
-              sidePos.x,
-              Math.max(20, Math.min(120, target.position.y + 8)),  // わずかに上（視界確保）、高度制限付き
-              sidePos.z
-            )
-          } else if (tacticType === 2) {
-            // タイプ2: 高高度型（上空から見下ろしながら攻撃）
-            // 距離が近い時は上昇、遠い時は降下して接近
-            const heightOffset = dist < 200 ? 25 : 15  // 高度オフセットを控えめに（30→25、20→15）
-            const futurePos = target.position.clone().add(targetVel.multiplyScalar(0.6))
-            enemy.tacticTarget = new THREE.Vector3(
-              futurePos.x,
-              Math.max(20, Math.min(120, target.position.y + heightOffset)),  // 高度制限付き
-              futurePos.z
-            )
-          } else {
-            // タイプ3: ヘッドオン型（正面から接近して一撃離脱）
-            // 距離が遠い時は正面から接近、近い時は旋回して後ろに回る
-            if (dist > 200) {
-              // 正面から接近（先回りして待ち伏せ）
-              const headOnPos = target.position.clone()
-                .add(targetVel.multiplyScalar(1.2))  // 1.2秒先を予測
-                .add(targetFwd.multiplyScalar(200))  // 前方200m
-              enemy.tacticTarget = new THREE.Vector3(
-                headOnPos.x,
-                Math.max(20, Math.min(120, target.position.y + 5)),  // わずかに上、高度制限付き
-                headOnPos.z
-              )
-            } else {
-              // 近い時は側面から回り込む
-              const targetRight = new THREE.Vector3(1, 0, 0).applyQuaternion(target.quaternion)
-              const turnPos = target.position.clone()
-                .add(targetRight.multiplyScalar(100))
-                .add(targetFwd.multiplyScalar(-60))
-              enemy.tacticTarget = new THREE.Vector3(
-                turnPos.x,
-                Math.max(20, Math.min(120, target.position.y)),  // 高度制限付き
-                turnPos.z
-              )
-            }
+        case 1:  // 側面攻撃型
+          // 側面に回り込む
+          const sideDir = (i % 2 === 0) ? 1 : -1
+          idealOffset.copy(targetRight).multiplyScalar(sideDir * enemy.preferredDistance * 0.8)
+          idealOffset.add(targetVel.clone().multiplyScalar(0.5))  // 少し先回り
+          idealOffset.y = enemy.preferredHeightOffset
+          break
+
+        case 2:  // 高高度型
+          // 上方から追跡
+          idealOffset.copy(targetVel.clone().multiplyScalar(0.4))
+          idealOffset.y = enemy.preferredHeightOffset
+          if (distToTarget < enemy.preferredDistance * 0.8) {
+            // 近すぎたら距離を取る
+            idealOffset.add(targetFwd.clone().multiplyScalar(-50))
           }
-        }
+          break
 
-        // 保存された目標位置を使用（滑らかな動き）
-        if (enemy.tacticTarget) {
-          tx = enemy.tacticTarget.x
-          ty = enemy.tacticTarget.y
-          tz = enemy.tacticTarget.z
-        }
-
-        // ミサイル発射判定（距離と角度を考慮）
-        enemy.fireCooldown -= dt
-        const angleToTarget = Math.acos(
-          toTarget.clone().normalize().dot(
-            _fwd.clone().applyQuaternion(enemy.group.quaternion)
-          )
-        )
-        // 距離200-400m、前方30度以内でミサイル発射
-        if (enemy.fireCooldown <= 0 && dist > 200 && dist < 400 && angleToTarget < Math.PI / 6) {
-          if (enemy.missileAmmo > 0) {
-            enemy.fireCooldown = 9 + Math.random() * 7
-            fireEnemyMissile(enemy)
+        case 3:  // 接近戦型
+          // 積極的に接近
+          if (distToTarget > enemy.preferredDistance * 1.5) {
+            // 遠い場合は正面から接近
+            idealOffset.copy(targetFwd).multiplyScalar(enemy.preferredDistance)
           } else {
-            enemy.seekingSupply = true
-            enemy.fireCooldown = 3
+            // 近い場合は後方に回り込む
+            idealOffset.copy(targetFwd).multiplyScalar(-enemy.preferredDistance * 0.7)
+            idealOffset.add(targetRight.clone().multiplyScalar((i % 2 === 0) ? 50 : -50))
           }
-        }
+          idealOffset.y = enemy.preferredHeightOffset
+          break
+      }
+
+      // 理想位置へのベクトル
+      const idealPos = target.position.clone().add(idealOffset)
+      desiredDirection.copy(idealPos).sub(enemy.group.position).normalize()
+    }
+
+    // 現在の前方向
+    const currentForward = _fwd.clone().applyQuaternion(enemy.group.quaternion)
+
+    // 目標速度の計算
+    let targetSpeed = isEvading ? 200 : 160
+
+    if (!isEvading && !enemy.seekingSupply) {
+      // 距離に応じた速度調整
+      if (distToTarget < enemy.preferredDistance * 0.7) {
+        // 近すぎる：減速
+        targetSpeed = 120
+      } else if (distToTarget > enemy.preferredDistance * 1.5) {
+        // 遠い：加速
+        targetSpeed = 180
       }
     }
 
-    const dir = new THREE.Vector3(tx - enemy.group.position.x, ty - enemy.group.position.y, tz - enemy.group.position.z)
-    const distToTarget = dir.length()
+    // 速度の滑らかな変化
+    const accel = isEvading ? 150 : 80  // 加減速度（m/s²）
+    if (enemy.currentSpeed < targetSpeed) {
+      enemy.currentSpeed = Math.min(targetSpeed, enemy.currentSpeed + accel * dt)
+    } else {
+      enemy.currentSpeed = Math.max(targetSpeed, enemy.currentSpeed - accel * dt)
+    }
 
-    if (distToTarget > 0.5) {
-      dir.normalize()
+    // 旋回速度の制限（角速度）
+    const turnRate = isEvading ? 0.10 : 0.06
+    const newForward = currentForward.clone().lerp(desiredDirection, turnRate)
+    newForward.normalize()
 
-      // 目標位置に近づいたら速度を減速して振動を防ぐ
-      let speedMultiplier = 1.0
-      if (distToTarget < 30 && !evading) {
-        speedMultiplier = Math.max(0.3, distToTarget / 30)
-      }
+    // 位置更新
+    const oldPos = enemy.group.position.clone()
+    enemy.group.position.addScaledVector(newForward, enemy.currentSpeed * dt)
 
-      const moveSpeed = (evading ? 200 : 180) * speedMultiplier  // 回避時の加速を控えめに（220→200m/s）
+    // 地形からの高度を保つ（最低20m）
+    const terrainHeight = terrainH(enemy.group.position.x, enemy.group.position.z)
+    const minAlt = 20
 
-      // 速度ベクトルを記録（マシンガン予測用）
-      const oldPos = enemy.lastPos.clone()
-      enemy.group.position.addScaledVector(dir, moveSpeed * dt)
+    if (enemy.group.position.y < terrainHeight + minAlt) {
+      // 地面に近すぎる：上昇
+      enemy.group.position.y = terrainHeight + minAlt
+    } else if (!isEvading && enemy.group.position.y > terrainHeight + 120) {
+      // 高すぎる：徐々に降下
+      enemy.group.position.y -= 30 * dt
+    } else if (!isEvading && !enemy.seekingSupply) {
+      // 通常時：目標高度に近づける
+      const targetAlt = target.position.y + enemy.preferredHeightOffset
+      const heightDiff = targetAlt - enemy.group.position.y
+      enemy.group.position.y += heightDiff * 0.5 * dt
+    }
 
-      // 高度制限を適用（最低15m、最高150m）
-      enemy.group.position.y = Math.max(15, Math.min(150, enemy.group.position.y))
+    // 速度ベクトル記録（マシンガン予測用）
+    enemy.velocity.copy(enemy.group.position).sub(oldPos).divideScalar(dt)
+    enemy.lastPos.copy(oldPos)
 
-      enemy.velocity.copy(enemy.group.position).sub(oldPos).divideScalar(dt)
-      enemy.lastPos.copy(enemy.group.position)
-
-      const flat = new THREE.Vector3(dir.x, 0, dir.z)
-      if (flat.lengthSq() > 0.01) enemy.group.quaternion.slerp(
-        new THREE.Quaternion().setFromUnitVectors(_fwd, flat.normalize()), evading ? 0.08 : 0.055  // 回避時の旋回速度を下げる（0.12→0.08）
+    // 機体の向き更新（水平成分のみ）
+    const flatForward = new THREE.Vector3(newForward.x, 0, newForward.z)
+    if (flatForward.lengthSq() > 0.01) {
+      flatForward.normalize()
+      enemy.group.quaternion.slerp(
+        new THREE.Quaternion().setFromUnitVectors(_fwd, flatForward),
+        isEvading ? 0.12 : 0.08
       )
+    }
+
+    // ミサイル発射判定
+    if (!isEvading && !enemy.seekingSupply) {
+      enemy.fireCooldown -= dt
+      const angleToTarget = Math.acos(
+        Math.max(-1, Math.min(1, toTarget.clone().normalize().dot(currentForward)))
+      )
+
+      // 距離200-400m、前方30度以内でミサイル発射
+      if (enemy.fireCooldown <= 0 && distToTarget > 200 && distToTarget < 400 && angleToTarget < Math.PI / 6) {
+        if (enemy.missileAmmo > 0) {
+          enemy.fireCooldown = 9 + Math.random() * 7
+          fireEnemyMissile(enemy)
+        } else {
+          enemy.seekingSupply = true
+          enemy.fireCooldown = 3
+        }
+      }
     }
   }
 }
