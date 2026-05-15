@@ -2534,6 +2534,36 @@ function setObjective(text: string) {
   el.textContent = text
 }
 
+function stopGame() {
+  currentMode = null
+  missionComplete = false
+
+  // 全てのゲームオブジェクトをクリア
+  for (const e of [...enemies]) scene.remove(e.group)
+  enemies.length = 0
+  for (const a of [...allies]) scene.remove(a.group)
+  allies.length = 0
+  for (const gt of [...groundTargets]) scene.remove(gt.group)
+  groundTargets.length = 0
+  for (const b of [...bullets]) scene.remove(b.mesh)
+  bullets.length = 0
+  for (const m of [...playerMissiles]) { if (m.light) scene.remove(m.light); scene.remove(m.mesh) }
+  playerMissiles.length = 0
+  for (const m of [...allyMissiles]) scene.remove(m.mesh)
+  allyMissiles.length = 0
+  for (const m of [...enemyMissiles]) scene.remove(m.mesh)
+  enemyMissiles.length = 0
+  for (const t of [...missileTrails]) scene.remove(t.mesh)
+  missileTrails.length = 0
+  for (const ex of [...explosions]) {
+    for (const p of ex.particles) scene.remove(p.mesh)
+  }
+  explosions.length = 0
+
+  lockedTarget = null
+  document.getElementById('objective-hud')!.style.display = 'none'
+}
+
 function startGame(mode: GameMode) {
   currentMode = mode
   missionComplete = false
@@ -3095,6 +3125,15 @@ function togglePause() {
 }
 
 document.getElementById('pause-resume')!.addEventListener('click', togglePause)
+document.getElementById('menu-btn')!.addEventListener('click', togglePause)
+
+// メニューに戻るボタン
+document.getElementById('back-to-menu')!.addEventListener('click', () => {
+  isPaused = false
+  document.getElementById('pause-screen')!.style.display = 'none'
+  stopGame()
+  document.getElementById('mode-screen')!.style.display = 'flex'
+})
 
 // キーボードイベント（P / Escでポーズ）
 window.addEventListener('keydown', (e) => {
@@ -4170,13 +4209,8 @@ function loop() {
       }
     }
 
-    // 地形衝突時はダメージ（急降下時のみ）
-    if (prevPos.y - player.position.y > 5 || speed > 300) {
-      playerHP -= 15
-      updateHPDisplay()
-      hitFlashTimer = 0.5
-      if (playerHP <= 0) respawnPlayer()
-    }
+    // 地形衝突時は視覚フィードバックのみ（リスポーンなし）
+    hitFlashTimer = 0.3
   } else {
     // 通常移動
     player.position.copy(newPos)
@@ -4185,12 +4219,8 @@ function loop() {
     const minAltitude = terrainH(player.position.x, player.position.z) + 10
     if (player.position.y < minAltitude) {
       player.position.y = minAltitude
-      if (player.position.y - prevPos.y < -5) {
-        playerHP -= 15
-        updateHPDisplay()
-        hitFlashTimer = 0.5
-        if (playerHP <= 0) respawnPlayer()
-      }
+      // 地形衝突時は視覚フィードバックのみ
+      hitFlashTimer = 0.3
     }
   }
 
@@ -4216,11 +4246,9 @@ function loop() {
         const pushDir = new THREE.Vector3(dx, 0, dz).normalize()
         player.position.x = center.x + pushDir.x * (collisionRadius + size.x / 2)
         player.position.z = center.z + pushDir.z * (collisionRadius + size.z / 2)
-        playerHP -= 20
-        updateHPDisplay()
-        hitFlashTimer = 0.5
-        camShakeAmt = Math.max(camShakeAmt, 0.8)
-        if (playerHP <= 0) respawnPlayer()
+        // 衝突時は視覚フィードバックのみ
+        hitFlashTimer = 0.3
+        camShakeAmt = Math.max(camShakeAmt, 0.5)
         break
       }
     }
@@ -4239,11 +4267,9 @@ function loop() {
           const pushDir = new THREE.Vector3(dx, 0, dz).normalize()
           player.position.x = obj.position.x + pushDir.x * (collisionRadius + 15)
           player.position.z = obj.position.z + pushDir.z * (collisionRadius + 15)
-          playerHP -= 20
-          updateHPDisplay()
-          hitFlashTimer = 0.5
-          camShakeAmt = Math.max(camShakeAmt, 0.8)
-          if (playerHP <= 0) respawnPlayer()
+          // 衝突時は視覚フィードバックのみ
+          hitFlashTimer = 0.3
+          camShakeAmt = Math.max(camShakeAmt, 0.5)
         }
       }
     }
@@ -4260,11 +4286,9 @@ function loop() {
       player.position.x = gt.group.position.x + pushDir.x * (collisionRadius + 12)
       player.position.z = gt.group.position.z + pushDir.z * (collisionRadius + 12)
       player.position.y = Math.max(player.position.y, gt.group.position.y + 25)
-      playerHP -= 25
-      updateHPDisplay()
-      hitFlashTimer = 0.5
-      camShakeAmt = Math.max(camShakeAmt, 1.0)
-      if (playerHP <= 0) respawnPlayer()
+      // 衝突時は視覚フィードバックのみ
+      hitFlashTimer = 0.3
+      camShakeAmt = Math.max(camShakeAmt, 0.5)
     }
   }
 
