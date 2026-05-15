@@ -2534,11 +2534,15 @@ function startGame(mode: GameMode) {
         const r = 550 + Math.random() * 350
         spawnEnemyAt(Math.cos(a) * r, Math.sin(a) * r)
       }
+      console.log(`Spawning ${dfAllyCount} allies`)
       for (let i = 0; i < dfAllyCount; i++) {
-        const a = (Math.random() - 0.5) * 1.2
-        const r = 550 + Math.random() * 350
+        // プレイヤーの近くにスポーン（より視認しやすく）
+        const a = (Math.random() - 0.5) * 0.8
+        const r = 150 + Math.random() * 150  // 150-300mの範囲に変更（元：550-900m）
         spawnAlly(Math.cos(a) * r, Math.sin(a) * r)
+        console.log(`Ally ${i+1} spawned at position:`, Math.cos(a) * r, Math.sin(a) * r)
       }
+      console.log(`Total allies after spawn: ${allies.length}`)
       // プレイヤーも味方側（北）にスポーン
       if (currentMap === 'tokyo' && neoTokyoMapSystem) {
         const safePos = neoTokyoMapSystem.getSafeSpawnPosition()
@@ -2546,9 +2550,9 @@ function startGame(mode: GameMode) {
         dfSpawnZ = safePos.z
         player.position.set(safePos.x, safePos.y, safePos.z)
       } else {
-        // 味方と同じ範囲に配置（r=550-900、北側）
-        const a = (Math.random() - 0.5) * 1.2
-        const r = 550 + Math.random() * 350
+        // 味方と同じ範囲に配置（r=150-300、北側）
+        const a = (Math.random() - 0.5) * 0.8
+        const r = 150 + Math.random() * 150
         dfSpawnX = Math.cos(a) * r
         dfSpawnZ = Math.sin(a) * r
         player.position.set(dfSpawnX, terrainH(dfSpawnX, dfSpawnZ) + 200, dfSpawnZ)
