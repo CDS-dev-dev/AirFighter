@@ -4140,18 +4140,57 @@ function loop() {
 
   // 移動前の位置を保存
   const prevPos = player.position.clone()
-  player.position.addScaledVector(_fwd.clone().applyQuaternion(player.quaternion), speed * dt)
+  const moveVec = _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(speed * dt)
+  const newPos = prevPos.clone().add(moveVec)
 
-  // 衝突判定：地形との衝突
-  const minAltitude = terrainH(player.position.x, player.position.z) + 10
-  if (player.position.y < minAltitude) {
-    player.position.y = minAltitude
+  // 移動先の地形高度チェック（水平方向の衝突判定）
+  const newTerrainHeight = terrainH(newPos.x, newPos.z) + 10
+
+  // 移動先が地形より低い場合は、地形に沿って移動
+  if (newPos.y < newTerrainHeight) {
+    // 地形に衝突する場合
+    const oldTerrainHeight = terrainH(prevPos.x, prevPos.z) + 10
+
+    // 現在位置も地形より低い場合は、地形上に押し出す
+    if (prevPos.y < oldTerrainHeight) {
+      player.position.set(prevPos.x, oldTerrainHeight, prevPos.z)
+    } else {
+      // 衝突を避けるため、移動を制限（地形に沿ってスライド）
+      const slidePos = prevPos.clone()
+      slidePos.x = newPos.x
+      slidePos.z = newPos.z
+      const slideTerrainHeight = terrainH(slidePos.x, slidePos.z) + 10
+
+      if (slidePos.y >= slideTerrainHeight) {
+        // 水平方向のみ移動可能
+        player.position.copy(slidePos)
+      } else {
+        // 移動不可、現在位置を維持
+        player.position.copy(prevPos)
+      }
+    }
+
     // 地形衝突時はダメージ（急降下時のみ）
-    if (player.position.y - prevPos.y < -5) {
+    if (prevPos.y - player.position.y > 5 || speed > 300) {
       playerHP -= 15
       updateHPDisplay()
       hitFlashTimer = 0.5
       if (playerHP <= 0) respawnPlayer()
+    }
+  } else {
+    // 通常移動
+    player.position.copy(newPos)
+
+    // 移動後の高度チェック（下方への衝突）
+    const minAltitude = terrainH(player.position.x, player.position.z) + 10
+    if (player.position.y < minAltitude) {
+      player.position.y = minAltitude
+      if (player.position.y - prevPos.y < -5) {
+        playerHP -= 15
+        updateHPDisplay()
+        hitFlashTimer = 0.5
+        if (playerHP <= 0) respawnPlayer()
+      }
     }
   }
 
