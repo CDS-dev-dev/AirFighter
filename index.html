@@ -542,10 +542,14 @@
           font-size: 10px;
         }
       }
-      /* 縦画面：横向きに回転促すメッセージは表示しない（自然に横向き推奨） */
+      /* 縦画面でも強制横向き表示（縦ロックされていても横持ちでプレイ可能） */
       @media (pointer: coarse) and (orientation: portrait) {
-        body {
-          /* 縦画面でも表示は維持（ユーザーが横向きにすることを期待） */
+        html {
+          transform-origin: 0 0;
+          transform: rotate(90deg) translateY(-100%);
+          width: 100vh;
+          height: 100vw;
+          overflow: hidden;
         }
       }
     </style>

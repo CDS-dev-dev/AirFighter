@@ -1062,7 +1062,10 @@ scene.add(new THREE.Points(trailGeo, new THREE.PointsMaterial({
 
 // ===== PLAYER =====
 const player = createAircraft(0x2255cc, 0x112244)
-player.position.set(0, terrainH(0, 0) + 150, 0)  // 初期位置を高く（90→150m）
+// 安全なスポーン位置（峡谷を避ける）
+const safeSpawnX = 500
+const safeSpawnZ = 500
+player.position.set(safeSpawnX, terrainH(safeSpawnX, safeSpawnZ) + 150, safeSpawnZ)  // 初期位置を高く（90→150m）
 player.rotation.y = Math.PI  // 南向き（北の山とは反対方向）に初期化
 // スマホでは機体を大きく表示
 const isMobileDevice = 'ontouchstart' in window
@@ -2960,8 +2963,10 @@ async function switchMap(map: GameMap) {
     buildWorldStructures()
     console.log('🏗️ オリジナル構造物再構築')
 
-    // プレイヤー位置をオリジナルMAP用に設定
-    player.position.set(0, terrainH(0, 0) + 150, 0)
+    // プレイヤー位置をオリジナルMAP用に設定（峡谷を避ける）
+    const spawnX = 500
+    const spawnZ = 500
+    player.position.set(spawnX, terrainH(spawnX, spawnZ) + 150, spawnZ)
     console.log('✈️ プレイヤーをオリジナルMAP上空に配置')
 
     // 補給ポイントをオリジナルMAP用の位置に再配置
@@ -3850,8 +3855,8 @@ function updateHPDisplay() {
 
 function respawnPlayer() {
   playerHP = MAX_HP
-  let rx = currentMode === 'dogfight' ? dfSpawnX : 0
-  let rz = currentMode === 'dogfight' ? dfSpawnZ : 0
+  let rx = currentMode === 'dogfight' ? dfSpawnX : 500  // オリジナルMAPでは(500, 500)
+  let rz = currentMode === 'dogfight' ? dfSpawnZ : 500
   let ry = 200
 
   // 東京MAPの場合は安全なスポーン位置を使用
@@ -4124,62 +4129,45 @@ function loop() {
     player.quaternion.multiply(currentRollQuat)
   }
 
-  // 自動水平復帰（旋回操作を完全に止めた時のみ）
+  // 自動水平復帰（ロールのみ戻す、ピッチは維持＝背面飛行可能）
   const pitchInputSmall = Math.abs(pitchInput) < 0.03
   if (pitchInputSmall && Math.abs(yawInput) < 0.05) {
-    // 現在の前方向（水平成分のみ）
-    const fwdLocal = _fwd.clone().applyQuaternion(player.quaternion)
-    const fwdHorizontal = new THREE.Vector3(fwdLocal.x, 0, fwdLocal.z)
+    // 機体の上方向
+    const upLocal = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion)
+    const upWorld = new THREE.Vector3(0, 1, 0)
 
-    // 方向を保持したまま水平に戻す
-    if (fwdHorizontal.lengthSq() > 0.001) {
-      fwdHorizontal.normalize()
+    // ロール角度を計算
+    const rollAngle = Math.acos(Math.max(-1, Math.min(1, upLocal.dot(upWorld))))
 
-      // 目標となる水平姿勢のクォータニオン（方向は維持）
-      const targetQuat = new THREE.Quaternion()
-      targetQuat.setFromUnitVectors(_fwd, fwdHorizontal)
+    // ロールが一定以上傾いている場合のみ補正（背面飛行は許容）
+    if (rollAngle > 0.05 && rollAngle < Math.PI - 0.05 && !isNaN(rollAngle)) {
+      const cross = new THREE.Vector3().crossVectors(upLocal, upWorld)
 
-      // 現在の姿勢から目標姿勢へ徐々に補間
-      player.quaternion.slerp(targetQuat, dt * 1.5)
+      if (cross.lengthSq() > 0.001) {
+        cross.normalize()
+        // ロールのみを徐々に水平に戻す（ピッチは維持）
+        const rollQuat = new THREE.Quaternion().setFromAxisAngle(cross, rollAngle * dt * 1.2)
+        player.quaternion.multiply(rollQuat)
+      }
     }
   }
   player.quaternion.normalize()
 
   // 移動前の位置を保存
   const prevPos = player.position.clone()
-  const moveDir = _fwd.clone().applyQuaternion(player.quaternion)
-  const moveDist = speed * dt
+  player.position.addScaledVector(_fwd.clone().applyQuaternion(player.quaternion), speed * dt)
 
-  // 前方への衝突チェック（レイキャスター）
-  const collisionRay = new THREE.Raycaster()
-  collisionRay.set(prevPos, moveDir)
-  collisionRay.far = moveDist + 15  // 少し先まで検知
-  const groundHits = collisionRay.intersectObject(ground, false)
-
-  let collision = false
-  if (groundHits.length > 0 && groundHits[0].distance < moveDist + 10) {
-    // 地形に衝突する場合は移動を制限
-    collision = true
-    const safeDistance = Math.max(0, groundHits[0].distance - 10)
-    player.position.addScaledVector(moveDir, safeDistance)
-  } else {
-    // 通常移動
-    player.position.addScaledVector(moveDir, moveDist)
-  }
-
-  // 衝突判定：地形との衝突（高度チェック）
+  // 衝突判定：地形との衝突
   const minAltitude = terrainH(player.position.x, player.position.z) + 10
   if (player.position.y < minAltitude) {
     player.position.y = minAltitude
-    collision = true
-  }
-
-  // 衝突時のダメージ
-  if (collision && (player.position.clone().sub(prevPos).length() < moveDist * 0.5 || player.position.y - prevPos.y < -5)) {
-    playerHP -= 15
-    updateHPDisplay()
-    hitFlashTimer = 0.5
-    if (playerHP <= 0) respawnPlayer()
+    // 地形衝突時はダメージ（急降下時のみ）
+    if (player.position.y - prevPos.y < -5) {
+      playerHP -= 15
+      updateHPDisplay()
+      hitFlashTimer = 0.5
+      if (playerHP <= 0) respawnPlayer()
+    }
   }
 
   // 衝突判定：構造物との衝突（建物、地上目標）
