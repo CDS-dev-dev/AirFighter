@@ -347,11 +347,12 @@
         display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
       }
       .map-select-btn {
-        padding: 12px 28px; background: rgba(8,22,48,0.7);
+        padding: 14px 32px; background: rgba(8,22,48,0.7);
         border: 2px solid rgba(60,140,255,0.3); border-radius: 10px;
-        color: rgba(200,235,255,0.7); font-size: 13px; letter-spacing: 2px;
+        color: rgba(200,235,255,0.7); font-size: 15px; letter-spacing: 2px;
         cursor: pointer; display: flex; align-items: center; gap: 10px;
         transition: all 0.15s; font-family: 'Segoe UI', system-ui;
+        min-height: 48px;  /* タッチしやすい最小高さ */
       }
       .map-select-btn:hover { background: rgba(18,48,110,0.8); border-color: rgba(80,170,255,0.5); }
       .map-select-btn.active {
@@ -383,10 +384,11 @@
       .ms-name { font-size: 13px; font-weight: 700; letter-spacing: 1px; }
       .ms-desc { font-size: 9px; color: rgba(140,210,255,0.5); letter-spacing: 0.5px; text-align: center; }
       .ms-start {
-        margin-top: 4px; padding: 8px 22px;
+        margin-top: 4px; padding: 12px 28px;
         background: rgba(20,60,140,0.8); border: 1px solid rgba(60,140,255,0.42);
-        border-radius: 8px; color: #e8f4ff; font-size: 11px; letter-spacing: 3px;
+        border-radius: 8px; color: #e8f4ff; font-size: 14px; letter-spacing: 3px;
         cursor: pointer; font-family: 'Segoe UI', system-ui; transition: background 0.12s;
+        min-height: 44px;  /* タッチしやすい最小高さ */
       }
       .ms-start:hover { background: rgba(30,80,180,0.9); }
       .ms-card-war .ms-start { border-color: rgba(255,100,60,0.5); }
@@ -395,10 +397,11 @@
       .ms-cfg-lbl { width: 28px; text-align: right; color: rgba(160,220,255,0.6); letter-spacing: 1px; }
       .ms-cfg-val { font-size: 16px; font-weight: 200; width: 24px; text-align: center; color: #fff; }
       .ms-adj {
-        width: 26px; height: 26px; border-radius: 6px;
+        width: 36px; height: 36px; border-radius: 6px;
         background: rgba(30,60,120,0.7); border: 1px solid rgba(60,140,255,0.3);
-        color: #8cf; font-size: 16px; cursor: pointer;
+        color: #8cf; font-size: 20px; cursor: pointer;
         display: flex; align-items: center; justify-content: center; transition: background 0.1s;
+        min-width: 36px; min-height: 36px;  /* タッチしやすい最小サイズ */
       }
       .ms-adj:hover { background: rgba(50,90,180,0.8); }
 
@@ -518,19 +521,19 @@
         }
         .ms-title { font-size: 18px; letter-spacing: 3px; margin-bottom: 1px; }
         .ms-sub { font-size: 6px; letter-spacing: 1px; margin-bottom: 2px; }
-        .map-select-btn { padding: 3px 10px; font-size: 9px; }
-        .map-select-btn span:first-child { font-size: 14px; }
+        .map-select-btn { padding: 6px 16px; font-size: 11px; min-height: 36px; }
+        .map-select-btn span:first-child { font-size: 16px; }
         .ms-grid { gap: 4px; max-width: 100%; grid-template-columns: repeat(3, 1fr); }
         .ms-card { padding: 4px 4px; gap: 2px; }
         .ms-icon { font-size: 14px; }
         .ms-name { font-size: 9px; }
         .ms-desc { font-size: 6px; line-height: 1.1; }
-        .ms-start { padding: 3px 10px; font-size: 8px; margin-top: 1px; }
+        .ms-start { padding: 6px 14px; font-size: 10px; margin-top: 1px; min-height: 36px; }
         .ms-config { gap: 2px; }
         .ms-cfg-row { gap: 3px; font-size: 8px; }
-        .ms-cfg-val { font-size: 10px; }
+        .ms-cfg-val { font-size: 11px; }
         .ms-cfg-lbl { width: 20px; font-size: 7px; }
-        .ms-adj { width: 18px; height: 18px; font-size: 11px; }
+        .ms-adj { width: 28px; height: 28px; font-size: 14px; min-width: 28px; min-height: 28px; }
         #mode-screen > div[style*="display: flex"] {
           margin-bottom: 2px;
           gap: 6px;
