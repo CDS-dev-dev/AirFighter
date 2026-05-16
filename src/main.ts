@@ -153,21 +153,10 @@ function fbm(x: number, z: number, octaves = 5): number {
   return total / norm
 }
 
-// ═══════════════════════════════════════════════════════
-//  人設計地形 v3: 3倍縦方向スケール・劇的高低差
-//
-//  地理:
-//    北  — 大山脈 (Peak A〜D, 900-1400m)
-//    中央 — 孤立中央スパイア (~650m, ランドマーク)
-//    中西 — メサ (平頂山, ~350m)
-//    東  — 東部プラトー + 南北大峡谷 (~-300m)
-//    西  — 断崖海岸 + 海食柱 → 孤島群
-//    南  — 南山地 (350-650m) + 湾 + 半島
-//    ※ 山は高く、谷は深く、30秒飛ぶたびに景観が変わる
-// ═══════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════
-// 東京MAP専用システム（完全0ベース、OpenStreetMap参照）
-// ═══════════════════════════════════════════════════════
+// ガウシアン地形パッチ
+function gauss2d(x: number, z: number, ax: number, az: number, rx: number, rz: number, ht: number): number {
+  return ht * Math.exp(-((x-ax)*(x-ax))/(rx*rx) - ((z-az)*(z-az))/(rz*rz))
+}
 
 // 東京MAP用の地形関数は削除 - TokyoMapSystemが完全に管理
 
@@ -177,67 +166,150 @@ function terrainH(x: number, z: number): number {
     // NEO東京MAPシステムを使用
     return neoTokyoMapSystem ? neoTokyoMapSystem.getTerrainHeight(x, z) : 0
   }
-  // ===== 極限地形MAP（シンプル＆劇的）=====
-  // 基準高度: 300m（高めに設定して全域に高低差）
-  let h = 300
 
-  // ===== 4方向の大山脈（標高700-850m）=====
-  // 北部山脈（標高800m、MAP北端）
-  h += Math.exp(-((x - 0) ** 2 / 800000 + (z + 1200) ** 2 / 300000)) * 500
+  // オリジナルMAP: gen_terrain.pyのterrain_hと対応した地形関数
+  // (terrain.glbのビジュアルと衝突判定・オブジェクト配置が一致するようにする)
+  let h = 65
+    + Math.sin(x * 0.00035 + 0.8) * 22
+    + Math.sin(z * 0.00045 + 0.3) * 18
+    + Math.sin((x - z) * 0.00028 + 1.1) * 15
+    + Math.sin((x + z * 0.6) * 0.00018) * 12
 
-  // 南部山脈（標高700m、MAP南端）
-  h += Math.exp(-((x + 300) ** 2 / 700000 + (z - 1000) ** 2 / 400000)) * 400
+  // 北部山脈 メインリッジ (z≈-1400)
+  const mdt = (z + 1400) / 680
+  h += Math.max(0, 1 - mdt * mdt) * (780 + Math.sin(x * 0.0022 + 0.7) * 215 + Math.sin(x * 0.006) * 115)
 
-  // 東部山脈（標高750m、MAP東端）
-  h += Math.exp(-((x - 1000) ** 2 / 400000 + (z - 200) ** 2 / 800000)) * 450
+  // 主要峰
+  h += gauss2d(x, z,  200, -1820, 340, 360, 1150)  // Peak A 最高峰 (~1400m)
+  h += gauss2d(x, z, -720, -1570, 310, 320, 1000)  // Peak B 北西峰 (~1200m)
+  h += gauss2d(x, z,  980, -1350, 280, 295,  800)  // Peak C 北東峰 (~1000m)
+  h += gauss2d(x, z,   60, -1060, 255, 245,  550)  // Peak D 前衛峰 (~700m)
 
-  // 西部山脈（標高850m、MAP西端・最高峰）
-  h += Math.exp(-((x + 1200) ** 2 / 500000 + (z + 400) ** 2 / 600000)) * 550
+  // 中央孤立スパイア（ランドマーク）
+  h += gauss2d(x, z,   80,  -30, 160, 160, 680)
 
-  // ===== 十字峡谷（MAP中央を横断、深さ600m級）=====
-  // X軸方向の峡谷（東西横断）
-  const crossX = Math.abs(x)
-  if (crossX < 200) {
-    h -= 500 * Math.exp(-((crossX / 100) ** 2))
-  }
+  // メサ（平頂山）
+  h += Math.min(gauss2d(x, z, -480, 280, 280, 260, 420), 320)
 
-  // Z軸方向の峡谷（南北横断）
-  const crossZ = Math.abs(z)
-  if (crossZ < 200) {
-    h -= 500 * Math.exp(-((crossZ / 100) ** 2))
-  }
-
-  // ===== 放射峡谷（中央から4方向、深さ400m）=====
-  for (let i = 0; i < 4; i++) {
-    const angle = (i / 4) * Math.PI * 2
-    const rotX = x * Math.cos(angle) + z * Math.sin(angle)
-    const rotZ = (-x) * Math.sin(angle) + z * Math.cos(angle)
-    const dist = Math.abs(rotZ)
-
-    if (dist < 100 && Math.abs(rotX) < 2000) {
-      h -= 400 * Math.exp(-((dist / 60) ** 2))
-    }
-  }
-
-  // ===== 全域に激しい起伏（フラクタル地形、戦闘に影響）=====
-  h += Math.sin(x * 0.003) * Math.cos(z * 0.004) * 250
-  h += Math.sin(x * 0.007) * Math.sin(z * 0.006) * 180
-  h += Math.sin(x * 0.012) * Math.cos(z * 0.010) * 120
-
-  // ===== 中規模の波状地形（全域に配置）=====
-  h += Math.sin(x * 0.0025 + 2.3) * 150
-  h += Math.cos(z * 0.0032 + 1.7) * 130
-  h += Math.sin((x + z) * 0.0018) * 110
-
-  // ===== 戦闘エリア確保（中央東部に平地）=====
+  // 中央東部大平原（基地・戦闘エリア確保）
   const plainDist = Math.hypot(x - 400, z - 200)
-  if (plainDist < 600) {
-    const flatFactor = Math.cos((plainDist / 600) * Math.PI * 0.5)
-    h *= (1 - flatFactor * 0.5)  // 中心部を平坦化
-    h += 250 * flatFactor  // 基準高度250mに
+  if (plainDist < 800) {
+    const flatFactor = Math.cos((plainDist / 800) * Math.PI * 0.5)
+    h *= (1 - flatFactor * 0.6)
+    h += 55 * flatFactor
   }
 
-  // 最低高度は0m
+  // 中央北部高地
+  h += gauss2d(x, z, -180, -640, 900, 520, 380)
+  h += gauss2d(x, z,  620, -520, 440, 400, 265)
+
+  // 南部山地
+  h += gauss2d(x, z, -720,  480, 520, 440, 340)
+  h += gauss2d(x, z,  380,  580, 360, 320, 235)
+  h += gauss2d(x, z, -160,  920, 320, 280, 190)
+
+  // 東部プラトー
+  h += gauss2d(x, z, 1100, -380, 680, 520, 235)
+
+  // 北西高地
+  h += gauss2d(x, z, -1080, -720, 480, 560, 270)
+
+  // 南西丘陵
+  h += gauss2d(x, z, -580, 720, 580, 490, 220)
+
+  // 西部海食柱
+  h += gauss2d(x, z, -1900,  200,  60,  55, 180)
+  h += gauss2d(x, z, -1750, -100,  45,  40, 150)
+
+  // 東西横断峡谷 (z≈-220、深さ ~350m)
+  const ewZ = -220 + Math.sin(x * 0.00085) * 150 + Math.sin(x * 0.0022 + 0.6) * 65
+  const ewD = Math.abs(z - ewZ)
+  const ewA = clamp01((x + 900) / 350) * clamp01((900 - x) / 350)
+  h -= Math.exp(-(ewD / 80) * (ewD / 80)) * 440 * ewA
+  h += Math.exp(-((ewD - 170) / 55) * ((ewD - 170) / 55)) * 110 * ewA
+
+  // 中央南北渓谷 (x≈-350、深さ ~280m)
+  const nsX = -350 + Math.sin(z * 0.0007) * 140 + Math.sin(z * 0.0019 + 1.2) * 55
+  const nsD = Math.abs(x - nsX)
+  const nsA = clamp01((z + 1100) / 400) * clamp01((1100 - z) / 400)
+  h -= Math.exp(-(nsD / 70) * (nsD / 70)) * 300 * nsA
+
+  // 東部大峡谷 (x≈920、深さ ~400m)
+  const cxC = 920 + Math.sin(z * 0.0008) * 120 + Math.sin(z * 0.002 + 0.5) * 48
+  const cxD = Math.abs(x - cxC)
+  const cxA = clamp01((x - 350) / 320)
+           * clamp01((z + 700) / 380)
+           * clamp01(1 - (z - 700) / 380)
+  const cxW = Math.max(0, cxD - 130)
+  h -= Math.exp(-(cxW / 62) * (cxW / 62)) * 445 * cxA
+  h += Math.exp(-((cxD - 205) / 65) * ((cxD - 205) / 65)) * 120 * cxA
+
+  // 斜行渓谷 SW→NE
+  const diagT = ((x - z) + 400) / 160
+  const diagA = clamp01((x + 700) / 500) * clamp01((300 - x) / 500)
+             * clamp01((z - 100) / 300) * clamp01((900 - z) / 300)
+  h -= Math.exp(-(diagT * diagT)) * 260 * diagA
+
+  // 河川 (南北方向, x≈120)
+  const rvX = 120 + Math.sin(z * 0.0009) * 175 + Math.sin(z * 0.0025 + 1) * 55
+  const rvD = Math.abs(x - rvX)
+  const rvA = clamp01((z + 1300) / 350) * clamp01(1 - (z - 1400) / 350)
+  h -= Math.exp(-(rvD / 105) * (rvD / 105)) * 165 * rvA
+
+  // 西部断崖・海岸 (x<-1100 で海へ急降下)
+  if (x < -1100) {
+    const cliffX = -1650 + Math.sin(z * 0.0006) * 185 + Math.sin(z * 0.0018) * 65
+    const dfc = -(x - cliffX)
+    h -= clamp01(dfc / 360) * 720
+  }
+
+  // 南部湾
+  const bayX = Math.exp(-(x / 420) * (x / 420))
+  const bayZ = clamp01((z - 900) / 280) * clamp01(1 - (z - 1500) / 280)
+  h -= bayX * bayZ * 180
+
+  // 南部半島
+  const penX = Math.exp(-(x / 155) * (x / 155))
+  const penZ = clamp01((z - 860) / 260) * clamp01(1 - (z - 1720) / 340)
+  h += penX * penZ * 240
+
+  // 西部孤島群
+  h += gauss2d(x, z, -2180,  -150, 145, 130, 145)
+  h += gauss2d(x, z, -2480,   320, 120, 108, 125)
+  h += gauss2d(x, z, -2090,  -640,  95,  88, 115)
+  h += gauss2d(x, z, -2700,   100, 100,  92,  75)
+
+  // テクスチャノイズ
+  h += (fbm(x * 0.006 + 5.1, z * 0.006 - 3.8, 4) - 0.5) * 105
+
+  // 大規模起伏（terrain.glb視覚と一致させるため振幅を抑える）
+  h += Math.sin(x * 0.0025 + 2.3) * 180 + Math.cos(z * 0.0032 + 1.7) * 150
+  h += Math.sin((x + z) * 0.0018 + 0.9) * 220
+  h += Math.sin((x - z) * 0.0021 + 1.5) * 200
+
+  // 散在する山塊
+  h += gauss2d(x, z,  -400,  350, 180, 160, 320)
+  h += gauss2d(x, z,   650,  120, 160, 145, 290)
+  h += gauss2d(x, z,  -250, -350, 140, 130, 270)
+  h += gauss2d(x, z,   320, -580, 155, 140, 310)
+  h += gauss2d(x, z,   820,  480, 125, 115, 260)
+  h += gauss2d(x, z, -1000,  200, 170, 160, 300)
+  h += gauss2d(x, z,  -800, -200, 220, 200, 380)
+  h += gauss2d(x, z,   400,  700, 200, 180, 360)
+  h += gauss2d(x, z,  -600,  600, 190, 170, 340)
+  h += gauss2d(x, z,   900, -300, 210, 190, 370)
+  h += gauss2d(x, z,   100, -200, 175, 160, 330)
+  h += gauss2d(x, z,  -200, -800, 200, 180, 350)
+  h += gauss2d(x, z,   500, -150, 190, 170, 340)
+  h += gauss2d(x, z, -1200,  -50, 210, 190, 330)
+
+  // 激しい波状地形
+  h += Math.sin(x * 0.004) * Math.cos(z * 0.003) * 400
+  h += Math.sin(x * 0.006 + z * 0.005) * 350
+  h += Math.sin(x * 0.003 + 1.5) * Math.sin(z * 0.004 + 2.1) * 320
+
+  h *= 1.8
+
   return Math.max(0, h)
 }
 
