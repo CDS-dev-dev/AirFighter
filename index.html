@@ -471,8 +471,15 @@
       }
       .pause-resume:hover { background: rgba(30,80,180,0.9); transform: scale(1.05); }
       @media (pointer: coarse) {
-        .pause-controls { grid-template-columns: 1fr; gap: 20px; }
-        .pause-title { font-size: 32px; letter-spacing: 8px; }
+        #pause-screen { padding: 16px 12px; gap: 12px; justify-content: flex-start; overflow-y: auto; }
+        .pause-title { font-size: 26px; letter-spacing: 6px; }
+        .pause-controls { grid-template-columns: 1fr; gap: 10px; }
+        .pause-controls .ctrl-section:first-child { display: none; } /* PC操作を非表示 */
+        .ctrl-section { padding: 12px; }
+        .ctrl-header { font-size: 14px; margin-bottom: 10px; }
+        .ctrl-item { padding: 5px 8px; font-size: 11px; }
+        .ctrl-key { font-size: 10px; padding: 3px 6px; min-width: 60px; }
+        .pause-resume { padding: 10px 24px; font-size: 12px; }
       }
 
       /* ===== ミッション完了 ===== */
@@ -575,6 +582,35 @@
         #app, canvas {
           width: 100% !important;
           height: 100% !important;
+        }
+        /* 90度回転後は視覚的に横画面なのでコンパクトスタイルを適用 */
+        #mode-screen {
+          gap: 2px;
+          padding: 4px 10px;
+          overflow-y: auto;
+          max-height: 100vw;
+        }
+        .ms-title { font-size: 18px; letter-spacing: 3px; margin-bottom: 1px; }
+        .ms-sub { font-size: 6px; letter-spacing: 1px; margin-bottom: 2px; }
+        .map-select-btn { padding: 6px 16px; font-size: 11px; min-height: 36px; }
+        .map-select-btn span:first-child { font-size: 16px; }
+        .ms-grid { gap: 4px; max-width: 100%; grid-template-columns: repeat(3, 1fr); }
+        .ms-card { padding: 4px 4px; gap: 2px; }
+        .ms-icon { font-size: 14px; }
+        .ms-name { font-size: 9px; }
+        .ms-desc { font-size: 6px; line-height: 1.1; }
+        .ms-start { padding: 6px 14px; font-size: 10px; margin-top: 1px; min-height: 36px; }
+        .ms-config { gap: 2px; }
+        .ms-cfg-row { gap: 3px; font-size: 8px; }
+        .ms-cfg-val { font-size: 11px; }
+        .ms-cfg-lbl { width: 20px; font-size: 7px; }
+        .ms-adj { width: 28px; height: 28px; font-size: 14px; min-width: 28px; min-height: 28px; }
+        #mode-screen > div[style*="display: flex"] {
+          margin-bottom: 2px;
+          gap: 6px;
+        }
+        #mode-screen > div[style*="display: flex"] span:first-child {
+          font-size: 10px;
         }
       }
     </style>

@@ -353,7 +353,7 @@ function generateTokyoTerrainMesh(): THREE.Mesh {
 
 // ===== オリジナルMAP地形メッシュ生成 =====
 function generateOriginalTerrainMesh(): THREE.Mesh {
-  const terrainGeo = new THREE.PlaneGeometry(9000, 9000, 128, 128)
+  const terrainGeo = new THREE.PlaneGeometry(9000, 9000, 256, 256)
   terrainGeo.rotateX(-Math.PI / 2)
   const tPos = terrainGeo.attributes.position as THREE.BufferAttribute
   const tCol = new Float32Array(tPos.count * 3)
@@ -2984,10 +2984,30 @@ async function switchMap(map: GameMap) {
     scene.add(ground)
     console.log('🗻 オリジナル地形再生成')
 
+    // terrain.glb（高品質）があれば差し替え
+    if (terrainGLB) {
+      scene.remove(ground)
+      scene.add(terrainGLB)
+      console.log('🗻 terrain.glb 復元')
+    }
+
     // 水面を追加（元々あったものは削除されている）
     scene.add(waterMesh)
     waterMesh.visible = true
     console.log('💧 水面再追加')
+
+    // 岩塔・巨岩・木々を復元（名前で検索して再追加）
+    const namesToRestore = ['OriginalRockPillar', 'OriginalRockTower', 'OriginalRockArch',
+                            'OriginalBoulders', 'OriginalTrees']
+    for (const key of namesToRestore) {
+      if (!scene.getObjectByName(key) && !scene.getObjectByName(key + '_0_0')) {
+        // InstancedMesh（boulderIM, trunkIM等）を再追加
+        if (key === 'OriginalBoulders') scene.add(boulderIM)
+        if (key === 'OriginalTrees') { scene.add(trunkIM); scene.add(foliIM); scene.add(foli2IM) }
+      }
+    }
+    // 岩塔・アーチはGLBロード済みインスタンスを持つグループとして保存されていないため、
+    // 名前付きオブジェクトが存在しなければ再配置をスキップ（ページリロードが確実）
 
     // オリジナルMAPの構造物を再構築
     buildWorldStructures()
@@ -4161,19 +4181,11 @@ function loop() {
     player.quaternion.multiply(currentRollQuat)
   }
 
-  // 自動水平復帰（操作を止めた時のみ、水平に戻す）
-  const pitchInputSmall = Math.abs(pitchInput) < 0.03
-  if (pitchInputSmall && Math.abs(yawInput) < 0.05) {
-    // 前方向の水平成分を取得
-    const fwdLocal = _fwd.clone().applyQuaternion(player.quaternion)
-    const fwdFlat = new THREE.Vector3(fwdLocal.x, 0, fwdLocal.z)
-
-    if (fwdFlat.lengthSq() > 0.001) {
-      fwdFlat.normalize()
-      // 方向を保持したまま水平姿勢へ
-      const targetQuat = new THREE.Quaternion().setFromUnitVectors(_fwd, fwdFlat)
-      player.quaternion.slerp(targetQuat, dt * 1.8)
-    }
+  // 自動水平復帰（ロールのみ・ピッチは補正しない）
+  if (Math.abs(yawInput) < 0.05) {
+    const _lvEuler = new THREE.Euler().setFromQuaternion(player.quaternion, 'YXZ')
+    _lvEuler.z *= Math.exp(-dt * 3.5)  // ロール（Z軸）のみ減衰、ピッチ(X)はそのまま
+    player.quaternion.setFromEuler(_lvEuler)
   }
   player.quaternion.normalize()
 
