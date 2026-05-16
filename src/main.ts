@@ -1307,15 +1307,16 @@ interface Enemy {
   group: THREE.Group;
   health: number;
   fireCooldown: number;
+  gunCooldown: number;
   missileAmmo: number;
   seekingSupply: boolean;
   evadeDelay: number;
   lastPos: THREE.Vector3;
   velocity: THREE.Vector3;
-  currentSpeed: number;              // 現在の速度（m/s）
-  tacticType: number;                // 戦術タイプ（0-3）
-  preferredDistance: number;         // 好む交戦距離
-  preferredHeightOffset: number;     // 好む相対高度
+  currentSpeed: number;
+  tacticType: number;
+  preferredDistance: number;
+  preferredHeightOffset: number;
 }
 interface Ally { group: THREE.Group; health: number; fireCooldown: number; missileAmmo: number }
 interface Explosion { particles: Array<{ mesh: THREE.Mesh; vel: THREE.Vector3 }>; life: number }
@@ -1331,6 +1332,7 @@ interface SmokeParticle { mesh: THREE.Mesh; vel: THREE.Vector3; life: number; ma
 interface MissileTrail { mesh: THREE.Mesh; life: number }
 
 const bullets: Projectile[] = []
+const enemyBullets: Projectile[] = []
 const playerMissiles: HomingMissile[] = []
 const enemyMissiles: HomingMissile[] = []
 const allyMissiles: HomingMissile[] = []
@@ -1356,6 +1358,7 @@ let playerHP = 3, invincibleTimer = 0, respawnFlash = 0, respawnTimer = 0
 const MAX_HP = 3
 
 const bulletMat = new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xffdd00, emissiveIntensity: 28.0, roughness: 0.1, metalness: 0 })
+const enemyBulletMat = new THREE.MeshStandardMaterial({ color: 0xff3300, emissive: 0xff1100, emissiveIntensity: 24.0, roughness: 0.1, metalness: 0 })
 const playerMissileMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xff8800, emissiveIntensity: 12.0, roughness: 0.3, metalness: 0.7 })
 const enemyMissileMat = new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xcc2200, emissiveIntensity: 2.0, roughness: 0.5, metalness: 0.3 })
 const allyMissileMat  = new THREE.MeshStandardMaterial({ color: 0x44ff88, emissive: 0x00cc44, emissiveIntensity: 3.0, roughness: 0.5, metalness: 0.3 })
@@ -1413,10 +1416,10 @@ function spawnEnemyAt(sx: number, sz: number) {
   }
 
   enemies.push({
-    group, health: 2, fireCooldown: 8 + Math.random() * 7,
+    group, health: 2, fireCooldown: 8 + Math.random() * 7, gunCooldown: Math.random() * 0.5,
     missileAmmo: 4, seekingSupply: false, evadeDelay: 0,
     lastPos: group.position.clone(), velocity: new THREE.Vector3(),
-    currentSpeed: 150,  // 初期速度150m/s
+    currentSpeed: 150,
     tacticType,
     preferredDistance,
     preferredHeightOffset
@@ -2516,6 +2519,8 @@ function stopGame() {
   groundTargets.length = 0
   for (const b of [...bullets]) scene.remove(b.mesh)
   bullets.length = 0
+  for (const b of [...enemyBullets]) scene.remove(b.mesh)
+  enemyBullets.length = 0
   for (const m of [...playerMissiles]) { if (m.light) scene.remove(m.light); scene.remove(m.mesh) }
   playerMissiles.length = 0
   for (const m of [...allyMissiles]) scene.remove(m.mesh)
@@ -3223,6 +3228,10 @@ function updateBullets(dt: number) {
     bullets[i].life -= dt; bullets[i].mesh.position.addScaledVector(bullets[i].vel, dt)
     if (bullets[i].life <= 0) { scene.remove(bullets[i].mesh); bullets.splice(i, 1) }
   }
+  for (let i = enemyBullets.length - 1; i >= 0; i--) {
+    enemyBullets[i].life -= dt; enemyBullets[i].mesh.position.addScaledVector(enemyBullets[i].vel, dt)
+    if (enemyBullets[i].life <= 0) { scene.remove(enemyBullets[i].mesh); enemyBullets.splice(i, 1) }
+  }
 }
 
 function updateMissileArr(arr: HomingMissile[], dt: number, onExpire: (m: HomingMissile) => void) {
@@ -3455,6 +3464,21 @@ function updateEnemies(dt: number) {
           enemy.fireCooldown = 3
         }
       }
+
+      // 距離50-200m、前方20度以内でマシンガン射撃
+      enemy.gunCooldown -= dt
+      if (enemy.gunCooldown <= 0 && distToTarget < 200 && distToTarget > 30 && angleToTarget < Math.PI / 9) {
+        enemy.gunCooldown = 0.10 + Math.random() * 0.04
+        const aimDir = toTarget.clone().normalize()
+        const enemyVel = currentForward.clone().multiplyScalar(enemy.currentSpeed)
+        for (const side of [-0.5, 0.5]) {
+          const offset = new THREE.Vector3(side, 0, 0).applyQuaternion(enemy.group.quaternion)
+          const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.4, 6, 6), enemyBulletMat)
+          mesh.position.copy(enemy.group.position).add(offset)
+          scene.add(mesh)
+          enemyBullets.push({ mesh, vel: aimDir.clone().multiplyScalar(700).add(enemyVel), life: 0.4 })
+        }
+      }
     }
   }
 }
@@ -3569,6 +3593,27 @@ function checkCollisions() {
           scene.remove(m.mesh); enemyMissiles.splice(mi, 1)
           scene.remove(flares[fi].mesh); flares.splice(fi, 1); break
         }
+      }
+    }
+  }
+
+  // 敵マシンガン弾 → プレイヤー
+  if (invincibleTimer <= 0) {
+    for (let bi = enemyBullets.length - 1; bi >= 0; bi--) {
+      if (enemyBullets[bi].mesh.position.distanceTo(player.position) < 4) {
+        scene.remove(enemyBullets[bi].mesh); enemyBullets.splice(bi, 1)
+        playerHP = Math.max(0, playerHP - 1)
+        hitFlashTimer = 0.4
+        camShakeAmt = Math.max(camShakeAmt, 0.8)
+        updateHPDisplay()
+        if (playerHP <= 0) {
+          respawnTimer = 3.0; player.visible = false
+          const cd = document.getElementById('respawn-countdown')!
+          const respawnOvr = document.getElementById('respawn-overlay')!
+          cd.style.display = 'block'; respawnOvr.style.opacity = '1'
+          return
+        }
+        break
       }
     }
   }
