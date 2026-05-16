@@ -1146,11 +1146,12 @@ function setupTouchControls() {
     initAudio()
     const t = e.changedTouches[0]
     joyId = t.identifier; ox = t.clientX; oy = t.clientY
-    // 縦持ち強制横向き時: HTML座標系に変換して表示
+    // 縦持ち強制横向き時: body(landscape座標系)に変換して配置
+    // viewport(px,py) → element_local(x=py, y=W-px) where W=innerWidth
     const portrait = isPortraitMode()
-    const H = window.innerHeight
-    const bx = portrait ? (H - oy) : ox
-    const by = portrait ? ox       : oy
+    const W = window.innerWidth
+    const bx = portrait ? oy       : ox
+    const by = portrait ? (W - ox) : oy
     base.style.left = bx + 'px'; base.style.top = by + 'px'; base.style.opacity = '1'
     knob.style.left = bx + 'px'; knob.style.top  = by + 'px'; knob.style.opacity = '1'
   }, { passive: false })
@@ -1167,10 +1168,10 @@ function setupTouchControls() {
       if (d > MAX_R) { ldx = ldx/d*MAX_R; ldy = ldy/d*MAX_R }
       touchState.yaw   =  ldx / MAX_R
       touchState.pitch = -ldy / MAX_R
-      // ノブのCSS位置（HTML座標系）
-      const H = window.innerHeight
-      knob.style.left = (portrait ? H - oy + ldx : ox + ldx) + 'px'
-      knob.style.top  = (portrait ? ox + ldy      : oy + ldy) + 'px'
+      // ノブのCSS位置（landscape座標系）: base + delta
+      const W = window.innerWidth
+      knob.style.left = (portrait ? oy + ldx            : ox + ldx) + 'px'
+      knob.style.top  = (portrait ? (W - ox) + ldy      : oy + ldy) + 'px'
     }
   }, { passive: false })
 
@@ -1224,10 +1225,11 @@ function setupTouchControls() {
     e.preventDefault()
     for (const t of Array.from(e.changedTouches)) {
       if (t.identifier !== camTouchId) continue
-      const dx = t.clientX - camStartX
-      const dy = t.clientY - camStartY
-      // 視点操作：画面上で上下左右に動かすとカメラが回転
-      touchState.cameraYaw = dx / 200    // 感度調整
+      const portrait = isPortraitMode()
+      // 縦持ち時: viewport delta → landscape delta に変換
+      const dx = portrait ? (t.clientY - camStartY) : (t.clientX - camStartX)
+      const dy = portrait ? -(t.clientX - camStartX) : (t.clientY - camStartY)
+      touchState.cameraYaw = dx / 200
       touchState.cameraPitch = -dy / 200
     }
   }, { passive: false })
