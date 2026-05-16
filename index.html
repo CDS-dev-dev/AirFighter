@@ -293,14 +293,23 @@
       .tbtn .btn-label { font-size: 8px; letter-spacing: 1.5px; opacity: 0.7; }
       .tbtn .btn-count { font-size: 10px; font-weight: 700; margin-left: 2px; opacity: 1; }
 
-      /* 右中：BOOST（右親指でアクセス） */
+      /* BOOST / BRAKE 縦並び */
       #btn-boost {
-        position: absolute; bottom: 12px; right: 104px; width: 80px; height: 56px;
+        position: absolute; bottom: 74px; right: 104px; width: 80px; height: 56px;
         border-color: rgba(80,180,255,0.5); color: rgba(120,210,255,0.95);
         background: rgba(10,30,60,0.75);
       }
       #btn-boost.pressed {
         background: rgba(20,80,160,0.85); box-shadow: 0 0 22px rgba(60,160,255,0.7);
+        transform: scale(0.95);
+      }
+      #btn-brake {
+        position: absolute; bottom: 12px; right: 104px; width: 80px; height: 56px;
+        border-color: rgba(255,120,60,0.5); color: rgba(255,140,80,0.95);
+        background: rgba(50,15,5,0.75);
+      }
+      #btn-brake.pressed {
+        background: rgba(120,35,10,0.88); box-shadow: 0 0 18px rgba(255,100,40,0.65);
         transform: scale(0.95);
       }
 
@@ -694,10 +703,14 @@
       <div id="camera-zone"></div>
       <div id="joystick-base"></div>
       <div id="joystick-knob"></div>
-      <!-- 右下：BOOST（右親指） -->
+      <!-- BOOST / BRAKE 縦並び -->
       <div class="tbtn" id="btn-boost">
         <span class="btn-icon">&#9889;</span>
         <span class="btn-label">BOOST</span>
+      </div>
+      <div class="tbtn" id="btn-brake">
+        <span class="btn-icon">&#9646;&#9646;</span>
+        <span class="btn-label">BRAKE</span>
       </div>
       <!-- 右上：LOCK -->
       <div class="tbtn" id="btn-lock">
@@ -842,7 +855,7 @@
 
     <!-- ゲームモード＆MAP選択 -->
     <div id="mode-screen">
-      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v4.3.0</span></div>
+      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v4.3.4</span></div>
       <div class="ms-sub">SELECT MAP & MISSION MODE</div>
 
       <!-- MAP選択 -->

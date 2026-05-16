@@ -207,9 +207,10 @@ def gen_fighter():
     T = 0.055
     for side in [-1, 1]:
         s = side
-        pts = [(s*0.44, 3.0, -T), (s*2.4, 4.0, -T), (s*2.4, 5.2, -T), (s*0.44, 4.9, -T)]
-        bot = [bm.verts.new(p) for p in pts]
-        top = [bm.verts.new((p[0], p[1], T)) for p in pts]
+        # (x, z_fuselage_pos) pairs — y=±T gives thickness, z is the fuselage position
+        xz_pts = [(s*0.44, 3.0), (s*2.4, 4.0), (s*2.4, 5.2), (s*0.44, 4.9)]
+        bot = [bm.verts.new((p[0], -T, p[1])) for p in xz_pts]
+        top = [bm.verts.new((p[0],  T, p[1])) for p in xz_pts]
         if s == 1:
             bm.faces.new(bot)
             bm.faces.new(list(reversed(top)))

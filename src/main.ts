@@ -1089,7 +1089,7 @@ renderer.domElement.addEventListener('wheel', (e) => {
 // ===== TOUCH INPUT =====
 const touchState = {
   pitch: 0, yaw: 0,
-  boost: false, gun: false,
+  boost: false, brake: false, gun: false,
   missilePressed: false, flarePressed: false, lockPressed: false,
   cameraYaw: 0, cameraPitch: 0,  // 視点操作用
 }
@@ -1165,6 +1165,7 @@ function setupTouchControls() {
   }
 
   holdBtn('btn-boost', v => { touchState.boost = v })
+  holdBtn('btn-brake', v => { touchState.brake = v })
   holdBtn('btn-gun',   v => { touchState.gun = v; if (v) initAudio() })
   tapBtn('btn-msl',  () => { touchState.missilePressed = true })
   tapBtn('btn-flr',  () => { touchState.flarePressed   = true })
@@ -1221,9 +1222,10 @@ let audioReady = false
 let audioEnabled = false  // デフォルトは消音
 
 function initAudio() {
-  if (audioReady || !audioEnabled) return  // 音声無効時は初期化しない
+  if (audioReady || !audioEnabled) return
   audioReady = true
   audioCtx = new AudioContext()
+  audioCtx.resume()  // iOS Safari: AudioContext starts suspended, must resume explicitly
   const ctx = audioCtx
   engineOsc = ctx.createOscillator(); engineOsc.type = 'sawtooth'; engineOsc.frequency.value = 70
   const lpf = ctx.createBiquadFilter(); lpf.type = 'lowpass'; lpf.frequency.value = 320; lpf.Q.value = 1.5
@@ -1573,7 +1575,7 @@ function fireGun() {
       }
     }
 
-    const bulletSpeed = 230
+    const bulletSpeed = 700
 
     // 距離と相対速度から到達時間を反復計算（より正確）
     let dist = targetPos.distanceTo(player.position)
@@ -1610,7 +1612,8 @@ function fireGun() {
     const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), bulletMat)
     mesh.position.copy(player.position).add(offset)
     scene.add(mesh)
-    bullets.push({ mesh, vel: aimDir.clone().multiplyScalar(230), life: 1.8 })
+    const playerVel = _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(speed)
+    bullets.push({ mesh, vel: aimDir.clone().multiplyScalar(700).add(playerVel), life: 1.8 })
   }
   if (gunSoundCooldown <= 0) { playGunSound(); gunSoundCooldown = 0.06 }
   // 砲口フラッシュ削除（パフォーマンス最適化：ミサイル発射時のフリーズ防止）
@@ -1699,15 +1702,17 @@ function handleRightLock() {
   for (const t of allTargets) {
     const toT = t.group.position.clone().sub(player.position)
     const dist = toT.length()
-    if (dist > MISSILE_LOCK_RANGE) continue  // ミサイル射程内のみロックオン可能
-    const dot = toT.normalize().dot(fwdWorld)
-    // ロックオン範囲を狭く（前方45度以内、dot > 0.707）
-    if (dot > 0.707) {
-      // 地形遮蔽チェック（プレイヤーから敵への直線上に地形がないか確認）
-      raycaster.set(player.position, toT.normalize())
-      raycaster.far = dist - 5  // 敵の手前までチェック
+    if (dist > MISSILE_LOCK_RANGE) continue
+    const toTNorm = toT.normalize()
+    const dot = toTNorm.dot(fwdWorld)
+    // 地上目標は前方90度（dot > 0）、航空機は前方60度（dot > 0.5）
+    const isGround = groundTargets.some(gt => gt === t)
+    const minDot = isGround ? 0 : 0.5
+    if (dot > minDot) {
+      raycaster.set(player.position, toTNorm)
+      raycaster.far = dist - 5
       const intersects = raycaster.intersectObject(ground, false)
-      if (intersects.length > 0) continue  // 地形に遮られている場合はスキップ
+      if (intersects.length > 0) continue
 
       const sc = dot - dist / MISSILE_LOCK_RANGE * 0.25
       if (sc > bestScore) { bestScore = sc; best = t }
@@ -3066,7 +3071,8 @@ if (audioOffBtn && audioOnBtn) {
     audioEnabled = true
     audioOnBtn.classList.add('active')
     audioOffBtn.classList.remove('active')
-    console.log('🔊 音声ON')
+    initAudio()  // ゲーム中にONにした場合も即初期化（iOS Safari対応）
+    if (audioCtx?.state === 'suspended') audioCtx.resume()
   })
 }
 
@@ -3670,7 +3676,7 @@ function updateWarning() {
   }
 }
 
-const MISSILE_LOCK_RANGE = 750
+const MISSILE_LOCK_RANGE = 3000
 
 function _drawCornerBrackets(ctx: CanvasRenderingContext2D, sx: number, sy: number, SZ: number, ARM: number) {
   for (const [cx2, cy2, dx, dy] of [
@@ -3928,7 +3934,7 @@ function updateSupplyPoints(dt: number) {
       const prevMsl = missileAmmo, prevFlr = flareAmmo, prevHP = playerHP
       missileAmmo = 6  // 全回復
       flareAmmo   = 3  // 全回復
-      playerHP    = Math.min(100, playerHP  + 50)  // HP回復：最大50
+      playerHP    = MAX_HP
       if (missileAmmo !== prevMsl || flareAmmo !== prevFlr || playerHP !== prevHP) {
         missileEl.textContent = missileAmmo.toString()
         flareEl.textContent   = flareAmmo.toString()
@@ -4101,8 +4107,9 @@ function loop() {
     decelerateMode = (now2 - lastSpaceTime < 400) ? !decelerateMode : false
     lastSpaceTime = now2
   }
-  const boost = (!!keys['Space'] || touchState.boost) && !decelerateMode
-  const boostTarget = decelerateMode ? 50 : (boost ? 550 : wheelSpeedTarget)  // 減速50m/s、ブースト550m/s（1,980km/h）
+  const brake = touchState.brake || decelerateMode
+  const boost = (!!keys['Space'] || touchState.boost) && !brake
+  const boostTarget = brake ? 50 : (boost ? 550 : wheelSpeedTarget)  // 減速50m/s、ブースト550m/s（1,980km/h）
   speed += (boostTarget - speed) * dt * 2.2
   if (!boost && !decelerateMode) wheelSpeedTarget += (150 - wheelSpeedTarget) * dt * 0.4  // 巡航速度150に自動復帰
 
@@ -4132,9 +4139,11 @@ function loop() {
   if (pitchInput !== 0)
     player.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(
       new THREE.Vector3(1, 0, 0), pitchInput * 1.9 * dt))
-  if (yawInput !== 0)
+  if (yawInput !== 0) {
+    const localUp = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion)
     player.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 1, 0), -yawInput * 1.5 * dt))
+      localUp, -yawInput * 1.5 * dt))
+  }
 
   // フライトモードに応じた処理
   if (flightMode === 'realistic') {
