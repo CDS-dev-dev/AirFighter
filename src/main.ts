@@ -53,18 +53,22 @@ let composer: EffectComposer | null = null
 // ===== SKY =====
 const sky = new Sky()
 sky.scale.setScalar(8000)
-scene.add(sky)
 const skyUniforms = sky.material.uniforms
-// 午後3時頃の黄金時間帯に近い空（霞・大気散乱を強調）
 skyUniforms['turbidity'].value = 3.0
 skyUniforms['rayleigh'].value = 3.5
 skyUniforms['mieCoefficient'].value = 0.005
 skyUniforms['mieDirectionalG'].value = 0.94
 
 const sunVec = new THREE.Vector3()
-// 地平線から28°の低い太陽（ドラマチックな斜め光）
 sunVec.setFromSphericalCoords(1, THREE.MathUtils.degToRad(62), THREE.MathUtils.degToRad(195))
 skyUniforms['sunPosition'].value.copy(sunVec)
+
+if (!isMobileDevice) {
+  scene.add(sky)
+} else {
+  // モバイルはスカイシェーダー無効（高コスト）→ 背景色で代替
+  scene.background = new THREE.Color(0x7ab8d4)
+}
 
 // ===== ENV MAP（PMREMGenerator で IBL: 機体・水面の金属反射）=====
 // Sky を先にレンダリングしてから PMREM でフィルタリング
@@ -248,7 +252,8 @@ function mkGroundTex(): THREE.CanvasTexture {
 function generateTokyoTerrainMesh(): THREE.Mesh {
   // TokyoMapSystemが使用されるため、プレースホルダーのみ
   // 実際の地形はTokyoMapSystemが生成
-  const terrainGeo = new THREE.PlaneGeometry(12000, 12000, 256, 256)
+  const terrSegs = isMobileDevice ? 64 : 256
+  const terrainGeo = new THREE.PlaneGeometry(12000, 12000, terrSegs, terrSegs)
   terrainGeo.rotateX(-Math.PI / 2)
   const tPos = terrainGeo.attributes.position as THREE.BufferAttribute
   const tCol = new Float32Array(tPos.count * 3)
@@ -317,7 +322,8 @@ function generateTokyoTerrainMesh(): THREE.Mesh {
 
 // ===== オリジナルMAP地形メッシュ生成 =====
 function generateOriginalTerrainMesh(): THREE.Mesh {
-  const terrainGeo = new THREE.PlaneGeometry(9000, 9000, 256, 256)
+  const terrSegs = isMobileDevice ? 64 : 256
+  const terrainGeo = new THREE.PlaneGeometry(9000, 9000, terrSegs, terrSegs)
   terrainGeo.rotateX(-Math.PI / 2)
   const tPos = terrainGeo.attributes.position as THREE.BufferAttribute
   const tCol = new Float32Array(tPos.count * 3)
@@ -444,33 +450,38 @@ gltfLoader.load(
 // ===== WATER =====
 const waterUniforms = { time: { value: 0 }, sunDir: { value: sunVec.clone().normalize() } }
 const waterMesh = new THREE.Mesh(
-  (() => { const g = new THREE.PlaneGeometry(8000, 8000, 80, 80); g.rotateX(-Math.PI/2); return g })(),
-  new THREE.ShaderMaterial({
-    uniforms: waterUniforms,
-    transparent: true,
-    vertexShader: `
-      uniform float time;
-      varying vec3 vNorm; varying vec3 vPos;
-      void main(){
-        vec3 p=position;
-        p.y+=sin(p.x*.055+time*1.1)*.45+sin(p.z*.043+time*.85)*.42+sin((p.x+p.z)*.026+time*1.4)*.26;
-        vPos=(modelMatrix*vec4(p,1.)).xyz;
-        vec3 n=normalize(vec3(cos(p.x*.07+time)*.12,1.,cos(p.z*.055+time*.85)*.1));
-        vNorm=normalMatrix*n;
-        gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.);
-      }`,
-    fragmentShader: `
-      uniform vec3 sunDir; varying vec3 vNorm; varying vec3 vPos;
-      void main(){
-        vec3 n=normalize(vNorm);
-        float ndl=max(0.,dot(n,normalize(sunDir)));
-        float spec=pow(max(0.,dot(reflect(-normalize(sunDir),n),vec3(0,0,-1))),70.)*4.2;
-        float fresnel=pow(1.-abs(n.y),2.2)*.7;
-        vec3 deep=vec3(.03,.20,.42), shallow=vec3(.18,.56,.70);
-        vec3 col=mix(deep,shallow,fresnel+ndl*.25)+vec3(1.,.96,.88)*spec;
-        gl_FragColor=vec4(col,.82);
-      }`
-  })
+  (() => {
+    const segs = isMobileDevice ? 10 : 80
+    const g = new THREE.PlaneGeometry(8000, 8000, segs, segs); g.rotateX(-Math.PI/2); return g
+  })(),
+  isMobileDevice
+    ? new THREE.MeshBasicMaterial({ color: 0x1a4d7a, transparent: true, opacity: 0.85 })
+    : new THREE.ShaderMaterial({
+        uniforms: waterUniforms,
+        transparent: true,
+        vertexShader: `
+          uniform float time;
+          varying vec3 vNorm; varying vec3 vPos;
+          void main(){
+            vec3 p=position;
+            p.y+=sin(p.x*.055+time*1.1)*.45+sin(p.z*.043+time*.85)*.42+sin((p.x+p.z)*.026+time*1.4)*.26;
+            vPos=(modelMatrix*vec4(p,1.)).xyz;
+            vec3 n=normalize(vec3(cos(p.x*.07+time)*.12,1.,cos(p.z*.055+time*.85)*.1));
+            vNorm=normalMatrix*n;
+            gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.);
+          }`,
+        fragmentShader: `
+          uniform vec3 sunDir; varying vec3 vNorm; varying vec3 vPos;
+          void main(){
+            vec3 n=normalize(vNorm);
+            float ndl=max(0.,dot(n,normalize(sunDir)));
+            float spec=pow(max(0.,dot(reflect(-normalize(sunDir),n),vec3(0,0,-1))),70.)*4.2;
+            float fresnel=pow(1.-abs(n.y),2.2)*.7;
+            vec3 deep=vec3(.03,.20,.42), shallow=vec3(.18,.56,.70);
+            vec3 col=mix(deep,shallow,fresnel+ndl*.25)+vec3(1.,.96,.88)*spec;
+            gl_FragColor=vec4(col,.82);
+          }`
+      })
 )
 waterMesh.position.y = WATER_LEVEL
 waterMesh.name = 'OriginalWater'
@@ -548,12 +559,15 @@ function makeMountainGeometry(radius: number, height: number, seed: number): THR
 })
 
 // ===== TREES (instanced) =====
-const TREE_COUNT = 1500
-const trunkIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.4,0.72,5.2,6), new THREE.MeshStandardMaterial({color:0x6b4423,roughness:0.95}), TREE_COUNT)
-const foliIM  = new THREE.InstancedMesh(new THREE.ConeGeometry(4.4,10,8,2),         new THREE.MeshStandardMaterial({color:0x2f7d2b,roughness:0.9}),   TREE_COUNT)
-const foli2IM = new THREE.InstancedMesh(new THREE.ConeGeometry(3.2,7,8,2),          new THREE.MeshStandardMaterial({color:0x5f9d3a,roughness:0.88}),  TREE_COUNT)
-trunkIM.castShadow = foliIM.castShadow = foli2IM.castShadow = true
-trunkIM.receiveShadow = foliIM.receiveShadow = foli2IM.receiveShadow = true
+const TREE_COUNT = isMobileDevice ? 400 : 1500
+const _treeMat = (c: number) => isMobileDevice
+  ? new THREE.MeshBasicMaterial({ color: c })
+  : new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 })
+const trunkIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.4,0.72,5.2,5), _treeMat(0x6b4423), TREE_COUNT)
+const foliIM  = new THREE.InstancedMesh(new THREE.ConeGeometry(4.4,10,6,2),         _treeMat(0x2f7d2b), TREE_COUNT)
+const foli2IM = new THREE.InstancedMesh(new THREE.ConeGeometry(3.2,7,6,2),          _treeMat(0x5f9d3a), TREE_COUNT)
+trunkIM.castShadow = foliIM.castShadow = foli2IM.castShadow = !isMobileDevice
+trunkIM.receiveShadow = foliIM.receiveShadow = foli2IM.receiveShadow = !isMobileDevice
 const _d = new THREE.Object3D()
 for (let i = 0; i < TREE_COUNT; i++) {
   const tx = (Math.random()-0.5)*5600, tz = (Math.random()-0.5)*5600
@@ -4544,7 +4558,7 @@ function loop() {
   // レーダー描画を3フレームに1回に制限（パフォーマンス改善）
   if (++radarFrame % 3 === 0) drawRadar()
 
-  waterUniforms.time.value += dt
+  if (!isMobileDevice) waterUniforms.time.value += dt
   radarDishes.forEach(d => { d.rotation.y += dt * 0.65 })
   heliBlades.forEach(d => { d.rotation.y += dt * 18 })  // ローター高速回転
   updateSmoke(dt)
