@@ -3234,10 +3234,30 @@ function updateBullets(dt: number) {
   }
 }
 
-function updateMissileArr(arr: HomingMissile[], dt: number, onExpire: (m: HomingMissile) => void) {
+const _missileRaycaster = new THREE.Raycaster()
+function updateMissileArr(arr: HomingMissile[], dt: number, onExpire: (m: HomingMissile) => void, checkBuildings = false) {
   for (let i = arr.length - 1; i >= 0; i--) {
     updateHoming(arr[i], dt)
-    if (arr[i].life <= 0) { onExpire(arr[i]); scene.remove(arr[i].mesh); if (arr[i].light) scene.remove(arr[i].light!); arr.splice(i, 1) }
+    const m = arr[i]
+
+    // 地形衝突（terrainH は数式計算のみ、無コスト）
+    if (m.mesh.position.y < terrainH(m.mesh.position.x, m.mesh.position.z) + 3) {
+      onExpire(m); scene.remove(m.mesh); if (m.light) scene.remove(m.light!); arr.splice(i, 1); continue
+    }
+
+    // NEO東京ビル衝突（プレイヤーミサイルのみ）
+    if (checkBuildings && currentMap === 'tokyo' && neoTokyoMapSystem) {
+      const colliders = neoTokyoMapSystem.getCollisionObjects()
+      if (colliders.length > 0) {
+        _missileRaycaster.set(m.mesh.position, m.vel.clone().normalize())
+        _missileRaycaster.far = m.vel.length() * dt * 2 + 8
+        if (_missileRaycaster.intersectObjects(colliders, true).length > 0) {
+          onExpire(m); scene.remove(m.mesh); if (m.light) scene.remove(m.light!); arr.splice(i, 1); continue
+        }
+      }
+    }
+
+    if (m.life <= 0) { onExpire(m); scene.remove(m.mesh); if (m.light) scene.remove(m.light!); arr.splice(i, 1) }
   }
 }
 
@@ -3825,25 +3845,25 @@ function drawEnemyBrackets() {
         ctx.fillText('OUT OF RANGE', sx, sy - r - 8)
       }
     } else if (inRange && frontDot > 0.25) {
-      // Lockable: rotating dashed ring + double corner brackets (射程内)
+      // 射程内: 赤ブラケット（ミサイル撃てる）
       const spin = t * 0.0022
       const r = 22
-      ctx.strokeStyle = 'rgba(255,210,60,0.8)'; ctx.lineWidth = 1.2
+      ctx.strokeStyle = 'rgba(255,70,50,0.85)'; ctx.lineWidth = 1.2
       for (let i = 0; i < 4; i++) {
         const a0 = spin + (i / 4) * Math.PI * 2
         ctx.beginPath(); ctx.arc(sx, sy, r, a0, a0 + Math.PI * 0.42); ctx.stroke()
       }
-      ctx.strokeStyle = 'rgba(255,210,60,0.55)'
-      _drawCornerBrackets(ctx, sx, sy, 16, 6)  // 内側ブラケット
-      ctx.strokeStyle = 'rgba(255,210,60,0.35)'
-      _drawCornerBrackets(ctx, sx, sy, 22, 8)  // 外側ブラケット（射程内表示）
-      ctx.fillStyle = 'rgba(255,210,60,0.8)'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center'
+      ctx.strokeStyle = 'rgba(255,80,60,0.6)'
+      _drawCornerBrackets(ctx, sx, sy, 16, 6)
+      ctx.strokeStyle = 'rgba(255,80,60,0.35)'
+      _drawCornerBrackets(ctx, sx, sy, 22, 8)
+      ctx.fillStyle = 'rgba(255,90,70,0.9)'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center'
       ctx.fillText(`${Math.round(dist)}m`, sx, sy + 22 + 16)
     } else {
-      // Out of range or behind: dim single brackets
-      ctx.strokeStyle = 'rgba(200,70,70,0.35)'; ctx.lineWidth = 1
+      // 射程外: 黄ブラケット（まだ遠い）
+      ctx.strokeStyle = 'rgba(255,210,60,0.35)'; ctx.lineWidth = 1
       _drawCornerBrackets(ctx, sx, sy, 16, 5)
-      ctx.fillStyle = 'rgba(200,70,70,0.5)'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center'
+      ctx.fillStyle = 'rgba(255,210,60,0.5)'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center'
       ctx.fillText(`${Math.round(dist)}m`, sx, sy + 16 + 14)
     }
   }
@@ -3890,16 +3910,15 @@ function drawEnemyBrackets() {
           ctx.fillText('OUT OF RANGE', sx, sy - r - 8)
         }
       } else {
-        // ロックしていない場合は従来の表示（黄色いブラケット）
-        ctx.strokeStyle = inR ? 'rgba(255,210,60,0.8)' : 'rgba(200,120,40,0.35)'
+        // 射程内:赤、射程外:黄（空中目標と統一）
+        ctx.strokeStyle = inR ? 'rgba(255,70,50,0.85)' : 'rgba(255,210,60,0.35)'
         ctx.lineWidth = inR ? 1.5 : 1
         _drawCornerBrackets(ctx, sx, sy, 18, 6)
         if (inR) {
-          // 射程内は二重ブラケット
-          ctx.strokeStyle = 'rgba(255,210,60,0.4)'
+          ctx.strokeStyle = 'rgba(255,80,60,0.4)'
           _drawCornerBrackets(ctx, sx, sy, 24, 8)
         }
-        ctx.fillStyle = inR ? 'rgba(255,210,60,0.9)' : 'rgba(180,120,50,0.45)'
+        ctx.fillStyle = inR ? 'rgba(255,90,70,0.9)' : 'rgba(255,210,60,0.45)'
         ctx.font = inR ? 'bold 12px monospace' : 'bold 11px monospace'
         ctx.textAlign = 'center'
         ctx.fillText(`${Math.round(dist)}m`, sx, sy + 18 + 16)
@@ -4349,7 +4368,7 @@ function loop() {
   touchState.lockPressed    = false
 
   updateBullets(dt)
-  updateMissileArr(playerMissiles, dt, m => createExplosion(m.mesh.position.clone(), 0.6))
+  updateMissileArr(playerMissiles, dt, m => createExplosion(m.mesh.position.clone(), 0.6), true)
   updateMissileArr(enemyMissiles, dt, m => createExplosion(m.mesh.position.clone(), 0.5))
   updateMissileArr(allyMissiles, dt, m => createExplosion(m.mesh.position.clone(), 0.6))
   updateFlares(dt)
