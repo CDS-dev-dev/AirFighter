@@ -1359,6 +1359,34 @@ const MAX_HP = 3
 
 const bulletMat = new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xffdd00, emissiveIntensity: 28.0, roughness: 0.1, metalness: 0 })
 const enemyBulletMat = new THREE.MeshStandardMaterial({ color: 0xff3300, emissive: 0xff1100, emissiveIntensity: 24.0, roughness: 0.1, metalness: 0 })
+
+// ===== SHARED GEOMETRIES (avoid per-shot allocation) =====
+const _playerBulletGeo = new THREE.SphereGeometry(0.5, 6, 6)
+const _enemyBulletGeo  = new THREE.SphereGeometry(0.4, 6, 6)
+
+// ===== SCRATCH VECTORS / QUATERNIONS (avoid per-frame allocation) =====
+const _sv1    = new THREE.Vector3()
+const _sv2    = new THREE.Vector3()
+const _sq1    = new THREE.Quaternion()
+const _sEuler = new THREE.Euler()
+
+// ===== HUD RAYCASTER (module-level, not per-frame) =====
+const _hudRaycaster = new THREE.Raycaster()
+let   _hudFrameCount = 0
+const _hudOcclusionCache = new Map<THREE.Group, boolean>()
+
+// ===== MISSILE TRAIL POOL =====
+const _trailGeo = new THREE.SphereGeometry(0.3, 4, 4)
+const _trailBaseMat = new THREE.MeshBasicMaterial({ color: 0xffaa44, transparent: true, opacity: 0.8 })
+const TRAIL_POOL_SIZE = 60
+const _trailPool: THREE.Mesh[] = []
+for (let _ti = 0; _ti < TRAIL_POOL_SIZE; _ti++) {
+  const _tm = new THREE.Mesh(_trailGeo, _trailBaseMat.clone())
+  _tm.visible = false
+  scene.add(_tm)
+  _trailPool.push(_tm)
+}
+let _trailPoolIdx = 0
 const playerMissileMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xff8800, emissiveIntensity: 12.0, roughness: 0.3, metalness: 0.7 })
 const enemyMissileMat = new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xcc2200, emissiveIntensity: 2.0, roughness: 0.5, metalness: 0.3 })
 const allyMissileMat  = new THREE.MeshStandardMaterial({ color: 0x44ff88, emissive: 0x00cc44, emissiveIntensity: 3.0, roughness: 0.5, metalness: 0.3 })
@@ -1612,7 +1640,7 @@ function fireGun() {
 
   for (const side of [-0.7, 0.7]) {
     const offset = new THREE.Vector3(side, 0, -3).applyQuaternion(player.quaternion)
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), bulletMat)
+    const mesh = new THREE.Mesh(_playerBulletGeo, bulletMat)
     mesh.position.copy(player.position).add(offset)
     scene.add(mesh)
     const playerVel = _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(speed)
@@ -2527,7 +2555,7 @@ function stopGame() {
   allyMissiles.length = 0
   for (const m of [...enemyMissiles]) scene.remove(m.mesh)
   enemyMissiles.length = 0
-  for (const t of [...missileTrails]) scene.remove(t.mesh)
+  for (const t of missileTrails) { t.mesh.visible = false; t.mesh.scale.set(1,1,1) }
   missileTrails.length = 0
   for (const ex of [...explosions]) {
     for (const p of ex.particles) scene.remove(p.mesh)
@@ -2551,7 +2579,7 @@ function startGame(mode: GameMode) {
   for (const b of [...bullets]) scene.remove(b.mesh); bullets.length = 0
   for (const m of [...playerMissiles]) { if (m.light) scene.remove(m.light); scene.remove(m.mesh) }; playerMissiles.length = 0
   for (const m of [...enemyMissiles]) scene.remove(m.mesh); enemyMissiles.length = 0
-  for (const t of [...missileTrails]) scene.remove(t.mesh); missileTrails.length = 0
+  for (const t of missileTrails) { t.mesh.visible = false; t.mesh.scale.set(1,1,1) }; missileTrails.length = 0
   lockedTarget = null
   score = 0; scoreEl.textContent = '0'
   missileAmmo = 6; flareAmmo = 3
@@ -3188,12 +3216,13 @@ function updateHoming(m: HomingMissile, dt: number) {
   if (m.light) m.light.position.copy(m.mesh.position)
   if (m.vel.lengthSq() > 0.01) m.mesh.quaternion.setFromUnitVectors(_fwd, m.vel.clone().normalize())
 
-  // ミサイル軌跡（煙トレイル）を生成（パフォーマンス改善：確率を下げる）
-  if (Math.random() < 0.15) {  // 30%→15%に削減
-    const trailMat = new THREE.MeshBasicMaterial({ color: 0xffaa44, transparent: true, opacity: 0.8 })
-    const trailMesh = new THREE.Mesh(new THREE.SphereGeometry(0.3, 4, 4), trailMat)  // 6→4ポリゴン削減
+  // ミサイル軌跡（プールから再利用）
+  if (Math.random() < 0.15) {
+    const trailMesh = _trailPool[_trailPoolIdx % TRAIL_POOL_SIZE]
+    _trailPoolIdx++
     trailMesh.position.copy(m.mesh.position)
-    scene.add(trailMesh)
+    trailMesh.visible = true
+    ;(trailMesh.material as THREE.MeshBasicMaterial).opacity = 0.8
     missileTrails.push({ mesh: trailMesh, life: 0.6 })
   }
 }
@@ -3493,7 +3522,7 @@ function updateEnemies(dt: number) {
         const enemyVel = currentForward.clone().multiplyScalar(enemy.currentSpeed)
         for (const side of [-0.5, 0.5]) {
           const offset = new THREE.Vector3(side, 0, 0).applyQuaternion(enemy.group.quaternion)
-          const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.4, 6, 6), enemyBulletMat)
+          const mesh = new THREE.Mesh(_enemyBulletGeo, enemyBulletMat)
           mesh.position.copy(enemy.group.position).add(offset)
           scene.add(mesh)
           enemyBullets.push({ mesh, vel: aimDir.clone().multiplyScalar(700).add(enemyVel), life: 0.4 })
@@ -3523,8 +3552,8 @@ function updateMissileTrails(dt: number) {
     mat.opacity = Math.max(0, trail.life / 0.6)
     trail.mesh.scale.multiplyScalar(1 + dt * 2)  // 徐々に拡大
     if (trail.life <= 0) {
-      scene.remove(trail.mesh)
-      mat.dispose()
+      trail.mesh.visible = false
+      trail.mesh.scale.set(1, 1, 1)  // スケールリセット（次回再利用のため）
       missileTrails.splice(i, 1)
     }
   }
@@ -3789,25 +3818,27 @@ function drawEnemyBrackets() {
   }
 
   // Air enemies
-  const raycaster = new THREE.Raycaster()
+  _hudFrameCount++
+  const _shouldRaycast = _hudFrameCount % 3 === 0
   for (const e of enemies) {
     const dist = e.group.position.distanceTo(player.position)
     const toE = e.group.position.clone().sub(player.position)
     const toENorm = toE.clone().normalize()
     const frontDot = toENorm.dot(playerFwd)
 
-    // 地形遮蔽チェック
-    raycaster.set(player.position, toENorm)
-    raycaster.far = dist - 5
-    let blockedByTerrain = false
-    if (currentMap === 'tokyo' && neoTokyoMapSystem) {
-      // 東京MAP: ビル・ランドマークによる遮蔽判定
-      const intersects = raycaster.intersectObjects(neoTokyoMapSystem.getCollisionObjects(), true)
-      blockedByTerrain = intersects.length > 0
+    // 地形遮蔽チェック（3フレームに1回だけレイキャスト、他はキャッシュ使用）
+    let blockedByTerrain: boolean
+    if (_shouldRaycast) {
+      _hudRaycaster.set(player.position, toENorm)
+      _hudRaycaster.far = dist - 5
+      if (currentMap === 'tokyo' && neoTokyoMapSystem) {
+        blockedByTerrain = _hudRaycaster.intersectObjects(neoTokyoMapSystem.getCollisionObjects(), true).length > 0
+      } else {
+        blockedByTerrain = _hudRaycaster.intersectObject(ground, false).length > 0
+      }
+      _hudOcclusionCache.set(e.group, blockedByTerrain)
     } else {
-      // オリジナルMAP: 地形による遮蔽判定
-      const intersects = raycaster.intersectObject(ground, false)
-      blockedByTerrain = intersects.length > 0
+      blockedByTerrain = _hudOcclusionCache.get(e.group) ?? false
     }
 
     const [sx, sy, vis] = projectToScreen(e.group.position)
@@ -3874,12 +3905,12 @@ function drawEnemyBrackets() {
       const dist = gt.group.position.distanceTo(player.position)
       if (dist > MISSILE_LOCK_RANGE * 1.4) continue
 
-      // 地形遮蔽チェック
+      // 地形遮蔽チェック（_hudRaycaster を再利用）
       const toGT = gt.group.position.clone().sub(player.position)
-      raycaster.set(player.position, toGT.normalize())
-      raycaster.far = dist - 5
-      const intersects = raycaster.intersectObject(ground, false)
-      if (intersects.length > 0 && gt !== lockedTarget) continue  // 遮蔽されている場合はスキップ
+      _hudRaycaster.set(player.position, toGT.normalize())
+      _hudRaycaster.far = dist - 5
+      const intersects = _hudRaycaster.intersectObject(ground, false)
+      if (intersects.length > 0 && gt !== lockedTarget) continue
 
       const [sx, sy, vis] = projectToScreen(gt.group.position)
       if (!vis) {
@@ -4201,28 +4232,24 @@ function loop() {
 
   // === FLIGHT PHYSICS ===
   if (pitchInput !== 0)
-    player.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(1, 0, 0), pitchInput * 1.9 * dt))
+    player.quaternion.multiply(_sq1.setFromAxisAngle(_sv1.set(1, 0, 0), pitchInput * 1.9 * dt))
   if (yawInput !== 0) {
-    const localUp = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion)
-    player.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(
-      localUp, -yawInput * 1.5 * dt))
+    const localUp = _sv2.set(0, 1, 0).applyQuaternion(player.quaternion)
+    player.quaternion.premultiply(_sq1.setFromAxisAngle(localUp, -yawInput * 1.5 * dt))
   }
 
   // フライトモードに応じた処理
   if (flightMode === 'realistic') {
-    // リアルモード：バンキング（バンク旋回）
     const targetBankZ = -yawInput * 0.72
     const fwdAxis = _fwd.clone().applyQuaternion(player.quaternion)
-    const currentRollQuat = new THREE.Quaternion().setFromAxisAngle(fwdAxis, targetBankZ * dt * 5)
-    player.quaternion.multiply(currentRollQuat)
+    player.quaternion.multiply(_sq1.setFromAxisAngle(fwdAxis, targetBankZ * dt * 5))
   }
 
   // 自動水平復帰（ロールのみ・ピッチは補正しない）
   if (Math.abs(yawInput) < 0.05) {
-    const _lvEuler = new THREE.Euler().setFromQuaternion(player.quaternion, 'YXZ')
-    _lvEuler.z *= Math.exp(-dt * 3.5)  // ロール（Z軸）のみ減衰、ピッチ(X)はそのまま
-    player.quaternion.setFromEuler(_lvEuler)
+    _sEuler.setFromQuaternion(player.quaternion, 'YXZ')
+    _sEuler.z *= Math.exp(-dt * 3.5)
+    player.quaternion.setFromEuler(_sEuler)
   }
   player.quaternion.normalize()
 
