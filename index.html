@@ -417,6 +417,10 @@
       }
       .ms-start:hover { background: rgba(30,80,180,0.9); }
       .ms-card-war .ms-start { border-color: rgba(255,100,60,0.5); }
+      .ms-card-multi { border-color: rgba(60,220,255,0.3); }
+      .ms-card-multi .ms-start { border-color: rgba(60,220,255,0.5); color: rgba(100,230,255,0.95); background: rgba(5,30,50,0.8); }
+      .ms-card-multi .ms-start:hover { background: rgba(10,60,100,0.9); }
+      .ms-card-multi .ms-start:disabled { opacity: 0.45; cursor: not-allowed; }
       .ms-config { width: 100%; display: flex; flex-direction: column; gap: 6px; }
       .ms-cfg-row { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 10px; }
       .ms-cfg-lbl { width: 28px; text-align: right; color: rgba(160,220,255,0.6); letter-spacing: 1px; }
@@ -855,7 +859,7 @@
 
     <!-- ゲームモード＆MAP選択 -->
     <div id="mode-screen">
-      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v4.3.5</span></div>
+      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v4.4.0</span></div>
       <div class="ms-sub">SELECT MAP & MISSION MODE</div>
 
       <!-- MAP選択 -->
@@ -936,6 +940,16 @@
           <div class="ms-desc">敵なし。マップを自由に探索する</div>
           <div style="flex:1"></div>
           <button class="ms-start" data-mode="free">START</button>
+        </div>
+
+        <!-- マルチプレイ -->
+        <div class="ms-card ms-card-multi">
+          <div class="ms-icon">&#128101;</div>
+          <div class="ms-name">マルチプレイ</div>
+          <div class="ms-desc">ランダムマッチ — 最大4人で<br>リアルタイム空中戦</div>
+          <div id="mp-status" style="font-size:11px; color:rgba(100,220,255,0.8); margin:4px 0; min-height:16px;"></div>
+          <div style="flex:1"></div>
+          <button class="ms-start ms-start-multi" id="btn-multi-start">MATCH</button>
         </div>
 
       </div>

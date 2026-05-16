@@ -3,6 +3,7 @@ import { Sky } from 'three/addons/objects/Sky.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
+import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
 const VERSION = '3.3.5'
@@ -1289,9 +1290,14 @@ function playExplosionSound(scale = 1.0) {
   src.connect(f); f.connect(g); g.connect(audioCtx.destination); src.start()
 }
 
+// ===== MULTIPLAYER =====
+// Set this to your deployed Cloudflare Workers URL after running `wrangler deploy`
+const MP_SERVER_URL = (import.meta.env.VITE_MP_SERVER_URL as string | undefined) ?? ''
+let mpClient: MultiplayerClient | null = null
+
 // ===== GAME OBJECTS =====
 type GameMode = 'dogfight' | 'souryokusen' | 'free'
-type FlightMode = 'arcade' | 'realistic'  // 操作モード
+type FlightMode = 'arcade' | 'realistic'
 let currentMode: GameMode | null = null
 let flightMode: FlightMode = 'arcade'  // デフォルトはアーケード（水平旋回）
 let isPaused = false  // ポーズ状態
@@ -2538,6 +2544,11 @@ function stopGame() {
   currentMode = null
   missionComplete = false
 
+  // マルチプレイ切断
+  if (mpClient) { mpClient.disconnect(); mpClient = null }
+  if (mpStartBtn) { mpStartBtn.disabled = !MP_SERVER_URL }
+  if (mpStatusEl) mpStatusEl.textContent = MP_SERVER_URL ? '' : 'サーバー未設定'
+
   // 全てのゲームオブジェクトをクリア
   for (const e of [...enemies]) scene.remove(e.group)
   enemies.length = 0
@@ -3149,6 +3160,49 @@ function togglePause() {
 
 document.getElementById('pause-resume')!.addEventListener('click', togglePause)
 document.getElementById('menu-btn')!.addEventListener('click', togglePause)
+
+// ===== MULTIPLAYER BUTTON =====
+const mpStatusEl = document.getElementById('mp-status')
+const mpStartBtn = document.getElementById('btn-multi-start') as HTMLButtonElement | null
+if (mpStartBtn) {
+  if (!MP_SERVER_URL) {
+    mpStartBtn.disabled = true
+    if (mpStatusEl) mpStatusEl.textContent = 'サーバー未設定'
+  } else {
+    mpStartBtn.addEventListener('click', async () => {
+      if (!MP_SERVER_URL) return
+      mpStartBtn.disabled = true
+      if (mpStatusEl) mpStatusEl.textContent = 'マッチング中...'
+      try {
+        const client = new MultiplayerClient(
+          scene,
+          () => {
+            // Remote player uses procedural aircraft (red enemy color)
+            const g = createAircraft(0xcc2222, 0x661111)
+            return g
+          },
+          (evt) => {
+            // Handle remote events (explosions, etc.)
+            if (evt.kind === 'explosion') {
+              const d = evt.data as { pos: [number, number, number]; scale: number }
+              createExplosion(new THREE.Vector3(...d.pos), d.scale)
+              playExplosionSound(d.scale)
+            }
+          },
+        )
+        await client.connect(MP_SERVER_URL, 'dogfight')
+        mpClient = client
+        if (mpStatusEl) mpStatusEl.textContent = `接続完了 — ping ${client.latency}ms`
+        // Start game in dogfight mode
+        startGame('dogfight')
+      } catch (e) {
+        console.error('[MP] Connect failed', e)
+        if (mpStatusEl) mpStatusEl.textContent = '接続失敗'
+        mpStartBtn.disabled = false
+      }
+    })
+  }
+}
 
 // メニューに戻るボタン
 document.getElementById('back-to-menu')!.addEventListener('click', () => {
@@ -4505,6 +4559,18 @@ function loop() {
         .addScaledVector(new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion), 4)
       spawnSmoke(tailPos, 1.8, 0x222200)
     }
+  }
+
+  // ===== MULTIPLAYER =====
+  if (mpClient?.connected) {
+    mpClient.tick(dt)
+    mpClient.sendState({
+      pos: [player.position.x, player.position.y, player.position.z],
+      quat: [player.quaternion.x, player.quaternion.y, player.quaternion.z, player.quaternion.w],
+      spd: speed,
+      hp: playerHP,
+      score,
+    }, dt)
   }
 
   if (composer) {
