@@ -1,17 +1,16 @@
 /**
- * AirFighter Multiplayer Client
+ * AirFighter Multiplayer Client — Supabase Realtime
  *
- * Connects to Cloudflare Workers server via WebSocket.
- * Syncs local player state and renders remote players.
+ * Uses Supabase Realtime Broadcast (no dedicated server required).
+ * Players in the same mode share one channel; Presence handles join/leave.
  *
- * Usage:
- *   const mp = new MultiplayerClient(scene, getLocalState, onRemoteEvent)
- *   await mp.connect(serverUrl, 'dogfight')
- *   // In game loop:
- *   mp.tick(dt)
- *   mp.sendState(localState)
+ * Setup: create a free project at supabase.com, then set in .env.local:
+ *   VITE_SUPABASE_URL=https://xxxx.supabase.co
+ *   VITE_SUPABASE_ANON_KEY=your-anon-key
  */
 
+import { createClient } from '@supabase/supabase-js'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import * as THREE from 'three'
 
 export interface RemotePlayerState {
@@ -25,11 +24,9 @@ export interface RemotePlayerState {
 export interface RemotePlayer {
   id: string
   state: RemotePlayerState
-  // Smoothed rendering state
   renderPos: THREE.Vector3
   renderQuat: THREE.Quaternion
   group: THREE.Group
-  nameTag?: THREE.Sprite
   lastUpdate: number
 }
 
@@ -49,22 +46,18 @@ export interface LocalState {
   score: number
 }
 
-const SEND_INTERVAL_MS = 50   // 20Hz state broadcast
-const LERP_FACTOR = 12        // position/rotation interpolation speed (per second)
-const TIMEOUT_MS = 5000       // remove player if no update for 5s
+const SEND_INTERVAL_MS = 50
+const LERP_FACTOR = 12
+const TIMEOUT_MS = 5000
 
 export class MultiplayerClient {
-  private ws: WebSocket | null = null
-  private playerId: string | null = null
-  private roomId: string | null = null
+  private channel: RealtimeChannel | null = null
+  private playerId: string = crypto.randomUUID()
   private remotePlayers = new Map<string, RemotePlayer>()
   private scene: THREE.Scene
   private onEvent: (evt: RemoteEvent) => void
   private makePlayerGroup: () => THREE.Group
   private sendTimer = 0
-  private pingTimer = 0
-  private latencyMs = 0
-  private _pingT = 0
   public connected = false
 
   constructor(
@@ -77,64 +70,67 @@ export class MultiplayerClient {
     this.onEvent = onEvent
   }
 
-  /** Connect to matchmaking server and join a room */
-  async connect(serverUrl: string, mode: string): Promise<void> {
+  async connect(supabaseUrl: string, supabaseKey: string, mode: string): Promise<void> {
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
     return new Promise((resolve, reject) => {
-      const wsUrl = serverUrl.replace(/^http/, 'ws') + `/match?mode=${mode}`
-      this.ws = new WebSocket(wsUrl)
+      this.channel = supabase.channel(`airfighter:${mode}`, {
+        config: {
+          broadcast: { self: false, ack: false },
+          presence: { key: this.playerId },
+        },
+      })
 
-      this.ws.onopen = () => {
-        console.log('[MP] WebSocket connected')
-      }
-
-      this.ws.onmessage = (evt) => {
-        this._handleMessage(JSON.parse(evt.data as string))
-      }
-
-      this.ws.onclose = () => {
-        console.log('[MP] Disconnected')
-        this.connected = false
-        this._cleanupAll()
-      }
-
-      this.ws.onerror = (err) => {
-        console.error('[MP] WebSocket error', err)
-        reject(err)
-      }
-
-      // Resolve when we receive 'welcome'
-      const origHandle = this._handleMessage.bind(this)
-      this._handleMessage = (msg) => {
-        if (msg.type === 'welcome') {
-          this.playerId = msg.playerId as string
-          this.roomId = msg.roomId as string
-          this.connected = true
-          console.log(`[MP] Joined room ${this.roomId} as ${this.playerId}`)
-          // Register already-present players
-          for (const id of (msg.players as string[])) {
-            this._addRemotePlayer(id)
+      this.channel
+        .on('presence', { event: 'join' }, ({ newPresences }) => {
+          for (const p of newPresences as unknown as Array<{ id: string }>) {
+            if (p.id !== this.playerId && !this.remotePlayers.has(p.id)) {
+              this._addRemotePlayer(p.id)
+            }
           }
-          this._handleMessage = origHandle
-          resolve()
-        } else {
-          origHandle(msg)
-        }
-      }
+        })
+        .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+          for (const p of leftPresences as unknown as Array<{ id: string }>) {
+            this._removeRemotePlayer(p.id)
+          }
+        })
+        .on('broadcast', { event: 'state' }, ({ payload }) => {
+          const id = payload.playerId as string
+          let rp = this.remotePlayers.get(id)
+          if (!rp) rp = this._addRemotePlayer(id)
+          rp.state = payload as unknown as RemotePlayerState
+          rp.lastUpdate = Date.now()
+        })
+        .on('broadcast', { event: 'game_event' }, ({ payload }) => {
+          this.onEvent({
+            playerId: payload.playerId as string,
+            kind: payload.kind as RemoteEventKind,
+            data: payload.data,
+          })
+        })
+        .subscribe(async (status, err) => {
+          if (status === 'SUBSCRIBED') {
+            await this.channel!.track({ id: this.playerId })
+            this.connected = true
+            console.log(`[MP] Connected to airfighter:${mode} as ${this.playerId}`)
+            resolve()
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.error('[MP] Subscribe error', err)
+            reject(err ?? new Error(status))
+          }
+        })
     })
   }
 
   disconnect() {
-    this.ws?.close()
-    this.ws = null
+    this.channel?.unsubscribe()
+    this.channel = null
     this.connected = false
     this._cleanupAll()
   }
 
-  /** Call every game frame */
   tick(dt: number) {
     if (!this.connected) return
-
-    // Interpolate remote player positions
     const now = Date.now()
     for (const [id, rp] of this.remotePlayers) {
       if (now - rp.lastUpdate > TIMEOUT_MS) {
@@ -147,78 +143,35 @@ export class MultiplayerClient {
       rp.group.position.copy(rp.renderPos)
       rp.group.quaternion.copy(rp.renderQuat)
     }
-
-    // Ping every 3s
-    this.pingTimer += dt
-    if (this.pingTimer > 3) {
-      this.pingTimer = 0
-      this._pingT = Date.now()
-      this._send({ type: 'ping', t: this._pingT })
-    }
   }
 
-  /** Send local player state (called from game loop at SEND_INTERVAL_MS) */
   sendState(state: LocalState, dt: number) {
     if (!this.connected) return
     this.sendTimer += dt * 1000
     if (this.sendTimer < SEND_INTERVAL_MS) return
     this.sendTimer = 0
-    this._send({ type: 'state', ...state })
+    this.channel?.send({
+      type: 'broadcast',
+      event: 'state',
+      payload: { playerId: this.playerId, ...state },
+    })
   }
 
-  /** Send a game event to all remote players */
   sendEvent(kind: RemoteEventKind, data?: unknown) {
     if (!this.connected) return
-    this._send({ type: 'event', kind, data })
+    this.channel?.send({
+      type: 'broadcast',
+      event: 'game_event',
+      payload: { playerId: this.playerId, kind, data },
+    })
   }
 
   get players(): RemotePlayer[] {
     return [...this.remotePlayers.values()]
   }
 
-  get latency(): number { return this.latencyMs }
-  get myId(): string | null { return this.playerId }
-
-  // ── Private ──────────────────────────────────────────────
-
-  private _handleMessage(msg: Record<string, unknown>) {
-    switch (msg.type) {
-      case 'welcome':
-        // handled in connect()
-        break
-
-      case 'player_joined': {
-        const id = msg.playerId as string
-        if (!this.remotePlayers.has(id)) this._addRemotePlayer(id)
-        break
-      }
-
-      case 'player_left':
-        this._removeRemotePlayer(msg.playerId as string)
-        break
-
-      case 'state': {
-        const id = msg.playerId as string
-        let rp = this.remotePlayers.get(id)
-        if (!rp) rp = this._addRemotePlayer(id)
-        rp.state = msg as unknown as RemotePlayerState
-        rp.lastUpdate = Date.now()
-        break
-      }
-
-      case 'event':
-        this.onEvent({
-          playerId: msg.playerId as string,
-          kind: msg.kind as RemoteEventKind,
-          data: msg.data,
-        })
-        break
-
-      case 'pong':
-        this.latencyMs = Date.now() - this._pingT
-        break
-    }
-  }
+  get latency(): number { return 0 }
+  get myId(): string { return this.playerId }
 
   private _addRemotePlayer(id: string): RemotePlayer {
     const group = this.makePlayerGroup()
@@ -246,11 +199,5 @@ export class MultiplayerClient {
 
   private _cleanupAll() {
     for (const id of this.remotePlayers.keys()) this._removeRemotePlayer(id)
-  }
-
-  private _send(msg: unknown) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(msg))
-    }
   }
 }

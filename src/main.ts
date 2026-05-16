@@ -6,7 +6,7 @@ import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
-const VERSION = '3.3.5'
+const VERSION = '4.5.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -23,11 +23,12 @@ function getEffectiveSize() {
 const { w: initW, h: initH } = getEffectiveSize()
 
 // ===== RENDERER =====
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
+const isMobileDevice = navigator.maxTouchPoints > 0
+const renderer = new THREE.WebGLRenderer({ antialias: !isMobileDevice, powerPreference: 'high-performance' })
 renderer.setSize(initW, initH)
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.BasicShadowMap  // PCFSoftShadowMap → BasicShadowMap（パフォーマンス改善）
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobileDevice ? 1.5 : 2))
+renderer.shadowMap.enabled = !isMobileDevice  // モバイルはシャドウ無効（大幅な描画負荷削減）
+renderer.shadowMap.type = THREE.BasicShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.toneMappingExposure = 0.78
@@ -1031,7 +1032,6 @@ const safeSpawnZ = 500
 player.position.set(safeSpawnX, terrainH(safeSpawnX, safeSpawnZ) + 150, safeSpawnZ)  // 初期位置を高く（90→150m）
 player.rotation.y = Math.PI  // 南向き（北の山とは反対方向）に初期化
 // スマホでは機体を大きく表示
-const isMobileDevice = 'ontouchstart' in window
 if (isMobileDevice) player.scale.setScalar(1.5)
 scene.add(player)
 let cameraOffset = new THREE.Vector3(0, 5, 20)
@@ -1291,8 +1291,9 @@ function playExplosionSound(scale = 1.0) {
 }
 
 // ===== MULTIPLAYER =====
-// Set this to your deployed Cloudflare Workers URL after running `wrangler deploy`
-const MP_SERVER_URL = (import.meta.env.VITE_MP_SERVER_URL as string | undefined) ?? ''
+const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? ''
+const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? ''
+const MP_READY = !!(SUPABASE_URL && SUPABASE_ANON_KEY)
 let mpClient: MultiplayerClient | null = null
 
 // ===== GAME OBJECTS =====
@@ -2278,14 +2279,15 @@ function createRockFormations(): void {
 }
 
 // ===== SMOKE PARTICLE SYSTEM =====
-const _smokeMat = new THREE.MeshStandardMaterial({
-  color: 0x1a1a1a, transparent: true, opacity: 0.55, roughness: 1, depthWrite: false
-})
+const _smokeGeo = new THREE.SphereGeometry(1, 4, 4)
+const _smokeMatBase = new THREE.MeshBasicMaterial({ color: 0x1a1a1a, transparent: true, opacity: 0.55, depthWrite: false })
+const SMOKE_CAP = isMobileDevice ? 30 : 60
 
 function spawnSmoke(pos: THREE.Vector3, radius = 3.5, col = 0x1a1a1a): void {
-  if (smokeParticles.length > 80) return  // 上限を削減（160→80）
-  const mat = _smokeMat.clone(); mat.color.set(col)
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 4, 4), mat)  // ポリゴン削減（5→4）
+  if (smokeParticles.length > SMOKE_CAP) return
+  const mat = _smokeMatBase.clone(); mat.color.set(col)
+  const mesh = new THREE.Mesh(_smokeGeo, mat)
+  mesh.scale.setScalar(radius)
   mesh.position.copy(pos).add(new THREE.Vector3(
     (Math.random()-0.5)*4, 0, (Math.random()-0.5)*4
   ))
@@ -2546,8 +2548,8 @@ function stopGame() {
 
   // マルチプレイ切断
   if (mpClient) { mpClient.disconnect(); mpClient = null }
-  if (mpStartBtn) { mpStartBtn.disabled = !MP_SERVER_URL }
-  if (mpStatusEl) mpStatusEl.textContent = MP_SERVER_URL ? '' : 'サーバー未設定'
+  if (mpStartBtn) { mpStartBtn.disabled = !MP_READY }
+  if (mpStatusEl) mpStatusEl.textContent = MP_READY ? '' : 'サーバー未設定'
 
   // 全てのゲームオブジェクトをクリア
   for (const e of [...enemies]) scene.remove(e.group)
@@ -3165,24 +3167,19 @@ document.getElementById('menu-btn')!.addEventListener('click', togglePause)
 const mpStatusEl = document.getElementById('mp-status')
 const mpStartBtn = document.getElementById('btn-multi-start') as HTMLButtonElement | null
 if (mpStartBtn) {
-  if (!MP_SERVER_URL) {
+  if (!MP_READY) {
     mpStartBtn.disabled = true
     if (mpStatusEl) mpStatusEl.textContent = 'サーバー未設定'
   } else {
     mpStartBtn.addEventListener('click', async () => {
-      if (!MP_SERVER_URL) return
+      if (!MP_READY) return
       mpStartBtn.disabled = true
       if (mpStatusEl) mpStatusEl.textContent = 'マッチング中...'
       try {
         const client = new MultiplayerClient(
           scene,
-          () => {
-            // Remote player uses procedural aircraft (red enemy color)
-            const g = createAircraft(0xcc2222, 0x661111)
-            return g
-          },
+          () => createAircraft(0xcc2222, 0x661111),
           (evt) => {
-            // Handle remote events (explosions, etc.)
             if (evt.kind === 'explosion') {
               const d = evt.data as { pos: [number, number, number]; scale: number }
               createExplosion(new THREE.Vector3(...d.pos), d.scale)
@@ -3190,10 +3187,9 @@ if (mpStartBtn) {
             }
           },
         )
-        await client.connect(MP_SERVER_URL, 'dogfight')
+        await client.connect(SUPABASE_URL, SUPABASE_ANON_KEY, `dogfight:${currentMap}`)
         mpClient = client
-        if (mpStatusEl) mpStatusEl.textContent = `接続完了 — ping ${client.latency}ms`
-        // Start game in dogfight mode
+        if (mpStatusEl) mpStatusEl.textContent = '接続完了'
         startGame('dogfight')
       } catch (e) {
         console.error('[MP] Connect failed', e)
@@ -3282,27 +3278,29 @@ function updateHoming(m: HomingMissile, dt: number) {
 }
 
 // ===== EXPLOSIONS =====
+const _explosionGeo = new THREE.SphereGeometry(1, 4, 4)
+const _explosionMatCore = new THREE.MeshBasicMaterial({ color: 0xff5500, transparent: true, depthWrite: false })
+const _explosionMatOuter = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, depthWrite: false })
+
 function createExplosion(pos: THREE.Vector3, scale = 1.0) {
   const particles: Array<{ mesh: THREE.Mesh; vel: THREE.Vector3 }> = []
-  const count = Math.floor(4 + scale * 2)  // パーティクル数をさらに削減（6+4→4+2）
+  const count = Math.floor(4 + scale * 2)
   for (let i = 0; i < count; i++) {
     const core = i < count * 0.5
-    const mat = new THREE.MeshStandardMaterial({
-      color: core ? 0xff5500 : 0xffcc00,
-      emissive: core ? 0xff2200 : 0xff8800,
-      emissiveIntensity: 4.0, roughness: 0.8, transparent: true, opacity: 1
-    })
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry((0.3 + Math.random() * 0.7) * scale, 4, 4), mat)  // ジオメトリ解像度5→4
+    const mat = (core ? _explosionMatCore : _explosionMatOuter).clone()
+    const mesh = new THREE.Mesh(_explosionGeo, mat)
+    mesh.scale.setScalar((0.3 + Math.random() * 0.7) * scale)
     mesh.position.copy(pos)
     scene.add(mesh)
     particles.push({ mesh, vel: new THREE.Vector3((Math.random() - 0.5) * 28 * scale, Math.random() * 18 * scale, (Math.random() - 0.5) * 28 * scale) })
   }
-  // Flash point light at explosion
-  const flash = new THREE.PointLight(0xff6600, 6 * scale, 40)  // 強度8→6、範囲60→40に削減
-  flash.position.copy(pos)
-  scene.add(flash)
-  setTimeout(() => scene.remove(flash), 150)  // 表示時間200ms→150msに短縮
-  explosions.push({ particles, life: 1.1 })  // ライフタイム1.3→1.1に短縮
+  if (!isMobileDevice) {
+    const flash = new THREE.PointLight(0xff6600, 6 * scale, 40)
+    flash.position.copy(pos)
+    scene.add(flash)
+    setTimeout(() => scene.remove(flash), 150)
+  }
+  explosions.push({ particles, life: 1.1 })
 }
 
 // ===== UPDATE =====

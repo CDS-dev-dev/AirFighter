@@ -369,15 +369,25 @@
       #mode-screen {
         position: fixed; inset: 0; z-index: 500;
         background: linear-gradient(160deg, #020b1a 0%, #081830 55%, #030d1e 100%);
-        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+      }
+      .ms-settings-group {
+        display: flex; flex-direction: column; gap: 12px; align-items: center;
+      }
+      .ms-settings-row {
+        display: flex; align-items: center; gap: 10px; justify-content: center;
+      }
+      .ms-lbl {
+        color: rgba(255,255,255,0.7); font-size: 14px;
+        min-width: 30px; text-align: right;
       }
       .map-select-btn {
-        padding: 14px 32px; background: rgba(8,22,48,0.7);
+        padding: 10px 24px; background: rgba(8,22,48,0.7);
         border: 2px solid rgba(60,140,255,0.3); border-radius: 10px;
-        color: rgba(200,235,255,0.7); font-size: 15px; letter-spacing: 2px;
-        cursor: pointer; display: flex; align-items: center; gap: 10px;
+        color: rgba(200,235,255,0.7); font-size: 14px; letter-spacing: 2px;
+        cursor: pointer; display: flex; align-items: center; gap: 8px;
         transition: all 0.15s; font-family: 'Segoe UI', system-ui;
-        min-height: 48px;  /* タッチしやすい最小高さ */
+        min-height: 44px;
       }
       .map-select-btn:hover { background: rgba(18,48,110,0.8); border-color: rgba(80,170,255,0.5); }
       .map-select-btn.active {
@@ -549,34 +559,26 @@
       }
       /* スマホ横画面：モード選択画面をコンパクトに（1画面に収める） */
       @media (pointer: coarse) and (orientation: landscape) {
-        #mode-screen {
-          gap: 2px;
-          padding: 4px 10px;
-          overflow-y: auto;
-          max-height: 100vh;
-        }
-        .ms-title { font-size: 18px; letter-spacing: 3px; margin-bottom: 1px; }
-        .ms-sub { font-size: 6px; letter-spacing: 1px; margin-bottom: 2px; }
-        .map-select-btn { padding: 6px 16px; font-size: 11px; min-height: 36px; }
-        .map-select-btn span:first-child { font-size: 16px; }
-        .ms-grid { gap: 4px; max-width: 100%; grid-template-columns: repeat(3, 1fr); }
-        .ms-card { padding: 4px 4px; gap: 2px; }
+        #mode-screen { gap: 4px; padding: 4px 8px; overflow: hidden; }
+        .ms-title { font-size: 18px; letter-spacing: 3px; }
+        .ms-sub { font-size: 6px; letter-spacing: 1px; }
+        .ms-settings-group { flex-direction: row; gap: 8px; flex-wrap: nowrap; }
+        .ms-settings-row { gap: 4px; }
+        .ms-lbl { font-size: 9px; min-width: 20px; }
+        .map-select-btn { padding: 5px 8px; font-size: 9px; min-height: 30px; gap: 4px; letter-spacing: 1px; }
+        .map-select-btn span:first-child { font-size: 14px; }
+        .ms-grid { gap: 4px; max-width: 100%; grid-template-columns: repeat(4, 1fr); }
+        .ms-card { padding: 6px 4px; gap: 2px; }
         .ms-icon { font-size: 14px; }
         .ms-name { font-size: 9px; }
-        .ms-desc { font-size: 6px; line-height: 1.1; }
-        .ms-start { padding: 6px 14px; font-size: 10px; margin-top: 1px; min-height: 36px; }
+        .ms-desc { font-size: 6px; line-height: 1.2; }
+        .ms-start { padding: 5px 10px; font-size: 10px; margin-top: 1px; min-height: 32px; }
         .ms-config { gap: 2px; }
         .ms-cfg-row { gap: 3px; font-size: 8px; }
         .ms-cfg-val { font-size: 11px; }
-        .ms-cfg-lbl { width: 20px; font-size: 7px; }
-        .ms-adj { width: 28px; height: 28px; font-size: 14px; min-width: 28px; min-height: 28px; }
-        #mode-screen > div[style*="display: flex"] {
-          margin-bottom: 2px;
-          gap: 6px;
-        }
-        #mode-screen > div[style*="display: flex"] span:first-child {
-          font-size: 10px;
-        }
+        .ms-cfg-lbl { width: 18px; font-size: 7px; }
+        .ms-adj { width: 26px; height: 26px; font-size: 14px; min-width: 26px; min-height: 26px; }
+        .ms-spacer { display: none; }
       }
       /* 縦画面でも強制横向き表示（縦ロックされていても横持ちでプレイ可能） */
       @media (pointer: coarse) and (orientation: portrait) {
@@ -597,34 +599,26 @@
           height: 100% !important;
         }
         /* 90度回転後は視覚的に横画面なのでコンパクトスタイルを適用 */
-        #mode-screen {
-          gap: 2px;
-          padding: 4px 10px;
-          overflow-y: auto;
-          max-height: 100vw;
-        }
-        .ms-title { font-size: 18px; letter-spacing: 3px; margin-bottom: 1px; }
-        .ms-sub { font-size: 6px; letter-spacing: 1px; margin-bottom: 2px; }
-        .map-select-btn { padding: 6px 16px; font-size: 11px; min-height: 36px; }
-        .map-select-btn span:first-child { font-size: 16px; }
-        .ms-grid { gap: 4px; max-width: 100%; grid-template-columns: repeat(3, 1fr); }
-        .ms-card { padding: 4px 4px; gap: 2px; }
+        #mode-screen { gap: 4px; padding: 4px 8px; overflow: hidden; max-height: 100vw; }
+        .ms-title { font-size: 18px; letter-spacing: 3px; }
+        .ms-sub { font-size: 6px; letter-spacing: 1px; }
+        .ms-settings-group { flex-direction: row; gap: 8px; flex-wrap: nowrap; }
+        .ms-settings-row { gap: 4px; }
+        .ms-lbl { font-size: 9px; min-width: 20px; }
+        .map-select-btn { padding: 5px 8px; font-size: 9px; min-height: 30px; gap: 4px; letter-spacing: 1px; }
+        .map-select-btn span:first-child { font-size: 14px; }
+        .ms-grid { gap: 4px; max-width: 100%; grid-template-columns: repeat(4, 1fr); }
+        .ms-card { padding: 6px 4px; gap: 2px; }
         .ms-icon { font-size: 14px; }
         .ms-name { font-size: 9px; }
-        .ms-desc { font-size: 6px; line-height: 1.1; }
-        .ms-start { padding: 6px 14px; font-size: 10px; margin-top: 1px; min-height: 36px; }
+        .ms-desc { font-size: 6px; line-height: 1.2; }
+        .ms-start { padding: 5px 10px; font-size: 10px; margin-top: 1px; min-height: 32px; }
         .ms-config { gap: 2px; }
         .ms-cfg-row { gap: 3px; font-size: 8px; }
         .ms-cfg-val { font-size: 11px; }
-        .ms-cfg-lbl { width: 20px; font-size: 7px; }
-        .ms-adj { width: 28px; height: 28px; font-size: 14px; min-width: 28px; min-height: 28px; }
-        #mode-screen > div[style*="display: flex"] {
-          margin-bottom: 2px;
-          gap: 6px;
-        }
-        #mode-screen > div[style*="display: flex"] span:first-child {
-          font-size: 10px;
-        }
+        .ms-cfg-lbl { width: 18px; font-size: 7px; }
+        .ms-adj { width: 26px; height: 26px; font-size: 14px; min-width: 26px; min-height: 26px; }
+        .ms-spacer { display: none; }
       }
     </style>
   </head>
@@ -859,45 +853,38 @@
 
     <!-- ゲームモード＆MAP選択 -->
     <div id="mode-screen">
-      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v4.4.0</span></div>
+      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v4.5.0</span></div>
       <div class="ms-sub">SELECT MAP & MISSION MODE</div>
 
-      <!-- MAP選択 -->
-      <div style="display: flex; gap: 15px; margin-bottom: 20px;">
-        <button id="map-btn-original" class="map-select-btn active" data-map="original">
-          <span style="font-size: 24px;">🏔️</span>
-          <span>ORIGINAL MAP</span>
-        </button>
-        <button id="map-btn-tokyo" class="map-select-btn" data-map="tokyo">
-          <span style="font-size: 24px;">🗼</span>
-          <span>NEO TOKYO</span>
-        </button>
-      </div>
-
-      <!-- 音声設定 -->
-      <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center; justify-content: center;">
-        <span style="color: rgba(255,255,255,0.7); font-size: 14px;">音声:</span>
-        <button id="audio-btn-off" class="map-select-btn active" data-audio="off" style="padding: 8px 20px; font-size: 14px;">
-          <span style="font-size: 18px;">🔇</span>
-          <span>OFF</span>
-        </button>
-        <button id="audio-btn-on" class="map-select-btn" data-audio="on" style="padding: 8px 20px; font-size: 14px;">
-          <span style="font-size: 18px;">🔊</span>
-          <span>ON</span>
-        </button>
-      </div>
-
-      <!-- 操作モード設定 -->
-      <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center; justify-content: center;">
-        <span style="color: rgba(255,255,255,0.7); font-size: 14px;">操作:</span>
-        <button id="flight-btn-arcade" class="map-select-btn active" data-flight="arcade" style="padding: 8px 20px; font-size: 14px;">
-          <span style="font-size: 18px;">🎮</span>
-          <span>アーケード</span>
-        </button>
-        <button id="flight-btn-realistic" class="map-select-btn" data-flight="realistic" style="padding: 8px 20px; font-size: 14px;">
-          <span style="font-size: 18px;">✈️</span>
-          <span>リアル</span>
-        </button>
+      <!-- MAP・音声・操作設定 -->
+      <div class="ms-settings-group">
+        <div class="ms-settings-row">
+          <span class="ms-lbl">MAP</span>
+          <button id="map-btn-original" class="map-select-btn active" data-map="original">
+            <span>🏔️</span><span>ORIGINAL</span>
+          </button>
+          <button id="map-btn-tokyo" class="map-select-btn" data-map="tokyo">
+            <span>🗼</span><span>NEO TOKYO</span>
+          </button>
+        </div>
+        <div class="ms-settings-row">
+          <span class="ms-lbl">音声</span>
+          <button id="audio-btn-off" class="map-select-btn active" data-audio="off">
+            <span>🔇</span><span>OFF</span>
+          </button>
+          <button id="audio-btn-on" class="map-select-btn" data-audio="on">
+            <span>🔊</span><span>ON</span>
+          </button>
+        </div>
+        <div class="ms-settings-row">
+          <span class="ms-lbl">操作</span>
+          <button id="flight-btn-arcade" class="map-select-btn active" data-flight="arcade">
+            <span>🎮</span><span>アーケード</span>
+          </button>
+          <button id="flight-btn-realistic" class="map-select-btn" data-flight="realistic">
+            <span>✈️</span><span>リアル</span>
+          </button>
+        </div>
       </div>
 
       <div class="ms-grid">
@@ -929,7 +916,7 @@
           <div class="ms-icon">&#9876;</div>
           <div class="ms-name">総力戦</div>
           <div class="ms-desc">航空機・戦車・艦船・爆撃機<br>全種の敵が一斉に出現</div>
-          <div style="flex:1"></div>
+          <div class="ms-spacer" style="flex:1"></div>
           <button class="ms-start" data-mode="souryokusen">START</button>
         </div>
 
@@ -938,7 +925,7 @@
           <div class="ms-icon">&#9711;</div>
           <div class="ms-name">フリーフライト</div>
           <div class="ms-desc">敵なし。マップを自由に探索する</div>
-          <div style="flex:1"></div>
+          <div class="ms-spacer" style="flex:1"></div>
           <button class="ms-start" data-mode="free">START</button>
         </div>
 
@@ -948,7 +935,7 @@
           <div class="ms-name">マルチプレイ</div>
           <div class="ms-desc">ランダムマッチ — 最大4人で<br>リアルタイム空中戦</div>
           <div id="mp-status" style="font-size:11px; color:rgba(100,220,255,0.8); margin:4px 0; min-height:16px;"></div>
-          <div style="flex:1"></div>
+          <div class="ms-spacer" style="flex:1"></div>
           <button class="ms-start ms-start-multi" id="btn-multi-start">MATCH</button>
         </div>
 
