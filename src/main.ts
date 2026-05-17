@@ -6,7 +6,7 @@ import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
-const VERSION = '4.5.0'
+const VERSION = '4.6.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -2961,20 +2961,20 @@ async function switchMap(map: GameMap) {
 
     // ステップ2: NEO東京MAPを初期化
     if (!neoTokyoMapSystem) {
-      neoTokyoMapSystem = new NeoTokyoMapSystem(scene)
+      neoTokyoMapSystem = new NeoTokyoMapSystem(scene, isMobileDevice)
     }
     await neoTokyoMapSystem.initialize()
 
-    // ステップ3: プレイヤーを東京上空に配置
-    player.position.set(0, 500, 0)
+    // ステップ3: プレイヤーを台地上空に配置（峡谷を避けた安全地点）
+    player.position.set(0, 600, -900)
     player.rotation.set(0, 0, 0)
-    console.log('✈️ プレイヤーを東京・渋谷上空500mに配置')
+    console.log('✈️ プレイヤーをNEO東京・台地上空600mに配置')
 
-    // ステップ4: 補給ポイントを東京MAP用の位置に再配置
+    // ステップ4: 補給ポイントを新地形に合わせて再配置（台地上）
     const tokyoSupplyPositions = [
-      new THREE.Vector3(0, 250, 0),        // 渋谷中心上空
-      new THREE.Vector3(1500, 200, 1500),  // 東側エリア
-      new THREE.Vector3(-1500, 200, -1500), // 西側エリア
+      new THREE.Vector3(0, 420, -900),      // 中央台地上空
+      new THREE.Vector3(1500, 560, -1300),  // 上部台地（要塞付近）
+      new THREE.Vector3(-2000, 380, 1000),  // 西部台地
     ]
     for (let i = 0; i < Math.min(supplyMeshes.length, tokyoSupplyPositions.length); i++) {
       SUPPLY_POSITIONS[i].copy(tokyoSupplyPositions[i])
