@@ -6,7 +6,7 @@ import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
-const VERSION = '4.7.0'
+const VERSION = '4.8.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -2972,9 +2972,9 @@ async function switchMap(map: GameMap) {
 
     // ステップ4: 補給ポイントを新地形に合わせて再配置（台地上）
     const tokyoSupplyPositions = [
-      new THREE.Vector3(0, 420, -900),      // 中央台地上空
-      new THREE.Vector3(1500, 560, -1300),  // 上部台地（要塞付近）
-      new THREE.Vector3(-2000, 380, 1000),  // 西部台地
+      new THREE.Vector3(0, 280, -500),      // CBD上空・中央スパイア付近
+      new THREE.Vector3(980, 220, -780),    // NE企業街クラスタ上空
+      new THREE.Vector3(-1100, 180, 600),   // 西部住宅街上空
     ]
     for (let i = 0; i < Math.min(supplyMeshes.length, tokyoSupplyPositions.length); i++) {
       SUPPLY_POSITIONS[i].copy(tokyoSupplyPositions[i])
