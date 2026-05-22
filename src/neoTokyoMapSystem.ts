@@ -130,8 +130,11 @@ export class NeoTokyoMapSystem {
   async initialize(): Promise<void> {
     this.createTerrain()
     this.createBuildings()
+    this.createVariedBuildings()
     if (!this.mobile) {
       this.createMegaPillars()
+      this.createMegaRings()
+      this.createMegaArches()
     }
     this.createLandmarks()
     this.createImperialPalace()
@@ -234,11 +237,11 @@ export class NeoTokyoMapSystem {
     for (let t = 0; t < BTYPE.length; t++) {
       const list = specs.filter(s => s.type === t)
       if (!list.length) continue
-      // Redesign: darker, calmer emissive
-      let emIntensity = 0.2  // Base lower
-      if (t === 0) emIntensity = 0.3  // Shinjuku cyan
-      else if (t === 2) emIntensity = 0.35  // Shibuya pink
-      else emIntensity = 0.25  // Core/Odaiba
+      // Cyberpunk boost: brighter emissive for neon feel
+      let emIntensity = 0.4  // Base
+      if (t === 0) emIntensity = 0.6  // Shinjuku cyan
+      else if (t === 2) emIntensity = 0.7  // Shibuya pink
+      else emIntensity = 0.5  // Core/Odaiba
 
       const mat = new THREE.MeshLambertMaterial({
         map: textures[t], emissive: new THREE.Color(BTYPE[t].em), emissiveIntensity: emIntensity,
@@ -415,6 +418,173 @@ export class NeoTokyoMapSystem {
       this.landmarks.push(pillar)
     })
     console.log(`[NEO Tokyo] Created 12 Mega Pillars`)
+  }
+
+  private createMegaRings(): void {
+    // 4 giant rings you can fly through
+    const rings = [
+      { x: 0, z: 0, r: 500, alt: 400, tube: 50, c: 0x0066ff, name: 'Tokyo Station Ring' },
+      { x: -2000, z: 0, r: 400, alt: 600, tube: 45, c: 0x00ffcc, name: 'Shinjuku Ring' },
+      { x: 2000, z: 2000, r: 450, alt: 300, tube: 50, c: 0x00ddff, name: 'Odaiba Ring' },
+      { x: 1600, z: -1400, r: 300, alt: 800, tube: 40, c: 0x00ff88, name: 'Skytree Ring' },
+    ]
+    for (const ring of rings) {
+      const gy = NeoTokyoMapSystem.heightAt(ring.x, ring.z)
+      const geo = new THREE.TorusGeometry(ring.r, ring.tube, 24, 64)
+      const mat = new THREE.MeshLambertMaterial({
+        color: ring.c,
+        emissive: new THREE.Color(ring.c),
+        emissiveIntensity: 1.5,
+        transparent: true,
+        opacity: 0.8
+      })
+      const mesh = new THREE.Mesh(geo, mat)
+      mesh.position.set(ring.x, gy + ring.alt, ring.z)
+      mesh.rotation.x = Math.PI / 2
+      mesh.name = ring.name
+      this.scene.add(mesh)
+      this.landmarks.push(mesh)
+    }
+    console.log(`[NEO Tokyo] Created 4 Mega Rings`)
+  }
+
+  private createMegaArches(): void {
+    // Giant arches connecting buildings
+    const arches = [
+      { x1: -400, z1: 0, x2: 400, z2: 0, h: 800, c: 0x0088ff },
+      { x1: 0, z1: -400, x2: 0, z2: 400, h: 800, c: 0x00aaff },
+      { x1: -2200, z1: -200, x2: -1800, z2: 200, h: 600, c: 0x00ffcc },
+      { x1: -1600, z1: 800, x2: -1400, z2: 1200, h: 500, c: 0xff00aa },
+      { x1: 1800, z1: 1800, x2: 2200, z2: 2200, h: 400, c: 0x00ddff },
+    ]
+    for (const arch of arches) {
+      const dx = arch.x2 - arch.x1
+      const dz = arch.z2 - arch.z1
+      const span = Math.hypot(dx, dz)
+      const midX = (arch.x1 + arch.x2) / 2
+      const midZ = (arch.z1 + arch.z2) / 2
+      const angle = Math.atan2(dx, dz)
+      const gy = NeoTokyoMapSystem.heightAt(midX, midZ)
+
+      const segments = 12
+      const archGroup = new THREE.Group()
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments
+        const x = arch.x1 + dx * t
+        const z = arch.z1 + dz * t
+        const archHeight = Math.sin(t * Math.PI) * arch.h
+        const segGeo = new THREE.CylinderGeometry(30, 30, span / segments * 1.2, 16)
+        const segMat = new THREE.MeshLambertMaterial({
+          color: arch.c,
+          emissive: new THREE.Color(arch.c),
+          emissiveIntensity: 1.0,
+          transparent: true,
+          opacity: 0.7
+        })
+        const seg = new THREE.Mesh(segGeo, segMat)
+        seg.position.set(x - midX, archHeight, z - midZ)
+        if (i < segments) {
+          const nextT = (i + 1) / segments
+          const nextHeight = Math.sin(nextT * Math.PI) * arch.h
+          const localAngle = Math.atan2(span / segments, nextHeight - archHeight)
+          seg.rotation.z = -localAngle
+          seg.rotation.y = -angle
+        }
+        archGroup.add(seg)
+      }
+      archGroup.position.set(midX, gy, midZ)
+      archGroup.name = 'MegaArch'
+      this.scene.add(archGroup)
+      this.landmarks.push(archGroup)
+    }
+    console.log(`[NEO Tokyo] Created ${arches.length} Mega Arches`)
+  }
+
+  private createVariedBuildings(): void {
+    // Add varied building shapes for visual interest
+
+    // Ring Buildings (5x in Core)
+    for (let i = 0; i < 5; i++) {
+      const angle = (i / 5) * Math.PI * 2
+      const dist = 600 + (i % 2) * 200
+      const x = Math.cos(angle) * dist
+      const z = Math.sin(angle) * dist
+      const gy = NeoTokyoMapSystem.heightAt(x, z)
+      const outerR = 120 + i * 10
+      const innerR = 70 + i * 5
+      const h = 1000 + i * 100
+
+      const outerGeo = new THREE.CylinderGeometry(outerR, outerR, h, 32)
+      const innerGeo = new THREE.CylinderGeometry(innerR, innerR, h + 10, 32)
+      const mat = new THREE.MeshLambertMaterial({
+        color: 0x0a0f18,
+        emissive: 0x0066ff,
+        emissiveIntensity: 0.4
+      })
+
+      const ring = new THREE.Mesh(outerGeo, mat)
+      ring.position.set(x, gy + h / 2, z)
+      this.scene.add(ring)
+      this.landmarks.push(ring)
+
+      // Inner glow
+      const glowMat = new THREE.MeshLambertMaterial({
+        color: 0x00aaff,
+        emissive: 0x0088ff,
+        emissiveIntensity: 0.8,
+        side: THREE.BackSide
+      })
+      const glow = new THREE.Mesh(innerGeo, glowMat)
+      glow.position.set(x, gy + h / 2, z)
+      this.scene.add(glow)
+      this.deco.push(glow)
+    }
+
+    // Cylinder Towers (10x scattered)
+    for (let i = 0; i < 10; i++) {
+      const angle = Math.random() * Math.PI * 2
+      const dist = 1500 + Math.random() * 2000
+      const x = Math.cos(angle) * dist
+      const z = Math.sin(angle) * dist
+      const gy = NeoTokyoMapSystem.heightAt(x, z)
+      const r = 75 + Math.random() * 75
+      const h = 800 + Math.random() * 800
+
+      const geo = new THREE.CylinderGeometry(r, r * 0.8, h, 24)
+      const colorChoice = [0x00ffcc, 0x0066ff, 0xff00aa, 0x00ddff][i % 4]
+      const mat = new THREE.MeshLambertMaterial({
+        color: 0x0a0f18,
+        emissive: colorChoice,
+        emissiveIntensity: 0.3
+      })
+
+      const tower = new THREE.Mesh(geo, mat)
+      tower.position.set(x, gy + h / 2, z)
+      this.scene.add(tower)
+      this.landmarks.push(tower)
+    }
+
+    // Pyramid Buildings (3x in Core/Odaiba)
+    const pyramidPos = [[0, -600], [600, 0], [2000, 2200]]
+    for (const [x, z] of pyramidPos) {
+      const gy = NeoTokyoMapSystem.heightAt(x, z)
+      const baseR = 200
+      const h = 1200
+      const geo = new THREE.CylinderGeometry(0, baseR, h, 4)
+      const mat = new THREE.MeshLambertMaterial({
+        color: 0x0a0f18,
+        emissive: 0x0066ff,
+        emissiveIntensity: 0.35
+      })
+
+      const pyramid = new THREE.Mesh(geo, mat)
+      pyramid.position.set(x, gy + h / 2, z)
+      pyramid.rotation.y = Math.PI / 4
+      this.scene.add(pyramid)
+      this.landmarks.push(pyramid)
+    }
+
+    console.log(`[NEO Tokyo] Created varied buildings: rings, cylinders, pyramids`)
   }
 
   // ===== LANDMARKS (individually placed — accurate per-object collision) =====
