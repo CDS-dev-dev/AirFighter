@@ -82,33 +82,33 @@ export class MultiplayerClient {
       })
 
       this.channel
-        .on('presence', { event: 'join' }, ({ newPresences }) => {
-          for (const p of newPresences as unknown as Array<{ id: string }>) {
+        .on('presence', { event: 'join' }, ({ newPresences }: { newPresences: unknown }) => {
+          for (const p of newPresences as Array<{ id: string }>) {
             if (p.id !== this.playerId && !this.remotePlayers.has(p.id)) {
               this._addRemotePlayer(p.id)
             }
           }
         })
-        .on('presence', { event: 'leave' }, ({ leftPresences }) => {
-          for (const p of leftPresences as unknown as Array<{ id: string }>) {
+        .on('presence', { event: 'leave' }, ({ leftPresences }: { leftPresences: unknown }) => {
+          for (const p of leftPresences as Array<{ id: string }>) {
             this._removeRemotePlayer(p.id)
           }
         })
-        .on('broadcast', { event: 'state' }, ({ payload }) => {
+        .on('broadcast', { event: 'state' }, ({ payload }: { payload: any }) => {
           const id = payload.playerId as string
           let rp = this.remotePlayers.get(id)
           if (!rp) rp = this._addRemotePlayer(id)
-          rp.state = payload as unknown as RemotePlayerState
+          rp.state = payload as RemotePlayerState
           rp.lastUpdate = Date.now()
         })
-        .on('broadcast', { event: 'game_event' }, ({ payload }) => {
+        .on('broadcast', { event: 'game_event' }, ({ payload }: { payload: any }) => {
           this.onEvent({
             playerId: payload.playerId as string,
             kind: payload.kind as RemoteEventKind,
             data: payload.data,
           })
         })
-        .subscribe(async (status, err) => {
+        .subscribe(async (status: string, err?: Error) => {
           if (status === 'SUBSCRIBED') {
             await this.channel!.track({ id: this.playerId })
             this.connected = true

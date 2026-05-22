@@ -80,14 +80,14 @@ function makeHwyTex(): THREE.DataTexture {
 
 interface BSpec { type: number; x: number; z: number; w: number; d: number; h: number; ry: number }
 
-// 6 district types — dark background + vivid neon windows
+// NEO Tokyo 2087 — 6 district types with enhanced cyberpunk colors
 const BTYPE = [
-  { bg: [5,  12, 22] as RGB, win: [0,   255, 200] as RGB, cols: 7, rows: 14, em: 0x00aa77 }, // 0 Shinjuku Cyber (cyan)
-  { bg: [10, 15, 30] as RGB, win: [100, 180, 255] as RGB, cols: 8, rows: 16, em: 0x0033aa }, // 1 Marunouchi Steel (blue)
-  { bg: [8,   0, 18] as RGB, win: [255,  50, 185] as RGB, cols: 5, rows: 10, em: 0xaa0077 }, // 2 Shibuya/Roppongi Neon (pink)
-  { bg: [18, 12,  5] as RGB, win: [255, 210,  80] as RGB, cols: 6, rows: 12, em: 0x664400 }, // 3 Residential (amber)
-  { bg: [0,  12, 25] as RGB, win: [0,   220, 255] as RGB, cols: 6, rows: 12, em: 0x005588 }, // 4 Odaiba Aqua
-  { bg: [22, 10,  5] as RGB, win: [255, 140,  20] as RGB, cols: 4, rows:  8, em: 0x883300 }, // 5 Industrial (orange)
+  { bg: [5,  12, 22] as RGB, win: [0,   255, 240] as RGB, cols: 7, rows: 14, em: 0x00ffcc }, // 0 Shinjuku Cyber (cyan-green)
+  { bg: [10, 15, 30] as RGB, win: [0,   100, 255] as RGB, cols: 8, rows: 16, em: 0x0066ff }, // 1 Marunouchi Steel (corporate blue)
+  { bg: [8,   0, 18] as RGB, win: [255,  50, 185] as RGB, cols: 5, rows: 10, em: 0xff33bb }, // 2 Shibuya/Roppongi Neon (hot pink)
+  { bg: [18, 12,  5] as RGB, win: [255, 210,  85] as RGB, cols: 6, rows: 12, em: 0xffd055 }, // 3 Residential (warm amber)
+  { bg: [0,  12, 25] as RGB, win: [0,   220, 255] as RGB, cols: 6, rows: 12, em: 0x00ddff }, // 4 Odaiba Aqua
+  { bg: [22, 10,  5] as RGB, win: [255, 135,  0 ] as RGB, cols: 4, rows:  8, em: 0xff8800 }, // 5 Industrial (orange)
 ]
 
 // Yamanote Line waypoints — real Tokyo loop at game scale (~1 game unit = 3m)
@@ -131,6 +131,11 @@ export class NeoTokyoMapSystem {
   async initialize(): Promise<void> {
     this.createTerrain()
     this.createBuildings()
+    if (!this.mobile) {
+      this.createMegaPillars()
+      this.createSkyBridges()
+      this.createElevatedHighways()
+    }
     this.createLandmarks()
     this.createImperialPalace()
     this.buildRainbowBridge()
@@ -224,8 +229,14 @@ export class NeoTokyoMapSystem {
     for (let t = 0; t < BTYPE.length; t++) {
       const list = specs.filter(s => s.type === t)
       if (!list.length) continue
+      // Enhanced neon intensity for cyberpunk aesthetic
+      let emIntensity = 0.28
+      if (t === 0 || t === 2) emIntensity = 0.6  // Shinjuku/Shibuya — brightest
+      else if (t === 1 || t === 4) emIntensity = 0.5  // Marunouchi/Odaiba
+      else emIntensity = 0.4  // Residential/Industrial
+
       const mat = new THREE.MeshLambertMaterial({
-        map: textures[t], emissive: new THREE.Color(BTYPE[t].em), emissiveIntensity: 0.28,
+        map: textures[t], emissive: new THREE.Color(BTYPE[t].em), emissiveIntensity: emIntensity,
       })
       const mesh = new THREE.InstancedMesh(unitGeo, mat, list.length)
       mesh.castShadow = !this.mobile; mesh.name = `NT_B_${t}`
@@ -242,10 +253,7 @@ export class NeoTokyoMapSystem {
 
   private collectBuildingSpecs(): BSpec[] {
     const specs: BSpec[] = []
-    // ROAD=600m grid, sub-blocks at [0.25, 0.75] → centers 300m apart
-    // MAX_W=180m → corridor = 300 - 180 = 120m guaranteed
-    const ROAD = 600, HALF = 6000, MAX_W = 180
-    const offsets = [0.25, 0.75]
+    const HALF = 6000
 
     // Exclusion zones around hand-placed landmarks (game coords)
     const EXCL = [
@@ -257,55 +265,209 @@ export class NeoTokyoMapSystem {
       { x: 1500,  z:-1500, r: 200 },   // Senso-ji
     ]
 
-    for (const ox of offsets) {
-      for (let bx = -HALF; bx < HALF; bx += ROAD) {
-        const cx = bx + ox * ROAD
-        for (const oz of offsets) {
-          for (let bz = -HALF; bz < HALF; bz += ROAD) {
-            const cz = bz + oz * ROAD
-            const r = Math.hypot(cx, cz)
-            if (r > HALF * 0.92) continue
-            if (EXCL.some(e => Math.hypot(cx - e.x, cz - e.z) < e.r)) continue
+    // NEO Tokyo 2087 — Vertical City with 3 districts
+    for (let bx = -HALF; bx < HALF; bx += 300) {
+      for (let bz = -HALF; bz < HALF; bz += 300) {
+        for (const [ox, oz] of [[0.3, 0.3], [0.7, 0.3], [0.3, 0.7], [0.7, 0.7]]) {
+          const cx = bx + ox * 300
+          const cz = bz + oz * 300
+          const r = Math.hypot(cx, cz)
 
-            const seed = sr(cx * 0.13 + cz * 0.07)
+          if (r > HALF * 0.92) continue
+          if (EXCL.some(e => Math.hypot(cx - e.x, cz - e.z) < e.r)) continue
+
+          const seed = sr(cx * 0.13 + cz * 0.07)
+
+          let type: number, hMin: number, hMax: number, MAX_W: number
+
+          // Core District (0-2km): Ultra-High Towers
+          if (r < 2000) {
+            if (this.mobile && seed > 0.5) continue
+            MAX_W = 100
+            type = 1; hMin = 1500; hMax = 2500  // Marunouchi — ultra-high corporate glass
+
+          // Mid District (2-4km): High-Rise Cyberpunk
+          } else if (r < 4000) {
             if (this.mobile && seed > 0.55) continue
-            if (r > 4500 && seed > 0.65) continue
+            MAX_W = 150
 
-            let type: number, hMin: number, hMax: number
-
-            // District classification by real Tokyo geography
-            if (r < 1200) {
-              type = 1; hMin = 350; hMax = 850     // Marunouchi CBD — corporate glass
-            } else if (cx < -1400 && cz > -600 && cz < 600 && r < 3000) {
-              type = 0; hMin = 250; hMax = 700     // Shinjuku — cyber cyan towers
-            } else if (cx < -1200 && cz > 500 && cz < 1600 && r < 2800) {
-              type = seed < 0.55 ? 2 : 3; hMin = 200; hMax = 550  // Shibuya/Roppongi — neon pink
-            } else if (cx < -1600 && cz < -1200 && r < 3500) {
-              type = seed < 0.5 ? 0 : 2; hMin = 220; hMax = 600   // Ikebukuro — cyber/pink
-            } else if (cx > 1200 && cz > 800 && r < 4500) {
-              type = 4; hMin = 180; hMax = 500     // Odaiba/Toyosu — aqua glass
-            } else if (cx > 200 && cz < -600 && r < 3000) {
-              type = seed < 0.45 ? 5 : 1; hMin = 160; hMax = 380  // Ueno/Akihabara
-            } else if (cx > -400 && cz > 800 && cz < 2200 && r < 2800) {
-              type = seed < 0.6 ? 3 : 1; hMin = 150; hMax = 380   // Shinagawa
-            } else if (cx < -600 && cz > 600 && cz < 1200 && r < 2000) {
-              type = 2; hMin = 180; hMax = 480     // Roppongi/Minato
+            if (cx < -1400 && cz > -600 && cz < 600) {
+              type = 0; hMin = 1000; hMax = 1800  // Shinjuku — cyber cyan towers
+            } else if (cx < -1200 && cz > 500 && cz < 1600) {
+              type = 2; hMin = 900; hMax = 1600   // Shibuya/Roppongi — hot pink
+            } else if (cx < -1600 && cz < -1200) {
+              type = seed < 0.5 ? 0 : 2; hMin = 900; hMax = 1700  // Ikebukuro — cyber/pink
             } else {
-              type = seed < 0.5 ? 3 : 5; hMin = 130; hMax = 280
+              type = seed < 0.6 ? 1 : 3; hMin = 800; hMax = 1500
             }
 
-            const bs = sr(cx * 3.1 + cz * 7.7)
-            const aspect = 0.55 + sr(bs * 4.1) * 0.9
-            const w = MAX_W * (0.60 + bs * 0.40)           // 108–180m
-            const d = Math.min(MAX_W, w * aspect)
-            const h = hMin + sr(bs * 3.7) * (hMax - hMin)
-            const ry = (sr(bs * 9.3) - 0.5) * Math.PI * 0.15
-            specs.push({ type, x: cx, z: cz, w, d, h, ry })
+          // Outer District (4-6km): Mid-Rise Industrial
+          } else {
+            if (this.mobile && seed > 0.6) continue
+            if (seed > 0.7) continue  // reduce density
+            MAX_W = 180
+
+            if (cx > 1200 && cz > 800) {
+              type = 4; hMin = 500; hMax = 1200   // Odaiba Aqua
+            } else if (cx > 200 && cz < -600) {
+              type = seed < 0.45 ? 5 : 1; hMin = 400; hMax = 1000  // Ueno/Akihabara
+            } else {
+              type = seed < 0.5 ? 3 : 5; hMin = 400; hMax = 900
+            }
           }
+
+          const bs = sr(cx * 3.1 + cz * 7.7)
+          const aspect = 0.55 + sr(bs * 4.1) * 0.9
+          const w = MAX_W * (0.50 + bs * 0.50)
+          const d = Math.min(MAX_W, w * aspect)
+          const h = hMin + sr(bs * 3.7) * (hMax - hMin)
+          const ry = (sr(bs * 9.3) - 0.5) * Math.PI * 0.15
+          specs.push({ type, x: cx, z: cz, w, d, h, ry })
         }
       }
     }
+
+    console.log(`[NEO Tokyo] Generated ${specs.length} buildings`)
     return specs
+  }
+
+  // ===== MEGA STRUCTURES (Vertical City Infrastructure) =====
+
+  private createMegaPillars(): void {
+    // 12 Mega Pillars — vertical support pillars for NEO Tokyo 2087
+    const positions: [number, number][] = [
+      [0, 0],         // Tokyo Station Core
+      [-2000, 0],     // Shinjuku
+      [-1300, 800],   // Shibuya
+      [1600, -1400],  // Skytree Base
+      [2000, 2000],   // Odaiba Platform
+      [-2200, -1800], // Ikebukuro
+      [500, -1800],   // Ueno
+      [-1000, 1000],  // Roppongi
+      [1000, 1500],   // Toyosu
+      [-1500, -1500], // West Industrial
+      [1800, -500],   // East Bay
+      [0, -2500],     // North Perimeter
+    ]
+
+    const geo = new THREE.CylinderGeometry(25, 30, 1, 16)
+    positions.forEach(([px, pz], i) => {
+      const pillarHeight = 2000 + Math.random() * 500
+      const gy = NeoTokyoMapSystem.heightAt(px, pz)
+
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x112233,
+        emissive: new THREE.Color(0x0088ff + i * 0x110011),
+        emissiveIntensity: 0.4,
+        metalness: 0.7,
+        roughness: 0.3
+      })
+
+      const pillar = new THREE.Mesh(geo, mat)
+      pillar.position.set(px, gy + pillarHeight / 2, pz)
+      pillar.scale.y = pillarHeight
+      pillar.name = `MegaPillar_${i}`
+      this.scene.add(pillar)
+      this.landmarks.push(pillar)
+    })
+    console.log(`[NEO Tokyo] Created 12 Mega Pillars`)
+  }
+
+  private createSkyBridges(): void {
+    // Sky Bridges connect buildings at multiple altitude layers
+    const buildingCenters: Array<{x: number, z: number, h: number}> = []
+
+    // Sample building positions from instancedMeshes
+    for (const mesh of this.instancedMeshes) {
+      const count = mesh.count
+      const mtx = new THREE.Matrix4()
+      const pos = new THREE.Vector3()
+      const scale = new THREE.Vector3()
+
+      for (let i = 0; i < Math.min(count, 50); i += 5) {
+        mesh.getMatrixAt(i, mtx)
+        mtx.decompose(pos, new THREE.Quaternion(), scale)
+        buildingCenters.push({ x: pos.x, z: pos.z, h: scale.y })
+      }
+    }
+
+    const bridgeGeo = new THREE.BoxGeometry(1, 1, 1)
+    const bridgeMat = new THREE.MeshStandardMaterial({
+      color: 0x334455,
+      emissive: 0x003366,
+      emissiveIntensity: 0.2,
+      metalness: 0.6,
+      roughness: 0.4
+    })
+
+    let bridgeCount = 0
+    for (let i = 0; i < buildingCenters.length; i++) {
+      const b1 = buildingCenters[i]
+
+      for (let j = i + 1; j < buildingCenters.length; j++) {
+        const b2 = buildingCenters[j]
+        const dist = Math.hypot(b2.x - b1.x, b2.z - b1.z)
+
+        if (dist > 50 && dist < 200 && sr(i * 7.3 + j * 3.1) > 0.7) {
+          const altitude = Math.min(b1.h, b2.h) * (0.3 + sr(i + j) * 0.4)
+          const midX = (b1.x + b2.x) / 2
+          const midZ = (b1.z + b2.z) / 2
+          const angle = Math.atan2(b2.z - b1.z, b2.x - b1.x)
+
+          const bridge = new THREE.Mesh(bridgeGeo, bridgeMat)
+          bridge.position.set(midX, NeoTokyoMapSystem.heightAt(midX, midZ) + altitude, midZ)
+          bridge.scale.set(dist, 10, 20)
+          bridge.rotation.y = angle
+          bridge.name = 'SkyBridge'
+          this.scene.add(bridge)
+          this.deco.push(bridge)
+          bridgeCount++
+
+          if (bridgeCount > 100) return
+        }
+      }
+    }
+    console.log(`[NEO Tokyo] Created ${bridgeCount} Sky Bridges`)
+  }
+
+  private createElevatedHighways(): void {
+    // 4-layer elevated highway network
+    const layers = [50, 100, 150, 200]
+    const grid = 1200
+    const halfMap = 5000
+    const hwyGeo = new THREE.BoxGeometry(1, 1, 1)
+    const hwyMat = new THREE.MeshStandardMaterial({
+      color: 0x1a1a1e,
+      emissive: 0x444400,
+      emissiveIntensity: 0.15,
+      roughness: 0.8
+    })
+
+    let hwyCount = 0
+    for (const alt of layers) {
+      // X-axis highways
+      for (let z = -halfMap; z <= halfMap; z += grid) {
+        const hwy = new THREE.Mesh(hwyGeo, hwyMat)
+        hwy.position.set(0, NeoTokyoMapSystem.heightAt(0, z) + alt, z)
+        hwy.scale.set(halfMap * 2, 3, 40)
+        hwy.name = 'ElevatedHighway'
+        this.scene.add(hwy)
+        this.deco.push(hwy)
+        hwyCount++
+      }
+
+      // Z-axis highways
+      for (let x = -halfMap; x <= halfMap; x += grid) {
+        const hwy = new THREE.Mesh(hwyGeo, hwyMat)
+        hwy.position.set(x, NeoTokyoMapSystem.heightAt(x, 0) + alt, 0)
+        hwy.scale.set(40, 3, halfMap * 2)
+        hwy.name = 'ElevatedHighway'
+        this.scene.add(hwy)
+        this.deco.push(hwy)
+        hwyCount++
+      }
+    }
+    console.log(`[NEO Tokyo] Created ${hwyCount} Elevated Highway segments (4 layers)`)
   }
 
   // ===== LANDMARKS (individually placed — accurate per-object collision) =====

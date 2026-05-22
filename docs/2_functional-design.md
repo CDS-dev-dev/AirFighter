@@ -114,6 +114,38 @@ flowchart TD
 
 ---
 
-## 7. マルチプレイ（実装中）
+## 7. NEO Tokyo 2087 — 世界観設定
 
-`src/multiplayer.ts` に `MultiplayerClient` クラスが存在し、`src/main.ts` からインポート済み。Cloudflare Workers + Durable Objects でのランダムマッチング実装を予定。現在は未接続スタブ。
+### 概要
+NEO TOKYOマップは2087年の東京を舞台にした垂直都市。気候変動と企業国家化により、地上から2500mまで成長した超巨大サイバーパンク都市。
+
+### 垂直階層社会
+- **Layer 0 (0-50m)**: Ground Level — 忘れられた地上、暗い緑
+- **Layer 1 (50-300m)**: Lower City — 労働者の街、高架道路網、オレンジ光
+- **Layer 2 (300-800m)**: Mid City — 繁華街・商業区、ネオン全開、ピンク/シアン
+- **Layer 3 (800-1500m)**: High City — 企業本社・高級住宅、青いガラスタワー
+- **Layer 4 (1500-2500m)**: Sky Realm — 超富裕層、Mega Towers、雲の上
+
+### 地区構成
+- **Core District (0-2km)**: Ultra-High Towers (1500-2500m)、Marunouchi Corporate Zone
+- **Mid District (2-4km)**: High-Rise Cyberpunk (800-1800m)、Shinjuku/Shibuya/Ikebukuro
+- **Outer District (4-6km)**: Mid-Rise Industrial (400-1200m)、Odaiba/工業地帯
+
+### 構造物
+- **Mega Pillars**: 12本の超巨大支柱 (直径30-50m、高さ2000-2500m)、都市の骨格
+- **Sky Bridges**: ビル間連結橋、複数階層 (200/400/600/800/1000m)
+- **Elevated Highways**: 4層高架道路網 (50/100/150/200m)
+
+### 色彩パレット
+- Shinjuku: #00FFCC (cyan-green)
+- Marunouchi: #0066FF (corporate blue)
+- Shibuya: #FF33BB (hot pink)
+- Odaiba: #00DDFF (aqua)
+- Industrial: #FF8800 (orange)
+- Residential: #FFD055 (amber)
+
+---
+
+## 8. マルチプレイ（実装中）
+
+`src/multiplayer.ts` に `MultiplayerClient` クラスが存在し、`src/main.ts` からインポート済み。Supabase Realtimeを使用した実装。現在は未接続スタブ。

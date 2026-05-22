@@ -26,6 +26,13 @@
 | 補給ポイント | supply point | HP・弾薬を回復できるマップ上の地点 |
 | SAM | SAM | Surface-to-Air Missile。地上から発射される地対空ミサイル |
 | キャリアボス | carrier boss | souryokusen の最終ボス。空母型の地上目標 |
+| NEO Tokyo 2087 | NEO Tokyo 2087 | 垂直都市化した2087年の東京。サイバーパンク世界観 |
+| Core District | Core District | 中心部0-2km。超高層タワー (1500-2500m) |
+| Mid District | Mid District | 中層部2-4km。サイバーパンク繁華街 (800-1800m) |
+| Outer District | Outer District | 外周部4-6km。工業・港湾エリア (400-1200m) |
+| Mega Pillars | Mega Pillars | 12本の超巨大支柱。都市の構造支柱 (直径30-50m、高さ2000-2500m) |
+| Sky Bridges | Sky Bridges | ビル間連結橋。複数階層に配置 |
+| Elevated Highways | Elevated Highways | 4層高架道路網 (50/100/150/200m) |
 
 ---
 
