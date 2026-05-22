@@ -122,6 +122,7 @@ export class NeoTokyoMapSystem {
   private instancedMeshes: THREE.InstancedMesh[] = []
   private landmarks: THREE.Object3D[] = []
   private deco: THREE.Object3D[] = []
+  private buildingColliders: THREE.Mesh[] = []  // Simple collision boxes for each building
 
   constructor(scene: THREE.Scene, isMobile = false) {
     this.scene = scene
@@ -172,12 +173,16 @@ export class NeoTokyoMapSystem {
 
   // InstancedMesh excluded: Box3.setFromObject(instancedMesh) returns a box covering
   // ALL instances (the entire city), causing false collision hits in building gaps.
-  getCollisionObjects(): THREE.Object3D[] { return [...this.landmarks] }
+  getCollisionObjects(): THREE.Object3D[] {
+    return [...this.landmarks, ...this.buildingColliders, ...this.deco]
+  }
 
   cleanup(): void {
     if (this.terrainMesh) { this.scene.remove(this.terrainMesh); this.terrainMesh = null }
     for (const m of this.instancedMeshes) this.scene.remove(m)
     this.instancedMeshes.length = 0
+    for (const c of this.buildingColliders) this.scene.remove(c)
+    this.buildingColliders.length = 0
     for (const l of this.landmarks) this.scene.remove(l)
     this.landmarks.length = 0
     for (const d of this.deco) this.scene.remove(d)
@@ -226,6 +231,10 @@ export class NeoTokyoMapSystem {
     const unitGeo = new THREE.BoxGeometry(1, 1, 1)
     const up = new THREE.Vector3(0, 1, 0)
     const mtx = new THREE.Matrix4(), q = new THREE.Quaternion()
+
+    // Invisible collision material
+    const colliderMat = new THREE.MeshBasicMaterial({ visible: false })
+
     for (let t = 0; t < BTYPE.length; t++) {
       const list = specs.filter(s => s.type === t)
       if (!list.length) continue
@@ -245,10 +254,20 @@ export class NeoTokyoMapSystem {
         q.setFromAxisAngle(up, s.ry)
         mtx.compose(new THREE.Vector3(s.x, gy + s.h / 2, s.z), q, new THREE.Vector3(s.w, s.h, s.d))
         mesh.setMatrixAt(i, mtx)
+
+        // Create individual collision box for each building
+        const collider = new THREE.Mesh(unitGeo, colliderMat)
+        collider.position.set(s.x, gy + s.h / 2, s.z)
+        collider.scale.set(s.w, s.h, s.d)
+        collider.rotation.y = s.ry
+        collider.name = 'BuildingCollider'
+        this.scene.add(collider)
+        this.buildingColliders.push(collider)
       })
       mesh.instanceMatrix.needsUpdate = true
       this.scene.add(mesh); this.instancedMeshes.push(mesh)
     }
+    console.log(`[NEO Tokyo] Created ${this.buildingColliders.length} building colliders`)
   }
 
   private collectBuildingSpecs(): BSpec[] {
@@ -265,64 +284,98 @@ export class NeoTokyoMapSystem {
       { x: 1500,  z:-1500, r: 200 },   // Senso-ji
     ]
 
-    // NEO Tokyo 2087 — Vertical City with 3 districts
-    for (let bx = -HALF; bx < HALF; bx += 300) {
-      for (let bz = -HALF; bz < HALF; bz += 300) {
-        for (const [ox, oz] of [[0.3, 0.3], [0.7, 0.3], [0.3, 0.7], [0.7, 0.7]]) {
-          const cx = bx + ox * 300
-          const cz = bz + oz * 300
-          const r = Math.hypot(cx, cz)
+    // NEO Tokyo 2087 — Vertical City with main streets (wide gaps)
+    // Main street grid: every 600m = major roads with wide corridors
+    // Sub-blocks: 150m spacing within main grid = minor streets
+    const MAIN_GRID = 600  // Major roads/avenues
+    const SUB_GRID = 150   // Minor streets
 
-          if (r > HALF * 0.92) continue
-          if (EXCL.some(e => Math.hypot(cx - e.x, cz - e.z) < e.r)) continue
+    for (let mainX = -HALF; mainX < HALF; mainX += MAIN_GRID) {
+      for (let mainZ = -HALF; mainZ < HALF; mainZ += MAIN_GRID) {
+        // Within each main grid cell, place buildings in sub-blocks
+        for (let subX = 0; subX < MAIN_GRID; subX += SUB_GRID) {
+          for (let subZ = 0; subZ < MAIN_GRID; subZ += SUB_GRID) {
+            // Skip the first sub-block to create major road intersection
+            if (subX === 0 || subZ === 0) continue
 
-          const seed = sr(cx * 0.13 + cz * 0.07)
+            const cx = mainX + subX + SUB_GRID * 0.5
+            const cz = mainZ + subZ + SUB_GRID * 0.5
+            const r = Math.hypot(cx, cz)
 
-          let type: number, hMin: number, hMax: number, MAX_W: number
+            if (r > HALF * 0.92) continue
+            if (EXCL.some(e => Math.hypot(cx - e.x, cz - e.z) < e.r)) continue
 
-          // Core District (0-2km): Ultra-High Towers
-          if (r < 2000) {
-            if (this.mobile && seed > 0.5) continue
-            MAX_W = 100
-            type = 1; hMin = 1500; hMax = 2500  // Marunouchi — ultra-high corporate glass
+            const seed = sr(cx * 0.13 + cz * 0.07)
 
-          // Mid District (2-4km): High-Rise Cyberpunk
-          } else if (r < 4000) {
-            if (this.mobile && seed > 0.55) continue
-            MAX_W = 150
+            let type: number, hMin: number, hMax: number, MAX_W: number
 
-            if (cx < -1400 && cz > -600 && cz < 600) {
-              type = 0; hMin = 1000; hMax = 1800  // Shinjuku — cyber cyan towers
-            } else if (cx < -1200 && cz > 500 && cz < 1600) {
-              type = 2; hMin = 900; hMax = 1600   // Shibuya/Roppongi — hot pink
-            } else if (cx < -1600 && cz < -1200) {
-              type = seed < 0.5 ? 0 : 2; hMin = 900; hMax = 1700  // Ikebukuro — cyber/pink
+            // Core District (0-2km): Ultra-High Towers
+            if (r < 2000) {
+              if (this.mobile && seed > 0.5) continue
+              MAX_W = 100
+              type = 1; hMin = 1500; hMax = 2500  // Marunouchi — ultra-high corporate glass
+
+            // Mid District (2-4km): High-Rise Cyberpunk
+            } else if (r < 4000) {
+              if (this.mobile && seed > 0.55) continue
+              MAX_W = 150
+
+              if (cx < -1400 && cz > -600 && cz < 600) {
+                type = 0; hMin = 1000; hMax = 1800  // Shinjuku — cyber cyan towers
+              } else if (cx < -1200 && cz > 500 && cz < 1600) {
+                type = 2; hMin = 900; hMax = 1600   // Shibuya/Roppongi — hot pink
+              } else if (cx < -1600 && cz < -1200) {
+                type = seed < 0.5 ? 0 : 2; hMin = 900; hMax = 1700  // Ikebukuro — cyber/pink
+              } else {
+                type = seed < 0.6 ? 1 : 3; hMin = 800; hMax = 1500
+              }
+
+            // Outer District (4-6km): Mid-Rise Industrial
             } else {
-              type = seed < 0.6 ? 1 : 3; hMin = 800; hMax = 1500
+              if (this.mobile && seed > 0.6) continue
+              if (seed > 0.7) continue  // reduce density
+              MAX_W = 180
+
+              if (cx > 1200 && cz > 800) {
+                type = 4; hMin = 500; hMax = 1200   // Odaiba Aqua
+              } else if (cx > 200 && cz < -600) {
+                type = seed < 0.45 ? 5 : 1; hMin = 400; hMax = 1000  // Ueno/Akihabara
+              } else {
+                type = seed < 0.5 ? 3 : 5; hMin = 400; hMax = 900
+              }
             }
 
-          // Outer District (4-6km): Mid-Rise Industrial
-          } else {
-            if (this.mobile && seed > 0.6) continue
-            if (seed > 0.7) continue  // reduce density
-            MAX_W = 180
+            const bs = sr(cx * 3.1 + cz * 7.7)
+            const aspect = 0.55 + sr(bs * 4.1) * 0.9
+            // Limit building size to fit within sub-grid with corridor
+            const maxBuildingSize = SUB_GRID * 0.7  // 70% of sub-grid = 105m max
+            const w = Math.min(maxBuildingSize, MAX_W * (0.50 + bs * 0.50))
+            const d = Math.min(maxBuildingSize, w * aspect)
+            const h = hMin + sr(bs * 3.7) * (hMax - hMin)
 
-            if (cx > 1200 && cz > 800) {
-              type = 4; hMin = 500; hMax = 1200   // Odaiba Aqua
-            } else if (cx > 200 && cz < -600) {
-              type = seed < 0.45 ? 5 : 1; hMin = 400; hMax = 1000  // Ueno/Akihabara
-            } else {
-              type = seed < 0.5 ? 3 : 5; hMin = 400; hMax = 900
+            // Building rotation based on Tokyo's actual road structure
+            let ry = 0
+
+            // Shibuya diagonal roads (southwest)
+            if (cx < -1000 && cx > -1600 && cz > 500 && cz < 1600) {
+              ry = Math.PI / 6  // 30° diagonal
             }
+            // Shinjuku/Kabukicho irregular grid
+            else if (cx < -1800 && cz > -600 && cz < 600) {
+              ry = sr(bs) > 0.5 ? 0 : Math.PI / 2
+            }
+            // Roppongi radiating from center
+            else if (cx < -800 && cx > -1200 && cz > 700 && cz < 1200) {
+              const angle = Math.atan2(cz - 950, cx - (-1000))
+              ry = angle + Math.PI / 2
+            }
+            // Default: align to grid (0° or 90°)
+            else {
+              ry = sr(bs) > 0.6 ? Math.PI / 2 : 0
+            }
+
+            specs.push({ type, x: cx, z: cz, w, d, h, ry })
           }
-
-          const bs = sr(cx * 3.1 + cz * 7.7)
-          const aspect = 0.55 + sr(bs * 4.1) * 0.9
-          const w = MAX_W * (0.50 + bs * 0.50)
-          const d = Math.min(MAX_W, w * aspect)
-          const h = hMin + sr(bs * 3.7) * (hMax - hMin)
-          const ry = (sr(bs * 9.3) - 0.5) * Math.PI * 0.15
-          specs.push({ type, x: cx, z: cz, w, d, h, ry })
         }
       }
     }
