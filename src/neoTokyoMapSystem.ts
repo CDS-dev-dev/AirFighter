@@ -542,29 +542,27 @@ export class NeoTokyoMapSystem {
   private buildSkytree(X: number, Z: number): void {
     const gy = NeoTokyoMapSystem.heightAt(X, Z)
     const g = new THREE.Group(); g.position.set(X, gy, Z)
-    const steelMat = new THREE.MeshLambertMaterial({ color: 0x2a3a4c, emissive: 0x081428, emissiveIntensity: 0.2 })
-    const glassMat = new THREE.MeshLambertMaterial({ color: 0x66aacc, emissive: 0x1144aa, emissiveIntensity: 0.6 })
-    const neonMat  = new THREE.MeshLambertMaterial({ color: 0x4466ff, emissive: 0x3355ee, emissiveIntensity: 2.0 })
-    const neonR    = new THREE.MeshLambertMaterial({ color: 0x8844ff, emissive: 0x6633ee, emissiveIntensity: 2.0 })
-    // Triangular lattice base (0–350m)
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(18, 80, 350, 3), steelMat); base.position.y = 175; g.add(base)
-    // Observation decks
-    const d1 = new THREE.Mesh(new THREE.CylinderGeometry(42, 42, 18, 16), glassMat); d1.position.y = 362; g.add(d1)
-    const s1 = new THREE.Mesh(new THREE.CylinderGeometry(14, 18, 110, 8), steelMat); s1.position.y = 418; g.add(s1)
-    const d2 = new THREE.Mesh(new THREE.CylinderGeometry(30, 30, 16, 12), glassMat); d2.position.y = 474; g.add(d2)
-    const s2 = new THREE.Mesh(new THREE.CylinderGeometry(7, 14, 160, 6), steelMat); s2.position.y = 556; g.add(s2)
-    const mast = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 5, 38, 6), steelMat); mast.position.y = 637; g.add(mast)
-    // Neon spines along lattice edges
+    const steelMat = new THREE.MeshLambertMaterial({ color: 0x2a3a4c, emissive: 0x081428, emissiveIntensity: 0.3 })
+    const glassMat = new THREE.MeshLambertMaterial({ color: 0x66aacc, emissive: 0x1144aa, emissiveIntensity: 1.2 })
+    const neonMat  = new THREE.MeshLambertMaterial({ color: 0x4466ff, emissive: 0x3355ee, emissiveIntensity: 3.0 })
+    const neonR    = new THREE.MeshLambertMaterial({ color: 0x8844ff, emissive: 0x6633ee, emissiveIntensity: 3.0 })
+    // NEO TOKYO: 2.5x scale — 634m → 1585m
+    const S = 2.5
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(18*S, 80*S, 350*S, 3), steelMat); base.position.y = 175*S; g.add(base)
+    const d1 = new THREE.Mesh(new THREE.CylinderGeometry(42*S, 42*S, 18*S, 16), glassMat); d1.position.y = 362*S; g.add(d1)
+    const s1 = new THREE.Mesh(new THREE.CylinderGeometry(14*S, 18*S, 110*S, 8), steelMat); s1.position.y = 418*S; g.add(s1)
+    const d2 = new THREE.Mesh(new THREE.CylinderGeometry(30*S, 30*S, 16*S, 12), glassMat); d2.position.y = 474*S; g.add(d2)
+    const s2 = new THREE.Mesh(new THREE.CylinderGeometry(7*S, 14*S, 160*S, 6), steelMat); s2.position.y = 556*S; g.add(s2)
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(1.5*S, 5*S, 38*S, 6), steelMat); mast.position.y = 637*S; g.add(mast)
     for (let c = 0; c < 3; c++) {
       const a = (c / 3) * Math.PI * 2
-      const spine = new THREE.Mesh(new THREE.BoxGeometry(3, 350, 3), c === 0 ? neonMat : neonR)
-      spine.position.set(Math.cos(a) * 44, 175, Math.sin(a) * 44); g.add(spine)
+      const spine = new THREE.Mesh(new THREE.BoxGeometry(3*S, 350*S, 3*S), c === 0 ? neonMat : neonR)
+      spine.position.set(Math.cos(a) * 44*S, 175*S, Math.sin(a) * 44*S); g.add(spine)
     }
-    // Neon deck rings
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * Math.PI * 2
-      const p1 = new THREE.Mesh(new THREE.BoxGeometry(2.5, 12, 2.5), neonMat); p1.position.set(Math.cos(a) * 38, 358, Math.sin(a) * 38); g.add(p1)
-      const p2 = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 2), neonR);        p2.position.set(Math.cos(a) * 28, 470, Math.sin(a) * 28); g.add(p2)
+      const p1 = new THREE.Mesh(new THREE.BoxGeometry(2.5*S, 12*S, 2.5*S), neonMat); p1.position.set(Math.cos(a) * 38*S, 358*S, Math.sin(a) * 38*S); g.add(p1)
+      const p2 = new THREE.Mesh(new THREE.BoxGeometry(2*S, 10*S, 2*S), neonR);        p2.position.set(Math.cos(a) * 28*S, 470*S, Math.sin(a) * 28*S); g.add(p2)
     }
     this.scene.add(g); this.landmarks.push(g)
   }
@@ -572,24 +570,26 @@ export class NeoTokyoMapSystem {
   private buildTokyoTower(X: number, Z: number): void {
     const gy = NeoTokyoMapSystem.heightAt(X, Z)
     const g = new THREE.Group(); g.position.set(X, gy, Z)
-    const redMat   = new THREE.MeshLambertMaterial({ color: 0xff2800, emissive: 0x440a00, emissiveIntensity: 0.3 })
-    const whiteMat = new THREE.MeshLambertMaterial({ color: 0xdddddd, emissive: 0x222222, emissiveIntensity: 0.1 })
-    const glassMat = new THREE.MeshLambertMaterial({ color: 0x88bbcc, emissive: 0x112233, emissiveIntensity: 0.4 })
-    const neonMat  = new THREE.MeshLambertMaterial({ color: 0xff4400, emissive: 0xff2200, emissiveIntensity: 1.0 })
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(5, 44, 330, 4), redMat)
-    body.position.y = 165; body.rotation.y = Math.PI / 4; g.add(body)
+    const redMat   = new THREE.MeshLambertMaterial({ color: 0xff2800, emissive: 0x440a00, emissiveIntensity: 0.6 })
+    const whiteMat = new THREE.MeshLambertMaterial({ color: 0xdddddd, emissive: 0x222222, emissiveIntensity: 0.2 })
+    const glassMat = new THREE.MeshLambertMaterial({ color: 0x88bbcc, emissive: 0x112233, emissiveIntensity: 0.8 })
+    const neonMat  = new THREE.MeshLambertMaterial({ color: 0xff4400, emissive: 0xff2200, emissiveIntensity: 2.5 })
+    // NEO TOKYO: 2x scale — 333m → 666m
+    const S = 2
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(5*S, 44*S, 330*S, 4), redMat)
+    body.position.y = 165*S; body.rotation.y = Math.PI / 4; g.add(body)
     for (const [y, hw] of [[65, 38], [130, 30], [198, 20], [265, 12]] as [number, number][]) {
-      const band = new THREE.Mesh(new THREE.BoxGeometry(hw * 2, 6, hw * 2), whiteMat)
-      band.position.y = y; band.rotation.y = Math.PI / 4; g.add(band)
+      const band = new THREE.Mesh(new THREE.BoxGeometry(hw*S * 2, 6*S, hw*S * 2), whiteMat)
+      band.position.y = y*S; band.rotation.y = Math.PI / 4; g.add(band)
     }
-    const obs1 = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 18, 12), glassMat); obs1.position.y = 207; g.add(obs1)
-    const obs2 = new THREE.Mesh(new THREE.CylinderGeometry(17, 17, 14, 12), glassMat); obs2.position.y = 322; g.add(obs2)
-    const upper = new THREE.Mesh(new THREE.CylinderGeometry(3, 9, 88, 4), redMat)
-    upper.position.y = 376; upper.rotation.y = Math.PI / 4; g.add(upper)
+    const obs1 = new THREE.Mesh(new THREE.CylinderGeometry(26*S, 26*S, 18*S, 12), glassMat); obs1.position.y = 207*S; g.add(obs1)
+    const obs2 = new THREE.Mesh(new THREE.CylinderGeometry(17*S, 17*S, 14*S, 12), glassMat); obs2.position.y = 322*S; g.add(obs2)
+    const upper = new THREE.Mesh(new THREE.CylinderGeometry(3*S, 9*S, 88*S, 4), redMat)
+    upper.position.y = 376*S; upper.rotation.y = Math.PI / 4; g.add(upper)
     for (let c = 0; c < 4; c++) {
       const a = c * Math.PI / 2 + Math.PI / 4
-      const strip = new THREE.Mesh(new THREE.BoxGeometry(2, 325, 2), neonMat)
-      strip.position.set(Math.cos(a) * 24, 165, Math.sin(a) * 24); g.add(strip)
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(2*S, 325*S, 2*S), neonMat)
+      strip.position.set(Math.cos(a) * 24*S, 165*S, Math.sin(a) * 24*S); g.add(strip)
     }
     this.scene.add(g); this.landmarks.push(g)
   }
@@ -956,33 +956,44 @@ export class NeoTokyoMapSystem {
   // ===== HOLOGRAMS + NEON ROAD GRID =====
 
   private createHolograms(): void {
-    const beams = [
-      { x:    0, z: -1200, c: 0x00ffcc }, { x:  600, z:     0, c: 0xff00aa },
-      { x:    0, z:  1000, c: 0x0088ff }, { x: -600, z:     0, c: 0xffcc00 },
-      { x: 1200, z:  -800, c: 0x00ffcc }, { x:-1200, z:   800, c: 0xff00aa },
-      { x: 1800, z:   600, c: 0x00aaff }, { x: -500, z: -1600, c: 0xff4400 },
-      { x:-2000, z:  1200, c: 0x88ff00 }, { x: 2400, z:  1800, c: 0x00ffcc },
+    // Massive holographic billboards
+    const holograms = [
+      { x: -1500, z: 800, w: 200, h: 120, alt: 400, c: 0xff00aa },
+      { x: -2000, z: 0, w: 180, h: 100, alt: 500, c: 0x00ffcc },
+      { x: 0, z: 0, w: 150, h: 90, alt: 600, c: 0x0066ff },
+      { x: 1600, z: -1400, w: 160, h: 100, alt: 700, c: 0x00ff88 },
+      { x: 2000, z: 2000, w: 180, h: 110, alt: 350, c: 0x00ddff },
+      { x: 500, z: -1800, w: 140, h: 80, alt: 300, c: 0xff8800 },
+      { x: -2200, z: -1800, w: 170, h: 95, alt: 450, c: 0xff00cc },
     ]
-    for (const bp of beams) {
-      const gy = NeoTokyoMapSystem.heightAt(bp.x, bp.z)
-      const mat = new THREE.MeshLambertMaterial({ color: bp.c, emissive: new THREE.Color(bp.c), emissiveIntensity: 2.5, transparent: true, opacity: 0.25 })
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 1200, 8), mat)
-      beam.position.set(bp.x, gy + 600, bp.z); this.scene.add(beam); this.deco.push(beam)
-      const disc = new THREE.Mesh(new THREE.CylinderGeometry(24, 24, 1, 16),
-        new THREE.MeshLambertMaterial({ color: bp.c, emissive: new THREE.Color(bp.c), emissiveIntensity: 2.0, transparent: true, opacity: 0.5 }))
-      disc.position.set(bp.x, gy + 0.5, bp.z); this.scene.add(disc); this.deco.push(disc)
+    for (const holo of holograms) {
+      const gy = NeoTokyoMapSystem.heightAt(holo.x, holo.z)
+      const mat = new THREE.MeshLambertMaterial({ color: holo.c, emissive: new THREE.Color(holo.c), emissiveIntensity: 3.0, transparent: true, opacity: 0.4, side: THREE.DoubleSide })
+      const board = new THREE.Mesh(new THREE.PlaneGeometry(holo.w, holo.h), mat)
+      board.position.set(holo.x, gy + holo.alt, holo.z); this.scene.add(board); this.deco.push(board)
+      const beamMat = new THREE.MeshLambertMaterial({ color: holo.c, emissive: new THREE.Color(holo.c), emissiveIntensity: 2.0, transparent: true, opacity: 0.15 })
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(8, 12, holo.alt, 12), beamMat)
+      beam.position.set(holo.x, gy + holo.alt / 2, holo.z); this.scene.add(beam); this.deco.push(beam)
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(30, 30, 2, 16), new THREE.MeshLambertMaterial({ color: holo.c, emissive: new THREE.Color(holo.c), emissiveIntensity: 2.5 }))
+      disc.position.set(holo.x, gy + 1, holo.z); this.scene.add(disc); this.deco.push(disc)
     }
-    // Neon road grid on 600m spacing across full map
-    const neonMat = new THREE.MeshLambertMaterial({ color: 0x00ccff, emissive: 0x0088cc, emissiveIntensity: 0.8 })
+    // Data streams (light curtains)
+    const streams = [[- 2000, 0, -1500, 800, 0x00ffcc], [0, 0, 1600, -1400, 0x00ff88], [-1500, 800, 0, 0, 0xff00aa], [2000, 2000, 1600, -1400, 0x00ddff]]
+    for (const [x1, z1, x2, z2, c] of streams) {
+      const dx = x2 - x1, dz = z2 - z1, len = Math.hypot(dx, dz), angle = Math.atan2(dx, dz)
+      const midX = (x1 + x2) / 2, midZ = (z1 + z2) / 2, gy = NeoTokyoMapSystem.heightAt(midX, midZ)
+      const curtain = new THREE.Mesh(new THREE.PlaneGeometry(len, 800), new THREE.MeshLambertMaterial({ color: c, emissive: new THREE.Color(c), emissiveIntensity: 1.5, transparent: true, opacity: 0.2, side: THREE.DoubleSide }))
+      curtain.position.set(midX, gy + 400, midZ); curtain.rotation.y = -angle; this.scene.add(curtain); this.deco.push(curtain)
+    }
+    // Neon road grid
+    const neonMat = new THREE.MeshLambertMaterial({ color: 0x00ccff, emissive: 0x0088cc, emissiveIntensity: 1.2 })
     for (let x = -5400; x <= 5400; x += 600) {
       const strip = new THREE.Mesh(new THREE.BoxGeometry(5, 0.5, 14400), neonMat)
-      strip.position.set(x, NeoTokyoMapSystem.heightAt(x, 0) + 0.3, 0)
-      this.scene.add(strip); this.deco.push(strip)
+      strip.position.set(x, NeoTokyoMapSystem.heightAt(x, 0) + 0.3, 0); this.scene.add(strip); this.deco.push(strip)
     }
     for (let z = -5400; z <= 5400; z += 600) {
       const strip = new THREE.Mesh(new THREE.BoxGeometry(14400, 0.5, 5), neonMat)
-      strip.position.set(0, NeoTokyoMapSystem.heightAt(0, z) + 0.3, z)
-      this.scene.add(strip); this.deco.push(strip)
+      strip.position.set(0, NeoTokyoMapSystem.heightAt(0, z) + 0.3, z); this.scene.add(strip); this.deco.push(strip)
     }
   }
 
