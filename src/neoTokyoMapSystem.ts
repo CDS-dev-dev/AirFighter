@@ -80,6 +80,17 @@ function makeHwyTex(): THREE.DataTexture {
 
 interface BSpec { type: number; x: number; z: number; w: number; d: number; h: number; ry: number }
 
+interface FlywaySegment {
+  name: string
+  x1: number
+  z1: number
+  x2: number
+  z2: number
+  width: number
+  alt: number
+  color: number
+}
+
 interface LandmarkZone {
   name: string
   x: number
@@ -101,6 +112,34 @@ const LANDMARK_ZONES: LandmarkZone[] = [
   { name: 'Roppongi', x: -930, z: 980, r: 520, minTowerDistance: 780 },
   { name: 'Shinjuku', x: -2000, z: -200, r: 780, minTowerDistance: 980 },
 ]
+
+const FLYWAY_SEGMENTS: FlywaySegment[] = [
+  { name: 'Tokyo Station to Tokyo Tower', x1: 30, z1: 20, x2: -600, z2: 800, width: 360, alt: 190, color: 0x66d9ff },
+  { name: 'Tokyo Tower to Rainbow Bridge', x1: -600, z1: 800, x2: 1300, z2: 1050, width: 420, alt: 210, color: 0xff8844 },
+  { name: 'Rainbow Bridge to Odaiba', x1: 1300, z1: 1050, x2: 2000, z2: 2000, width: 520, alt: 170, color: 0x66ddff },
+  { name: 'Odaiba Bay Run', x1: 2000, z1: 2000, x2: 2680, z2: 2600, width: 560, alt: 260, color: 0x00ddff },
+  { name: 'Odaiba to Skytree', x1: 2000, z1: 2000, x2: 1600, z2: -1400, width: 470, alt: 620, color: 0x00ffcc },
+  { name: 'Skytree to Sensoji', x1: 1600, z1: -1400, x2: 1500, z2: -1500, width: 360, alt: 360, color: 0x00ff88 },
+  { name: 'Sensoji to Tokyo Station', x1: 1500, z1: -1500, x2: 30, z2: 20, width: 410, alt: 320, color: 0xffcc66 },
+  { name: 'Tokyo Station to Shinjuku', x1: 30, z1: 20, x2: -2000, z2: -200, width: 460, alt: 520, color: 0x00aaff },
+  { name: 'Shinjuku to Shibuya', x1: -2000, z1: -200, x2: -1300, z2: 800, width: 440, alt: 430, color: 0xff33bb },
+  { name: 'Shibuya to Tokyo Tower', x1: -1300, z1: 800, x2: -600, z2: 800, width: 360, alt: 260, color: 0xff8844 },
+]
+
+function distToSegment2D(x: number, z: number, x1: number, z1: number, x2: number, z2: number): number {
+  const dx = x2 - x1
+  const dz = z2 - z1
+  const lenSq = dx * dx + dz * dz
+  if (lenSq <= 0.0001) return Math.hypot(x - x1, z - z1)
+  const t = Math.max(0, Math.min(1, ((x - x1) * dx + (z - z1) * dz) / lenSq))
+  const px = x1 + dx * t
+  const pz = z1 + dz * t
+  return Math.hypot(x - px, z - pz)
+}
+
+function isInFlightCorridor(x: number, z: number, extra = 0): boolean {
+  return FLYWAY_SEGMENTS.some(seg => distToSegment2D(x, z, seg.x1, seg.z1, seg.x2, seg.z2) < seg.width / 2 + extra)
+}
 
 function isInLandmarkZone(x: number, z: number, extra = 0): boolean {
   return LANDMARK_ZONES.some(zone => Math.hypot(x - zone.x, z - zone.z) < zone.r + extra)
@@ -180,6 +219,7 @@ export class NeoTokyoMapSystem {
       this.createYamanoteLine()
       this.createHighways()
     }
+    this.createFlightCorridors()
     this.createHolograms()
     this.createWater()
   }
@@ -211,7 +251,7 @@ export class NeoTokyoMapSystem {
   // InstancedMesh excluded: Box3.setFromObject(instancedMesh) returns a box covering
   // ALL instances (the entire city), causing false collision hits in building gaps.
   getCollisionObjects(): THREE.Object3D[] {
-    return [...this.landmarks, ...this.buildingColliders, ...this.deco]
+    return [...this.landmarks, ...this.buildingColliders]
   }
 
   cleanup(): void {
@@ -317,6 +357,7 @@ export class NeoTokyoMapSystem {
 
     const canPlaceTower = (x: number, z: number, h: number): boolean => {
       if (isInWaterArea(x, z)) return false
+      if (isInFlightCorridor(x, z, h > 1000 ? 180 : 90)) return false
       for (const zone of LANDMARK_ZONES) {
         const minDistance = h > 1000 ? zone.minTowerDistance ?? zone.r : zone.r
         if (Math.hypot(x - zone.x, z - zone.z) < minDistance) return false
@@ -485,14 +526,15 @@ export class NeoTokyoMapSystem {
         emissive: new THREE.Color(ring.c),
         emissiveIntensity: 1.5,
         transparent: true,
-        opacity: 0.8
+        opacity: 0.58,
+        depthWrite: false
       })
       const mesh = new THREE.Mesh(geo, mat)
       mesh.position.set(ring.x, gy + ring.alt, ring.z)
       mesh.rotation.x = Math.PI / 2
       mesh.name = ring.name
       this.scene.add(mesh)
-      this.landmarks.push(mesh)
+      this.deco.push(mesh)
     }
     console.log(`[NEO Tokyo] Created 4 Mega Rings`)
   }
@@ -528,7 +570,8 @@ export class NeoTokyoMapSystem {
           emissive: new THREE.Color(arch.c),
           emissiveIntensity: 1.0,
           transparent: true,
-          opacity: 0.7
+          opacity: 0.55,
+          depthWrite: false
         })
         const seg = new THREE.Mesh(segGeo, segMat)
         seg.position.set(x - midX, archHeight, z - midZ)
@@ -544,7 +587,7 @@ export class NeoTokyoMapSystem {
       archGroup.position.set(midX, gy, midZ)
       archGroup.name = 'MegaArch'
       this.scene.add(archGroup)
-      this.landmarks.push(archGroup)
+      this.deco.push(archGroup)
     }
     console.log(`[NEO Tokyo] Created ${arches.length} Mega Arches`)
   }
@@ -1246,6 +1289,77 @@ export class NeoTokyoMapSystem {
         start = null
       }
     }
+  }
+
+  private createFlightCorridors(): void {
+    const railGeo = new THREE.BoxGeometry(1, 5, 6)
+    const markerGeo = new THREE.BoxGeometry(10, 70, 10)
+    for (const seg of FLYWAY_SEGMENTS) {
+      const dx = seg.x2 - seg.x1
+      const dz = seg.z2 - seg.z1
+      const len = Math.hypot(dx, dz)
+      if (len < 1) continue
+
+      const mx = (seg.x1 + seg.x2) / 2
+      const mz = (seg.z1 + seg.z2) / 2
+      const angle = -Math.atan2(dz, dx)
+      const group = new THREE.Group()
+      group.position.set(mx, 0, mz)
+      group.rotation.y = angle
+      group.name = `FlightCorridor_${seg.name}`
+
+      const laneMat = new THREE.MeshLambertMaterial({
+        color: seg.color,
+        emissive: new THREE.Color(seg.color),
+        emissiveIntensity: 0.75,
+        transparent: true,
+        opacity: 0.24,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      })
+      const lane = new THREE.Mesh(new THREE.BoxGeometry(len, 1.5, Math.max(44, seg.width * 0.2)), laneMat)
+      lane.position.set(0, seg.alt, 0)
+      group.add(lane)
+
+      const railMat = new THREE.MeshLambertMaterial({
+        color: seg.color,
+        emissive: new THREE.Color(seg.color),
+        emissiveIntensity: 1.8
+      })
+      for (const side of [-1, 1]) {
+        const rail = new THREE.Mesh(railGeo, railMat)
+        rail.scale.x = len
+        rail.position.set(0, seg.alt + 8, side * seg.width * 0.5)
+        group.add(rail)
+      }
+
+      const gateCount = this.mobile ? Math.min(3, Math.floor(len / 900)) : Math.min(7, Math.floor(len / 520))
+      const gateMat = new THREE.MeshLambertMaterial({
+        color: seg.color,
+        emissive: new THREE.Color(seg.color),
+        emissiveIntensity: 1.4,
+        transparent: true,
+        opacity: 0.64,
+        depthWrite: false
+      })
+      for (let i = 1; i <= gateCount; i++) {
+        const offset = -len / 2 + (len * i) / (gateCount + 1)
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(Math.max(58, seg.width * 0.18), 6, 8, 32), gateMat)
+        ring.position.set(offset, seg.alt + 18, 0)
+        ring.rotation.y = Math.PI / 2
+        group.add(ring)
+
+        for (const side of [-1, 1]) {
+          const marker = new THREE.Mesh(markerGeo, gateMat)
+          marker.position.set(offset, seg.alt + 4, side * seg.width * 0.5)
+          group.add(marker)
+        }
+      }
+
+      this.scene.add(group)
+      this.deco.push(group)
+    }
+    console.log(`[NEO Tokyo] Created ${FLYWAY_SEGMENTS.length} flight corridors`)
   }
 
   // ===== WATER =====
