@@ -80,15 +80,14 @@ function makeHwyTex(): THREE.DataTexture {
 
 interface BSpec { type: number; x: number; z: number; w: number; d: number; h: number; ry: number }
 
-interface FlywaySegment {
+interface TerrainValleySegment {
   name: string
   x1: number
   z1: number
   x2: number
   z2: number
   width: number
-  alt: number
-  color: number
+  depth: number
 }
 
 interface LandmarkZone {
@@ -113,18 +112,24 @@ const LANDMARK_ZONES: LandmarkZone[] = [
   { name: 'Shinjuku', x: -2000, z: -200, r: 780, minTowerDistance: 980 },
 ]
 
-const FLYWAY_SEGMENTS: FlywaySegment[] = [
-  { name: 'Tokyo Station to Tokyo Tower', x1: 30, z1: 20, x2: -600, z2: 800, width: 360, alt: 190, color: 0x66d9ff },
-  { name: 'Tokyo Tower to Rainbow Bridge', x1: -600, z1: 800, x2: 1300, z2: 1050, width: 420, alt: 210, color: 0xff8844 },
-  { name: 'Rainbow Bridge to Odaiba', x1: 1300, z1: 1050, x2: 2000, z2: 2000, width: 520, alt: 170, color: 0x66ddff },
-  { name: 'Odaiba Bay Run', x1: 2000, z1: 2000, x2: 2680, z2: 2600, width: 560, alt: 260, color: 0x00ddff },
-  { name: 'Odaiba to Skytree', x1: 2000, z1: 2000, x2: 1600, z2: -1400, width: 470, alt: 620, color: 0x00ffcc },
-  { name: 'Skytree to Sensoji', x1: 1600, z1: -1400, x2: 1500, z2: -1500, width: 360, alt: 360, color: 0x00ff88 },
-  { name: 'Sensoji to Tokyo Station', x1: 1500, z1: -1500, x2: 30, z2: 20, width: 410, alt: 320, color: 0xffcc66 },
-  { name: 'Tokyo Station to Shinjuku', x1: 30, z1: 20, x2: -2000, z2: -200, width: 460, alt: 520, color: 0x00aaff },
-  { name: 'Shinjuku to Shibuya', x1: -2000, z1: -200, x2: -1300, z2: 800, width: 440, alt: 430, color: 0xff33bb },
-  { name: 'Shibuya to Tokyo Tower', x1: -1300, z1: 800, x2: -600, z2: 800, width: 360, alt: 260, color: 0xff8844 },
+const TERRAIN_VALLEYS: TerrainValleySegment[] = [
+  { name: 'Marunouchi Low Route', x1: 30, z1: 20, x2: -600, z2: 800, width: 420, depth: 170 },
+  { name: 'Minato Bay Cut', x1: -600, z1: 800, x2: 1300, z2: 1050, width: 520, depth: 210 },
+  { name: 'Rainbow Bay Bowl', x1: 1300, z1: 1050, x2: 2200, z2: 2400, width: 680, depth: 260 },
+  { name: 'Sumida Sky Valley', x1: 1700, z1: 2100, x2: 1500, z2: -1800, width: 560, depth: 230 },
+  { name: 'Asakusa Inner Cut', x1: 1500, z1: -1500, x2: 30, z2: 20, width: 500, depth: 190 },
+  { name: 'West Tokyo Saddle', x1: 30, z1: 20, x2: -2200, z2: -200, width: 620, depth: 220 },
+  { name: 'Shibuya Ravine', x1: -2200, z1: -200, x2: -1300, z2: 900, width: 520, depth: 180 },
 ]
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v))
+}
+
+function smooth01(v: number): number {
+  const t = clamp01(v)
+  return t * t * (3 - 2 * t)
+}
 
 function distToSegment2D(x: number, z: number, x1: number, z1: number, x2: number, z2: number): number {
   const dx = x2 - x1
@@ -137,8 +142,13 @@ function distToSegment2D(x: number, z: number, x1: number, z1: number, x2: numbe
   return Math.hypot(x - px, z - pz)
 }
 
-function isInFlightCorridor(x: number, z: number, extra = 0): boolean {
-  return FLYWAY_SEGMENTS.some(seg => distToSegment2D(x, z, seg.x1, seg.z1, seg.x2, seg.z2) < seg.width / 2 + extra)
+function valleyInfluence(x: number, z: number, seg: TerrainValleySegment, extra = 0): number {
+  const d = distToSegment2D(x, z, seg.x1, seg.z1, seg.x2, seg.z2)
+  return smooth01(1 - d / (seg.width / 2 + extra))
+}
+
+function isInTerrainValley(x: number, z: number, extra = 0): boolean {
+  return TERRAIN_VALLEYS.some(seg => valleyInfluence(x, z, seg, extra) > 0)
 }
 
 function isInLandmarkZone(x: number, z: number, extra = 0): boolean {
@@ -219,7 +229,6 @@ export class NeoTokyoMapSystem {
       this.createYamanoteLine()
       this.createHighways()
     }
-    this.createFlightCorridors()
     this.createHolograms()
     this.createWater()
   }
@@ -228,18 +237,25 @@ export class NeoTokyoMapSystem {
   // Scale: 1 unit ≈ 3m real. Gaussian bumps approximate real Tokyo elevation.
   static heightAt(x: number, z: number): number {
     if (isInWaterArea(x, z)) return WATER_LEVEL - 3
-    let h = 45 - x * 0.005   // gentle E-W gradient: west higher
-    // Shinjuku/Yoyogi hill cluster (NW)
-    h += 45 * Math.exp(-((x + 2000) ** 2 / 2500000 + (z + 200) ** 2 / 2000000))
-    // Minato/Tokyo Tower ridge
-    h += 22 * Math.exp(-((x + 1000) ** 2 / 1800000 + (z - 800) ** 2 / 1500000))
-    // Ueno ridge (northeast)
-    h += 16 * Math.exp(-((x - 400) ** 2 / 1100000 + (z + 1500) ** 2 / 1000000))
-    // Odaiba/bay depression (southeast)
-    h -= 30 * Math.exp(-((x - 2000) ** 2 / 3500000 + (z - 1800) ** 2 / 3000000))
-    // Micro undulation
-    h += Math.sin(x * 0.0008) * Math.cos(z * 0.001) * 8
-    h += Math.sin(x * 0.0025) * Math.sin(z * 0.002) * 4
+
+    let h = 120 - x * 0.007
+    h += 260 * Math.exp(-((x + 2600) ** 2 / 5200000 + (z + 400) ** 2 / 3600000))
+    h += 240 * Math.exp(-((x + 2050) ** 2 / 1700000 + (z + 250) ** 2 / 1500000))
+    h += 180 * Math.exp(-((x + 950) ** 2 / 1500000 + (z - 900) ** 2 / 1300000))
+    h += 150 * Math.exp(-((x - 450) ** 2 / 1900000 + (z + 1550) ** 2 / 1300000))
+    h += 120 * Math.exp(-((x - 1700) ** 2 / 1700000 + (z + 1300) ** 2 / 1600000))
+    h += 90 * Math.exp(-((x + 500) ** 2 / 1200000 + (z - 80) ** 2 / 1100000))
+    h -= 95 * Math.exp(-((x - 2100) ** 2 / 3800000 + (z - 2100) ** 2 / 3200000))
+
+    for (const valley of TERRAIN_VALLEYS) {
+      h -= valley.depth * valleyInfluence(x, z, valley)
+    }
+
+    h += Math.sin(x * 0.0018) * Math.cos(z * 0.0022) * 70
+    h += Math.sin(x * 0.0042 + 1.3) * Math.sin(z * 0.0035) * 48
+    h += Math.sin((x + z) * 0.0022) * 34
+    h += Math.cos((x - z) * 0.0015 + 0.7) * 28
+
     const bayDrop = z - 4000
     if (bayDrop > 0) h -= bayDrop * 0.02
     return Math.max(0, h)
@@ -276,7 +292,8 @@ export class NeoTokyoMapSystem {
     const cols = new Float32Array(pos.length)
     for (let i = 0; i < pos.length; i += 3) {
       const x = pos[i], z = pos[i + 2]
-      pos[i + 1] = NeoTokyoMapSystem.heightAt(x, z)
+      const y = NeoTokyoMapSystem.heightAt(x, z)
+      pos[i + 1] = y
       // 600m road grid pattern
       const rx = ((x % 600) + 600) % 600, rz = ((z % 600) + 600) % 600
       const dR = Math.min(Math.min(rx, 600 - rx), Math.min(rz, 600 - rz))
@@ -284,11 +301,17 @@ export class NeoTokyoMapSystem {
       if (isInWaterArea(x, z)) {
         r = 0.015; g = 0.035; b = 0.065
       } else if (dR < 55) {
-        r = 0.08 + sr(i * 0.009) * 0.02; g = 0.09 + sr(i * 0.011) * 0.01; b = 0.12 + sr(i * 0.013) * 0.02
+        const roadShade = 0.78 + clamp01(y / 520) * 0.25
+        r = (0.075 + sr(i * 0.009) * 0.02) * roadShade; g = (0.085 + sr(i * 0.011) * 0.01) * roadShade; b = (0.115 + sr(i * 0.013) * 0.02) * roadShade
       } else if (dR < 65) {
         r = 0.15; g = 0.14; b = 0.16
       } else {
-        r = 0.13 + sr(i * 0.017) * 0.04; g = 0.12 + sr(i * 0.021) * 0.03; b = 0.14 + sr(i * 0.025) * 0.04
+        const high = clamp01(y / 560)
+        const low = 1 - smooth01(y / 160)
+        const speckle = sr(i * 0.017) * 0.035
+        r = 0.10 + high * 0.12 + low * 0.02 + speckle
+        g = 0.10 + high * 0.10 + low * 0.03 + sr(i * 0.021) * 0.025
+        b = 0.12 + high * 0.13 + low * 0.025 + sr(i * 0.025) * 0.035
       }
       cols[i] = Math.max(0, Math.min(1, r))
       cols[i + 1] = Math.max(0, Math.min(1, g))
@@ -357,7 +380,7 @@ export class NeoTokyoMapSystem {
 
     const canPlaceTower = (x: number, z: number, h: number): boolean => {
       if (isInWaterArea(x, z)) return false
-      if (isInFlightCorridor(x, z, h > 1000 ? 180 : 90)) return false
+      if (isInTerrainValley(x, z, h > 1000 ? 220 : 120)) return false
       for (const zone of LANDMARK_ZONES) {
         const minDistance = h > 1000 ? zone.minTowerDistance ?? zone.r : zone.r
         if (Math.hypot(x - zone.x, z - zone.z) < minDistance) return false
@@ -1289,77 +1312,6 @@ export class NeoTokyoMapSystem {
         start = null
       }
     }
-  }
-
-  private createFlightCorridors(): void {
-    const railGeo = new THREE.BoxGeometry(1, 5, 6)
-    const markerGeo = new THREE.BoxGeometry(10, 70, 10)
-    for (const seg of FLYWAY_SEGMENTS) {
-      const dx = seg.x2 - seg.x1
-      const dz = seg.z2 - seg.z1
-      const len = Math.hypot(dx, dz)
-      if (len < 1) continue
-
-      const mx = (seg.x1 + seg.x2) / 2
-      const mz = (seg.z1 + seg.z2) / 2
-      const angle = -Math.atan2(dz, dx)
-      const group = new THREE.Group()
-      group.position.set(mx, 0, mz)
-      group.rotation.y = angle
-      group.name = `FlightCorridor_${seg.name}`
-
-      const laneMat = new THREE.MeshLambertMaterial({
-        color: seg.color,
-        emissive: new THREE.Color(seg.color),
-        emissiveIntensity: 0.75,
-        transparent: true,
-        opacity: 0.24,
-        depthWrite: false,
-        side: THREE.DoubleSide
-      })
-      const lane = new THREE.Mesh(new THREE.BoxGeometry(len, 1.5, Math.max(44, seg.width * 0.2)), laneMat)
-      lane.position.set(0, seg.alt, 0)
-      group.add(lane)
-
-      const railMat = new THREE.MeshLambertMaterial({
-        color: seg.color,
-        emissive: new THREE.Color(seg.color),
-        emissiveIntensity: 1.8
-      })
-      for (const side of [-1, 1]) {
-        const rail = new THREE.Mesh(railGeo, railMat)
-        rail.scale.x = len
-        rail.position.set(0, seg.alt + 8, side * seg.width * 0.5)
-        group.add(rail)
-      }
-
-      const gateCount = this.mobile ? Math.min(3, Math.floor(len / 900)) : Math.min(7, Math.floor(len / 520))
-      const gateMat = new THREE.MeshLambertMaterial({
-        color: seg.color,
-        emissive: new THREE.Color(seg.color),
-        emissiveIntensity: 1.4,
-        transparent: true,
-        opacity: 0.64,
-        depthWrite: false
-      })
-      for (let i = 1; i <= gateCount; i++) {
-        const offset = -len / 2 + (len * i) / (gateCount + 1)
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(Math.max(58, seg.width * 0.18), 6, 8, 32), gateMat)
-        ring.position.set(offset, seg.alt + 18, 0)
-        ring.rotation.y = Math.PI / 2
-        group.add(ring)
-
-        for (const side of [-1, 1]) {
-          const marker = new THREE.Mesh(markerGeo, gateMat)
-          marker.position.set(offset, seg.alt + 4, side * seg.width * 0.5)
-          group.add(marker)
-        }
-      }
-
-      this.scene.add(group)
-      this.deco.push(group)
-    }
-    console.log(`[NEO Tokyo] Created ${FLYWAY_SEGMENTS.length} flight corridors`)
   }
 
   // ===== WATER =====
