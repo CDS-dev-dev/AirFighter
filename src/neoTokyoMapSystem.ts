@@ -129,9 +129,6 @@ const TUBE_CORRIDOR_LAYOUT: TubeCorridor[] = [
   { x1: -3300, z1: -980, x2: 900, z2: -980, y: 540, innerRadius: 88, outerRadius: 126, entrySpacing: 760, entryLength: 210 },
   { x1: 900, z1: -980, x2: 2500, z2: 650, y: 540, innerRadius: 92, outerRadius: 132, entrySpacing: 720, entryLength: 210 },
   { x1: -3300, z1: 760, x2: 2500, z2: 760, y: 445, innerRadius: 86, outerRadius: 124, entrySpacing: 820, entryLength: 230 },
-  { x1: -900, z1: 1500, x2: 2600, z2: 2400, y: 320, innerRadius: 82, outerRadius: 118, entrySpacing: 720, entryLength: 210 },
-  { x1: 1400, z1: -1850, x2: 1400, z2: 1700, y: 735, innerRadius: 96, outerRadius: 138, entrySpacing: 780, entryLength: 220 },
-  { x1: -3400, z1: -1300, x2: -1500, z2: 760, y: 615, innerRadius: 90, outerRadius: 130, entrySpacing: 740, entryLength: 210 },
 ]
 
 const LANDMARK_ZONES: LandmarkZone[] = [
@@ -691,9 +688,9 @@ export class NeoTokyoMapSystem {
     this.deco.push(central)
 
     for (const ring of [
-      { r: 1500, y: 420, w: 34, c: railCyan, n: 48 },
-      { r: 2450, y: 690, w: 42, c: railPink, n: 64 },
-      { r: 3550, y: 980, w: 54, c: railAmber, n: 72 },
+      { r: 1500, y: 420, w: 22, c: railCyan, n: 48 },
+      { r: 2450, y: 690, w: 26, c: railPink, n: 64 },
+      { r: 3550, y: 980, w: 30, c: railAmber, n: 72 },
     ]) {
       this.buildSkyRing(ring.r, ring.y, ring.w, ring.n, platformMat, ring.c)
     }
@@ -702,11 +699,16 @@ export class NeoTokyoMapSystem {
       [-3300, -980, 900, -980, 560, railCyan],
       [900, -980, 2500, 650, 560, railCyan],
       [-3300, 760, 2500, 760, 460, railPink],
+    ] as [number, number, number, number, number, THREE.Material][]) {
+      this.buildSkyway(seg[0], seg[1], seg[2], seg[3], seg[4], 42, platformMat, seg[5])
+    }
+
+    for (const seg of [
       [-900, 1500, 2600, 2400, 330, railAmber],
       [1400, -1850, 1400, 1700, 760, railCyan],
       [-3400, -1300, -1500, 760, 640, railPink],
     ] as [number, number, number, number, number, THREE.Material][]) {
-      this.buildSkyway(seg[0], seg[1], seg[2], seg[3], seg[4], 42, platformMat, seg[5])
+      this.buildOpenSkyway(seg[0], seg[1], seg[2], seg[3], seg[4], 24, platformMat, seg[5])
     }
 
     const spireMat = new THREE.MeshLambertMaterial({ color: 0x101622, emissive: 0x5ac8ff, emissiveIntensity: 1.25 })
@@ -839,39 +841,44 @@ export class NeoTokyoMapSystem {
   }
 
   private buildSkyRing(R: number, Y: number, roadW: number, N: number, _deckMat: THREE.Material, railMat: THREE.Material): void {
-    const innerRadius = Math.max(76, roadW * 1.85)
-    const outerRadius = innerRadius + 38
-    const entryAngleSpacing = Math.PI / 4
-    const entryAngle = 0.16
-    this.ringTubeCorridors.push({ x: 0, z: 0, radius: R, y: Y, innerRadius, outerRadius, entryAngleSpacing, entryAngle })
-
-    const shellMat = new THREE.MeshLambertMaterial({
-      color: 0x111d2a,
-      emissive: 0x0a2238,
-      emissiveIntensity: 0.95,
-      transparent: true,
-      opacity: 0.82,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    })
     for (let i = 0; i < N; i++) {
-      const start = (i / N) * Math.PI * 2
-      if (start % entryAngleSpacing < entryAngle) continue
-      const arc = Math.min((Math.PI * 2) / N * 0.94, entryAngleSpacing - entryAngle)
-      const seg = new THREE.Mesh(new THREE.TorusGeometry(R, outerRadius, 12, 18, arc), shellMat)
-      seg.position.set(0, Y, 0)
-      seg.rotation.x = Math.PI / 2
-      seg.rotation.z = start
-      seg.name = 'NeoTokyoSkyTubeRing'
+      const am = ((i + 0.5) / N) * Math.PI * 2
+      const len = 2 * R * Math.sin(Math.PI / N) + 1
+      const seg = new THREE.Group()
+      seg.position.set(Math.cos(am) * R, Y, Math.sin(am) * R)
+      seg.rotation.y = -am + Math.PI / 2
+      seg.name = 'NeoTokyoSkyRing'
+      seg.add(new THREE.Mesh(new THREE.BoxGeometry(len, 6, roadW), _deckMat))
+      for (const side of [-1, 1]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 3, 2), railMat)
+        rail.position.set(0, 5, side * roadW * 0.47)
+        seg.add(rail)
+      }
       this.scene.add(seg)
       this.deco.push(seg)
-      const rib = new THREE.Mesh(new THREE.TorusGeometry(R, outerRadius + 5, 6, 18, Math.min(arc, 0.08)), railMat)
-      rib.position.set(0, Y, 0)
-      rib.rotation.x = Math.PI / 2
-      rib.rotation.z = start + arc
-      this.scene.add(rib)
-      this.deco.push(rib)
     }
+  }
+
+  private buildOpenSkyway(x1: number, z1: number, x2: number, z2: number, y: number, w: number, deckMat: THREE.Material, railMat: THREE.Material): void {
+    const dx = x2 - x1
+    const dz = z2 - z1
+    const len = Math.hypot(dx, dz)
+    if (len < 1) return
+    const midX = (x1 + x2) / 2
+    const midZ = (z1 + z2) / 2
+    const angle = Math.atan2(dx, dz)
+    const deck = new THREE.Group()
+    deck.name = 'NeoTokyoOpenSkyway'
+    deck.position.set(midX, y, midZ)
+    deck.rotation.y = -angle
+    deck.add(new THREE.Mesh(new THREE.BoxGeometry(len, 6, w), deckMat))
+    for (const side of [-1, 1]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 3, 2), railMat)
+      rail.position.set(0, 5, side * w * 0.46)
+      deck.add(rail)
+    }
+    this.scene.add(deck)
+    this.deco.push(deck)
   }
 
   private buildSkyway(x1: number, z1: number, x2: number, z2: number, y: number, w: number, _deckMat: THREE.Material, railMat: THREE.Material): void {
@@ -880,10 +887,10 @@ export class NeoTokyoMapSystem {
     const len = Math.hypot(dx, dz)
     if (len < 1) return
 
-    const innerRadius = Math.max(76, w * 1.85)
-    const outerRadius = innerRadius + 38
-    const entrySpacing = Math.max(620, innerRadius * 7.6)
-    const entryLength = Math.max(180, innerRadius * 2.25)
+    const innerRadius = Math.max(72, w * 1.72)
+    const outerRadius = innerRadius + 28
+    const entrySpacing = Math.max(860, innerRadius * 10.4)
+    const entryLength = Math.max(280, innerRadius * 3.4)
     this.tubeCorridors.push({ x1, z1, x2, z2, y, innerRadius, outerRadius, entrySpacing, entryLength })
 
     const axis = new THREE.Vector3(dx / len, 0, dz / len)
@@ -894,12 +901,12 @@ export class NeoTokyoMapSystem {
       emissive: 0x0a2238,
       emissiveIntensity: 0.95,
       transparent: true,
-      opacity: 0.82,
+      opacity: 0.58,
       side: THREE.DoubleSide,
       depthWrite: false,
     })
     const glowMat = railMat
-    const chunkLen = 260
+    const chunkLen = 220
     let cursor = 0
     while (cursor < len) {
       const slot = (cursor + chunkLen * 0.5) % entrySpacing
@@ -1255,9 +1262,9 @@ export class NeoTokyoMapSystem {
   private extendRainbowBridge(): void {
     const deckMat = new THREE.MeshLambertMaterial({ color: 0x243040, emissive: 0x102040, emissiveIntensity: 0.5 })
     const neonMat = new THREE.MeshLambertMaterial({ color: 0x88ddff, emissive: 0x44aaff, emissiveIntensity: 2.2 })
-    this.buildSkyway(-420, 180, 620, 520, 128, 48, deckMat, neonMat)
-    this.buildSkyway(2500, 2380, 3320, 3260, 172, 52, deckMat, neonMat)
-    this.buildSkyway(1180, 760, 2060, 1640, 236, 38, deckMat, neonMat)
+    this.buildOpenSkyway(-420, 180, 620, 520, 128, 42, deckMat, neonMat)
+    this.buildOpenSkyway(2500, 2380, 3320, 3260, 172, 44, deckMat, neonMat)
+    this.buildOpenSkyway(1180, 760, 2060, 1640, 236, 30, deckMat, neonMat)
   }
 
   private extendFujiTV(X: number, Z: number): void {
@@ -1684,7 +1691,7 @@ export class NeoTokyoMapSystem {
       [620, 520, 2500, 2380, 168, 44],
     ]
     for (const [x1, z1, x2, z2, y, w] of routes) {
-      this.buildSkyway(x1, z1, x2, z2, y, w, deckMat, railMat)
+      this.buildOpenSkyway(x1, z1, x2, z2, y, w, deckMat, railMat)
       const dx = x2 - x1
       const dz = z2 - z1
       const len = Math.hypot(dx, dz)
