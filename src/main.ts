@@ -6,7 +6,7 @@ import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
-const VERSION = '5.5.0'
+const VERSION = '5.6.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -118,6 +118,19 @@ type GameMap = 'original' | 'tokyo'
 let currentMap: GameMap = 'original' as GameMap  // デフォルトMAP
 let neoTokyoMapSystem: NeoTokyoMapSystem | null = null  // NEO東京MAPシステム
 let terrainGLB: THREE.Group | null = null  // terrain.glbのシーン参照
+
+interface MapBounds {
+  minX: number
+  maxX: number
+  minZ: number
+  maxZ: number
+  warningMargin: number
+}
+
+const MAP_BOUNDS: Record<GameMap, MapBounds> = {
+  original: { minX: -4300, maxX: 4300, minZ: -4300, maxZ: 4300, warningMargin: 550 },
+  tokyo: { minX: -6800, maxX: 6800, minZ: -6800, maxZ: 6800, warningMargin: 700 },
+}
 
 // ===== TERRAIN =====
 const WATER_LEVEL = 1.8
@@ -1376,6 +1389,7 @@ let gunLeadPosition: THREE.Vector3 | null = null  // マシンガン予測位置
 let hitFlashTimer = 0, gunSoundCooldown = 0, trailFrame = 0, radarFrame = 0
 let lockedTarget: { group: THREE.Group } | null = null  // Enemy | GroundTarget どちらもロック可能
 let playerHP = 3, invincibleTimer = 0, respawnFlash = 0, respawnTimer = 0
+let boundaryWarningTimer = 0
 const MAX_HP = 3
 
 const bulletMat = new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xffdd00, emissiveIntensity: 28.0, roughness: 0.1, metalness: 0 })
@@ -3747,6 +3761,7 @@ const hitOverlay = document.getElementById('hit-overlay') as HTMLDivElement
 const respawnOverlay = document.getElementById('respawn-overlay') as HTMLDivElement
 const supplyIndicator = document.getElementById('supply-indicator') as HTMLDivElement
 const warningEl  = document.getElementById('warning') as HTMLDivElement
+const boundaryWarningEl = document.getElementById('boundary-warning') as HTMLDivElement
 const reticleEl  = document.getElementById('reticle') as HTMLDivElement
 const gunLeadReticleEl = document.getElementById('gun-lead-reticle') as HTMLDivElement
 const boostFill  = document.getElementById('boost-fill') as HTMLDivElement
@@ -3835,6 +3850,42 @@ function updateWarning() {
   } else {
     warningEl.style.display = 'none'
   }
+}
+
+function updateBoundaryWarning(dt: number) {
+  boundaryWarningTimer = Math.max(0, boundaryWarningTimer - dt)
+  if (boundaryWarningTimer > 0) {
+    boundaryWarningEl.style.display = 'block'
+    boundaryWarningEl.style.opacity = Math.min(1, boundaryWarningTimer * 2).toString()
+  } else {
+    boundaryWarningEl.style.display = 'none'
+  }
+}
+
+function enforceMapBounds() {
+  if (!currentMode) return
+  const bounds = MAP_BOUNDS[currentMap]
+  const clampedX = THREE.MathUtils.clamp(player.position.x, bounds.minX, bounds.maxX)
+  const clampedZ = THREE.MathUtils.clamp(player.position.z, bounds.minZ, bounds.maxZ)
+  const outside = clampedX !== player.position.x || clampedZ !== player.position.z
+  if (outside) {
+    player.position.x = clampedX
+    player.position.z = clampedZ
+    speed = Math.min(speed, 180)
+    wheelSpeedTarget = Math.min(wheelSpeedTarget, 150)
+    boundaryWarningTimer = 1.2
+    hitFlashTimer = Math.max(hitFlashTimer, 0.18)
+    camShakeAmt = Math.max(camShakeAmt, 0.28)
+    return
+  }
+
+  const distanceToEdge = Math.min(
+    player.position.x - bounds.minX,
+    bounds.maxX - player.position.x,
+    player.position.z - bounds.minZ,
+    bounds.maxZ - player.position.z,
+  )
+  if (distanceToEdge < bounds.warningMargin) boundaryWarningTimer = Math.max(boundaryWarningTimer, 0.35)
 }
 
 const MISSILE_LOCK_RANGE = 3000
@@ -4367,6 +4418,8 @@ function loop() {
     }
   }
 
+  enforceMapBounds()
+
   // 衝突判定：構造物との衝突（建物、地上目標）
   const collisionRadius = 8  // プレイヤーの衝突半径
 
@@ -4554,6 +4607,7 @@ function loop() {
   boostFill.style.width = `${Math.min(100, (speed / 550) * 100)}%`  // 最高速550m/sで100%
   updateReticle()
   updateWarning()
+  updateBoundaryWarning(dt)
   drawEnemyBrackets()
   updateGunLeadIndicator()
   // レーダー描画を3フレームに1回に制限（パフォーマンス改善）

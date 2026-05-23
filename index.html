@@ -78,6 +78,19 @@
         background: rgba(255,30,0,0.08);
         backdrop-filter: blur(2px);
       }
+      #boundary-warning {
+        position: fixed; top: 24%; left: 50%;
+        transform: translateX(-50%);
+        pointer-events: none; display: none;
+        font-size: 12px; font-weight: 800; letter-spacing: 4px;
+        color: #66d9ff; text-shadow: 0 0 16px #00aaff;
+        padding: 7px 22px;
+        border: 1px solid rgba(80,190,255,0.5);
+        border-radius: 4px;
+        background: rgba(0,40,90,0.14);
+        backdrop-filter: blur(2px);
+        z-index: 80;
+      }
 
       /* ── ヒットフラッシュ ── */
       #hit-overlay {
@@ -631,6 +644,7 @@
     <div id="warning">
       <div class="warn-text">&#9651; MISSILE INCOMING &#9651;</div>
     </div>
+    <div id="boundary-warning">RETURN TO COMBAT AREA</div>
 
     <div id="reticle">
       <div class="arc"></div>
@@ -853,7 +867,7 @@
 
     <!-- ゲームモード＆MAP選択 -->
     <div id="mode-screen">
-      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v5.5.0</span></div>
+      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v5.6.0</span></div>
       <div class="ms-sub">SELECT MAP & MISSION MODE</div>
 
       <!-- MAP・音声・操作設定 -->
