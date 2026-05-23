@@ -210,10 +210,12 @@ export class NeoTokyoMapSystem {
 
   async initialize(): Promise<void> {
     this.createTerrain()
+    this.createUrbanFabric()
     this.createBuildings()
     this.createVariedBuildings()
     if (!this.mobile) {
       this.createLayeredSkyCity()
+      this.createChunkyMegaBlocks()
       this.createHeroTowers()
       this.createDistantSkyline()
       this.createMegaPillars()
@@ -315,6 +317,52 @@ export class NeoTokyoMapSystem {
 
   // ===== BUILDINGS (InstancedMesh — 6 draw calls for 700+ buildings) =====
 
+  private createUrbanFabric(): void {
+    const podiumMat = new THREE.MeshLambertMaterial({ color: 0x101620, emissive: 0x0a1522, emissiveIntensity: 0.45 })
+    const roofMat = new THREE.MeshLambertMaterial({ color: 0x182233, emissive: 0x0d2238, emissiveIntensity: 0.55 })
+    const cyanMat = new THREE.MeshLambertMaterial({ color: 0x2ddcff, emissive: 0x00aaff, emissiveIntensity: 1.35 })
+    const amberMat = new THREE.MeshLambertMaterial({ color: 0xff8a26, emissive: 0xff5a10, emissiveIntensity: 1.1 })
+
+    for (let ix = -5; ix <= 5; ix++) {
+      for (let iz = -5; iz <= 5; iz++) {
+        const x = ix * 620 + (sr(ix * 3.1 + iz) - 0.5) * 170
+        const z = iz * 620 + (sr(ix - iz * 4.4) - 0.5) * 170
+        if (Math.hypot(x, z) > 4200 || isInWaterArea(x, z) || isInLandmarkZone(x, z, 360) || isInUrbanCanyon(x, z, 140)) continue
+        const gy = NeoTokyoMapSystem.heightAt(x, z)
+        const w = 260 + sr(ix * 7.3 + iz) * 360
+        const d = 220 + sr(ix - iz * 5.9) * 330
+        const h = 18 + sr(ix * 2.9 - iz) * 56
+        const g = new THREE.Group()
+        g.name = 'NeoTokyoUrbanFabric'
+        g.position.set(x, gy, z)
+        g.rotation.y = (sr(ix * 8.1 + iz * 2.7) - 0.5) * 0.65
+
+        const slab = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), podiumMat)
+        slab.position.y = h / 2
+        g.add(slab)
+
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 4, d * 0.72), roofMat)
+        roof.position.y = h + 3
+        g.add(roof)
+
+        for (const side of [-1, 1]) {
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(w * 0.82, 2.5, 3), side > 0 ? cyanMat : amberMat)
+          rail.position.set(0, h + 7, side * d * 0.38)
+          g.add(rail)
+        }
+
+        if (sr(ix + iz * 1.7) > 0.55) {
+          const stack = new THREE.Mesh(new THREE.BoxGeometry(w * 0.36, 28 + sr(ix) * 42, d * 0.34), roofMat)
+          stack.position.set((sr(ix) - 0.5) * w * 0.35, h + stack.geometry.parameters.height / 2, (sr(iz) - 0.5) * d * 0.35)
+          g.add(stack)
+        }
+
+        this.scene.add(g)
+        this.deco.push(g)
+      }
+    }
+  }
+
   private createBuildings(): void {
     const textures = BTYPE.map(b => makeWinTex(b.bg, b.win, b.cols, b.rows))
     textures.forEach(t => t.repeat.set(1, 2))
@@ -389,8 +437,8 @@ export class NeoTokyoMapSystem {
         type: 1,
         x: cx,
         z: cz,
-        w: 220 + bs * 170,
-        d: 220 + bs * 170,
+        w: 310 + bs * 240,
+        d: 280 + bs * 230,
         h,
         ry: sr(bs) > 0.5 ? Math.PI / 2 : 0
       })
@@ -406,8 +454,8 @@ export class NeoTokyoMapSystem {
         type: 0,
         x: cx,
         z: cz,
-        w: 180 + bs * 160,
-        d: 180 + bs * 160,
+        w: 250 + bs * 210,
+        d: 230 + bs * 200,
         h,
         ry: sr(bs) > 0.5 ? Math.PI / 2 : 0
       })
@@ -426,8 +474,8 @@ export class NeoTokyoMapSystem {
         type: 2,
         x: cx,
         z: cz,
-        w: 150 + bs * 105,
-        d: 150 + bs * 105,
+        w: 210 + bs * 150,
+        d: 190 + bs * 145,
         h,
         ry: Math.PI / 6  // diagonal
       })
@@ -443,8 +491,8 @@ export class NeoTokyoMapSystem {
         type: 3,
         x: cx,
         z: cz,
-        w: 160 + bs * 170,
-        d: 160 + bs * 170,
+        w: 260 + bs * 240,
+        d: 230 + bs * 220,
         h,
         ry: sr(bs) > 0.5 ? Math.PI / 2 : 0
       })
@@ -469,8 +517,8 @@ export class NeoTokyoMapSystem {
           type,
           x: cx,
           z: cz,
-          w: 90 + bs * 120,
-          d: 90 + bs * 120,
+          w: 150 + bs * 160,
+          d: 135 + bs * 150,
           h,
           ry: sr(bs) > 0.5 ? Math.PI / 2 : 0
         })
@@ -482,6 +530,60 @@ export class NeoTokyoMapSystem {
   }
 
   // ===== MEGA STRUCTURES (Vertical City Infrastructure) =====
+
+  private createChunkyMegaBlocks(): void {
+    const blocks: Array<{ x: number; z: number; w: number; d: number; h: number; c: number; rot: number }> = [
+      { x: -520, z: -1420, w: 560, d: 420, h: 820, c: 0x3ddcff, rot: 0.18 },
+      { x: 1180, z: -1120, w: 520, d: 480, h: 960, c: 0xff3aa8, rot: -0.12 },
+      { x: -1760, z: 1180, w: 620, d: 380, h: 720, c: 0xff8a26, rot: 0.34 },
+      { x: 2580, z: 1600, w: 680, d: 520, h: 620, c: 0x3ddcff, rot: -0.28 },
+      { x: -3300, z: -760, w: 580, d: 520, h: 760, c: 0xff3aa8, rot: 0.08 },
+      { x: 2900, z: -760, w: 470, d: 580, h: 840, c: 0x6ce8ff, rot: 0.42 },
+    ]
+
+    for (const b of blocks) {
+      if (isInWaterArea(b.x, b.z) || isInLandmarkZone(b.x, b.z, 260) || isInUrbanCanyon(b.x, b.z, 120)) continue
+      const gy = NeoTokyoMapSystem.heightAt(b.x, b.z)
+      const g = new THREE.Group()
+      g.name = 'NeoTokyoMegaBlock'
+      g.position.set(b.x, gy, b.z)
+      g.rotation.y = b.rot
+
+      const bodyMat = new THREE.MeshLambertMaterial({ color: 0x111923, emissive: 0x0b1624, emissiveIntensity: 0.55 })
+      const glassMat = new THREE.MeshLambertMaterial({ color: 0x18283a, emissive: new THREE.Color(b.c), emissiveIntensity: 0.38 })
+      const glowMat = new THREE.MeshLambertMaterial({ color: b.c, emissive: new THREE.Color(b.c), emissiveIntensity: 1.65 })
+
+      const base = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h * 0.34, b.d), bodyMat)
+      base.position.y = b.h * 0.17
+      g.add(base)
+
+      const mid = new THREE.Mesh(new THREE.CylinderGeometry(b.w * 0.38, b.w * 0.46, b.h * 0.42, 6), glassMat)
+      mid.position.y = b.h * 0.55
+      mid.rotation.y = Math.PI / 6
+      g.add(mid)
+
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(b.w * 0.62, b.h * 0.18, b.d * 0.72), bodyMat)
+      cap.position.y = b.h * 0.88
+      cap.rotation.y = -0.22
+      g.add(cap)
+
+      for (const y of [b.h * 0.36, b.h * 0.68, b.h * 0.98]) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(Math.max(b.w, b.d) * 0.37, 5, 6, 36), glowMat)
+        ring.position.y = y
+        ring.rotation.x = Math.PI / 2
+        g.add(ring)
+      }
+
+      for (const side of [-1, 1]) {
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(12, b.h * 0.84, b.d * 0.08), glowMat)
+        fin.position.set(side * b.w * 0.42, b.h * 0.48, 0)
+        g.add(fin)
+      }
+
+      this.scene.add(g)
+      this.landmarks.push(g)
+    }
+  }
 
   private createLayeredSkyCity(): void {
     const platformMat = new THREE.MeshLambertMaterial({
