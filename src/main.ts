@@ -6,7 +6,7 @@ import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
-const VERSION = '5.12.0'
+const VERSION = '5.13.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -4433,27 +4433,98 @@ function loop() {
 
   // 東京MAPの建物・ランドマークとの衝突
   if (currentMap === 'tokyo' && neoTokyoMapSystem) {
-    const collisionObjects = neoTokyoMapSystem.getCollisionObjects()
-    for (const obj of collisionObjects) {
-      if (!(obj as any).isMesh) continue
-      const mesh = obj as THREE.Mesh
-      const box = new THREE.Box3().setFromObject(mesh)
-      const center = box.getCenter(new THREE.Vector3())
-      const size = box.getSize(new THREE.Vector3())
+    let insideTube = false
+    for (const tube of neoTokyoMapSystem.getTubeCorridors()) {
+      const dx = tube.x2 - tube.x1
+      const dz = tube.z2 - tube.z1
+      const lenSq = dx * dx + dz * dz
+      if (lenSq <= 0.0001) continue
+      const t = Math.max(0, Math.min(1, ((player.position.x - tube.x1) * dx + (player.position.z - tube.z1) * dz) / lenSq))
+      const along = Math.sqrt(lenSq) * t
+      const inEntrySlot = along % tube.entrySpacing < tube.entryLength
+      const cx = tube.x1 + dx * t
+      const cz = tube.z1 + dz * t
+      const px = player.position.x - cx
+      const py = player.position.y - tube.y
+      const pz = player.position.z - cz
+      const radial = Math.sqrt(px * px + py * py + pz * pz)
 
-      const dx = player.position.x - center.x
-      const dy = player.position.y - center.y
-      const dz = player.position.z - center.z
-      const distXZ = Math.sqrt(dx * dx + dz * dz)
-
-      if (distXZ < collisionRadius + size.x / 2 && Math.abs(dy) < size.y / 2) {
-        const pushDir = new THREE.Vector3(dx, 0, dz).normalize()
-        player.position.x = center.x + pushDir.x * (collisionRadius + size.x / 2)
-        player.position.z = center.z + pushDir.z * (collisionRadius + size.z / 2)
-        // 衝突時は視覚フィードバックのみ
+      if (!inEntrySlot && radial > tube.innerRadius - collisionRadius && radial < tube.outerRadius + collisionRadius) {
+        const targetRadius = radial < (tube.innerRadius + tube.outerRadius) / 2
+          ? tube.innerRadius - collisionRadius
+          : tube.outerRadius + collisionRadius
+        const inv = radial > 0.001 ? 1 / radial : 0
+        player.position.x = cx + px * inv * targetRadius
+        player.position.y = tube.y + py * inv * targetRadius
+        player.position.z = cz + pz * inv * targetRadius
         hitFlashTimer = 0.3
         camShakeAmt = Math.max(camShakeAmt, 0.5)
+        insideTube = targetRadius < tube.innerRadius
         break
+      }
+
+      if (radial < tube.innerRadius - collisionRadius) {
+        insideTube = true
+      }
+    }
+
+    for (const tube of neoTokyoMapSystem.getRingTubeCorridors()) {
+      const dx = player.position.x - tube.x
+      const dz = player.position.z - tube.z
+      const horizontalRadius = Math.sqrt(dx * dx + dz * dz)
+      let angle = Math.atan2(dz, dx)
+      if (angle < 0) angle += Math.PI * 2
+      const inEntrySlot = angle % tube.entryAngleSpacing < tube.entryAngle
+      const radial = Math.sqrt((horizontalRadius - tube.radius) ** 2 + (player.position.y - tube.y) ** 2)
+
+      if (!inEntrySlot && radial > tube.innerRadius - collisionRadius && radial < tube.outerRadius + collisionRadius) {
+        const targetRadius = radial < (tube.innerRadius + tube.outerRadius) / 2
+          ? tube.innerRadius - collisionRadius
+          : tube.outerRadius + collisionRadius
+        const invHorizontal = horizontalRadius > 0.001 ? 1 / horizontalRadius : 0
+        const cx = tube.x + dx * invHorizontal * tube.radius
+        const cz = tube.z + dz * invHorizontal * tube.radius
+        const px = player.position.x - cx
+        const py = player.position.y - tube.y
+        const pz = player.position.z - cz
+        const inv = radial > 0.001 ? 1 / radial : 0
+        player.position.x = cx + px * inv * targetRadius
+        player.position.y = tube.y + py * inv * targetRadius
+        player.position.z = cz + pz * inv * targetRadius
+        hitFlashTimer = 0.3
+        camShakeAmt = Math.max(camShakeAmt, 0.5)
+        insideTube = targetRadius < tube.innerRadius
+        break
+      }
+
+      if (radial < tube.innerRadius - collisionRadius) {
+        insideTube = true
+      }
+    }
+
+    const collisionObjects = neoTokyoMapSystem.getCollisionObjects()
+    if (!insideTube) {
+      for (const obj of collisionObjects) {
+        if (!(obj as any).isMesh) continue
+        const mesh = obj as THREE.Mesh
+        const box = new THREE.Box3().setFromObject(mesh)
+        const center = box.getCenter(new THREE.Vector3())
+        const size = box.getSize(new THREE.Vector3())
+
+        const dx = player.position.x - center.x
+        const dy = player.position.y - center.y
+        const dz = player.position.z - center.z
+        const distXZ = Math.sqrt(dx * dx + dz * dz)
+
+        if (distXZ < collisionRadius + size.x / 2 && Math.abs(dy) < size.y / 2) {
+          const pushDir = new THREE.Vector3(dx, 0, dz).normalize()
+          player.position.x = center.x + pushDir.x * (collisionRadius + size.x / 2)
+          player.position.z = center.z + pushDir.z * (collisionRadius + size.z / 2)
+          // 衝突時は視覚フィードバックのみ
+          hitFlashTimer = 0.3
+          camShakeAmt = Math.max(camShakeAmt, 0.5)
+          break
+        }
       }
     }
   }

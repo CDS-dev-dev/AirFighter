@@ -92,6 +92,29 @@ interface UrbanCanyon {
   width: number
 }
 
+export interface TubeCorridor {
+  x1: number
+  z1: number
+  x2: number
+  z2: number
+  y: number
+  innerRadius: number
+  outerRadius: number
+  entrySpacing: number
+  entryLength: number
+}
+
+export interface RingTubeCorridor {
+  x: number
+  z: number
+  radius: number
+  y: number
+  innerRadius: number
+  outerRadius: number
+  entryAngleSpacing: number
+  entryAngle: number
+}
+
 interface LandmarkZone {
   name: string
   x: number
@@ -101,6 +124,15 @@ interface LandmarkZone {
 }
 
 const WATER_LEVEL = 1.2
+
+const TUBE_CORRIDOR_LAYOUT: TubeCorridor[] = [
+  { x1: -3300, z1: -980, x2: 900, z2: -980, y: 540, innerRadius: 88, outerRadius: 126, entrySpacing: 760, entryLength: 210 },
+  { x1: 900, z1: -980, x2: 2500, z2: 650, y: 540, innerRadius: 92, outerRadius: 132, entrySpacing: 720, entryLength: 210 },
+  { x1: -3300, z1: 760, x2: 2500, z2: 760, y: 445, innerRadius: 86, outerRadius: 124, entrySpacing: 820, entryLength: 230 },
+  { x1: -900, z1: 1500, x2: 2600, z2: 2400, y: 320, innerRadius: 82, outerRadius: 118, entrySpacing: 720, entryLength: 210 },
+  { x1: 1400, z1: -1850, x2: 1400, z2: 1700, y: 735, innerRadius: 96, outerRadius: 138, entrySpacing: 780, entryLength: 220 },
+  { x1: -3400, z1: -1300, x2: -1500, z2: 760, y: 615, innerRadius: 90, outerRadius: 130, entrySpacing: 740, entryLength: 210 },
+]
 
 const LANDMARK_ZONES: LandmarkZone[] = [
   { name: 'Tokyo Station', x: 30, z: 20, r: 720, minTowerDistance: 980 },
@@ -145,6 +177,10 @@ function distToSegment2D(x: number, z: number, x1: number, z1: number, x2: numbe
 
 function isInUrbanCanyon(x: number, z: number, extra = 0): boolean {
   return URBAN_CANYONS.some(canyon => distToSegment2D(x, z, canyon.x1, canyon.z1, canyon.x2, canyon.z2) < canyon.width / 2 + extra)
+}
+
+function isInTubeReserve(x: number, z: number, extra = 0): boolean {
+  return TUBE_CORRIDOR_LAYOUT.some(tube => distToSegment2D(x, z, tube.x1, tube.z1, tube.x2, tube.z2) < tube.outerRadius + extra)
 }
 
 function districtAngle(x: number, z: number): number {
@@ -210,6 +246,8 @@ export class NeoTokyoMapSystem {
   private landmarks: THREE.Object3D[] = []
   private deco: THREE.Object3D[] = []
   private buildingColliders: THREE.Mesh[] = []  // Simple collision boxes for each building
+  private tubeCorridors: TubeCorridor[] = []
+  private ringTubeCorridors: RingTubeCorridor[] = []
 
   constructor(scene: THREE.Scene, isMobile = false) {
     this.scene = scene
@@ -270,6 +308,14 @@ export class NeoTokyoMapSystem {
     return [...this.landmarks, ...this.buildingColliders]
   }
 
+  getTubeCorridors(): TubeCorridor[] {
+    return this.tubeCorridors
+  }
+
+  getRingTubeCorridors(): RingTubeCorridor[] {
+    return this.ringTubeCorridors
+  }
+
   cleanup(): void {
     if (this.terrainMesh) { this.scene.remove(this.terrainMesh); this.terrainMesh = null }
     for (const m of this.instancedMeshes) this.scene.remove(m)
@@ -280,6 +326,8 @@ export class NeoTokyoMapSystem {
     this.landmarks.length = 0
     for (const d of this.deco) this.scene.remove(d)
     this.deco.length = 0
+    this.tubeCorridors.length = 0
+    this.ringTubeCorridors.length = 0
   }
 
   // ===== TERRAIN =====
@@ -335,7 +383,7 @@ export class NeoTokyoMapSystem {
       for (let iz = -5; iz <= 5; iz++) {
         const x = ix * 640 + (sr(ix * 3.1 + iz) - 0.5) * 52
         const z = iz * 640 + (sr(ix - iz * 4.4) - 0.5) * 52
-        if (Math.hypot(x, z) > 4200 || isInWaterArea(x, z) || isInLandmarkZone(x, z, 360) || isInUrbanCanyon(x, z, 140)) continue
+        if (Math.hypot(x, z) > 4200 || isInWaterArea(x, z) || isInLandmarkZone(x, z, 360) || isInUrbanCanyon(x, z, 140) || isInTubeReserve(x, z, 170)) continue
         const gy = NeoTokyoMapSystem.heightAt(x, z)
         const major = sr(ix * 7.3 + iz) > 0.5
         const w = major ? 520 : 380
@@ -430,6 +478,7 @@ export class NeoTokyoMapSystem {
     const canPlaceTower = (x: number, z: number, h: number): boolean => {
       if (isInWaterArea(x, z)) return false
       if (isInUrbanCanyon(x, z, h > 1100 ? 120 : 70)) return false
+      if (isInTubeReserve(x, z, h > 1100 ? 260 : 190)) return false
       for (const zone of LANDMARK_ZONES) {
         const minDistance = h > 1000 ? zone.minTowerDistance ?? zone.r : zone.r
         if (Math.hypot(x - zone.x, z - zone.z) < minDistance) return false
@@ -789,44 +838,122 @@ export class NeoTokyoMapSystem {
     }
   }
 
-  private buildSkyRing(R: number, Y: number, roadW: number, N: number, deckMat: THREE.Material, railMat: THREE.Material): void {
+  private buildSkyRing(R: number, Y: number, roadW: number, N: number, _deckMat: THREE.Material, railMat: THREE.Material): void {
+    const innerRadius = Math.max(76, roadW * 1.85)
+    const outerRadius = innerRadius + 38
+    const entryAngleSpacing = Math.PI / 4
+    const entryAngle = 0.16
+    this.ringTubeCorridors.push({ x: 0, z: 0, radius: R, y: Y, innerRadius, outerRadius, entryAngleSpacing, entryAngle })
+
+    const shellMat = new THREE.MeshLambertMaterial({
+      color: 0x111d2a,
+      emissive: 0x0a2238,
+      emissiveIntensity: 0.95,
+      transparent: true,
+      opacity: 0.82,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    })
     for (let i = 0; i < N; i++) {
-      const am = ((i + 0.5) / N) * Math.PI * 2
-      const len = 2 * R * Math.sin(Math.PI / N) + 1
-      const seg = new THREE.Group()
-      seg.position.set(Math.cos(am) * R, Y, Math.sin(am) * R)
-      seg.rotation.y = -am + Math.PI / 2
-      seg.name = 'NeoTokyoSkyRing'
-      seg.add(new THREE.Mesh(new THREE.BoxGeometry(len, 8, roadW), deckMat))
-      for (const side of [-1, 1]) {
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 3, 2), railMat)
-        rail.position.set(0, 6, side * roadW * 0.47)
-        seg.add(rail)
-      }
+      const start = (i / N) * Math.PI * 2
+      if (start % entryAngleSpacing < entryAngle) continue
+      const arc = Math.min((Math.PI * 2) / N * 0.94, entryAngleSpacing - entryAngle)
+      const seg = new THREE.Mesh(new THREE.TorusGeometry(R, outerRadius, 12, 18, arc), shellMat)
+      seg.position.set(0, Y, 0)
+      seg.rotation.x = Math.PI / 2
+      seg.rotation.z = start
+      seg.name = 'NeoTokyoSkyTubeRing'
       this.scene.add(seg)
       this.deco.push(seg)
+      const rib = new THREE.Mesh(new THREE.TorusGeometry(R, outerRadius + 5, 6, 18, Math.min(arc, 0.08)), railMat)
+      rib.position.set(0, Y, 0)
+      rib.rotation.x = Math.PI / 2
+      rib.rotation.z = start + arc
+      this.scene.add(rib)
+      this.deco.push(rib)
     }
   }
 
-  private buildSkyway(x1: number, z1: number, x2: number, z2: number, y: number, w: number, deckMat: THREE.Material, railMat: THREE.Material): void {
+  private buildSkyway(x1: number, z1: number, x2: number, z2: number, y: number, w: number, _deckMat: THREE.Material, railMat: THREE.Material): void {
     const dx = x2 - x1
     const dz = z2 - z1
     const len = Math.hypot(dx, dz)
-    const midX = (x1 + x2) / 2
-    const midZ = (z1 + z2) / 2
-    const angle = Math.atan2(dx, dz)
-    const deck = new THREE.Group()
-    deck.name = 'NeoTokyoSkyway'
-    deck.position.set(midX, y, midZ)
-    deck.rotation.y = -angle
-    deck.add(new THREE.Mesh(new THREE.BoxGeometry(len, 7, w), deckMat))
-    for (const side of [-1, 1]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 3, 2), railMat)
-      rail.position.set(0, 6, side * w * 0.46)
-      deck.add(rail)
+    if (len < 1) return
+
+    const innerRadius = Math.max(76, w * 1.85)
+    const outerRadius = innerRadius + 38
+    const entrySpacing = Math.max(620, innerRadius * 7.6)
+    const entryLength = Math.max(180, innerRadius * 2.25)
+    this.tubeCorridors.push({ x1, z1, x2, z2, y, innerRadius, outerRadius, entrySpacing, entryLength })
+
+    const axis = new THREE.Vector3(dx / len, 0, dz / len)
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis)
+    const ringQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis)
+    const shellMat = new THREE.MeshLambertMaterial({
+      color: 0x111d2a,
+      emissive: 0x0a2238,
+      emissiveIntensity: 0.95,
+      transparent: true,
+      opacity: 0.82,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    })
+    const glowMat = railMat
+    const chunkLen = 260
+    let cursor = 0
+    while (cursor < len) {
+      const slot = (cursor + chunkLen * 0.5) % entrySpacing
+      if (slot < entryLength) {
+        cursor += chunkLen
+        continue
+      }
+      const actualLen = Math.min(chunkLen, len - cursor)
+      const t = (cursor + actualLen * 0.5) / len
+      const cx = x1 + dx * t
+      const cz = z1 + dz * t
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(outerRadius, outerRadius, actualLen, 28, 1, true), shellMat)
+      tube.position.set(cx, y, cz)
+      tube.quaternion.copy(q)
+      tube.name = 'NeoTokyoFlightTube'
+      this.scene.add(tube)
+      this.deco.push(tube)
+
+      for (const side of [-1, 1]) {
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(5, actualLen, 7), glowMat)
+        strip.position.set(cx + Math.cos(Math.atan2(dz, dx) + Math.PI / 2) * side * outerRadius * 0.72, y - outerRadius * 0.52, cz + Math.sin(Math.atan2(dz, dx) + Math.PI / 2) * side * outerRadius * 0.72)
+        strip.quaternion.copy(q)
+        this.scene.add(strip)
+        this.deco.push(strip)
+      }
+      cursor += actualLen
     }
-    this.scene.add(deck)
-    this.deco.push(deck)
+
+    const ringCount = Math.max(2, Math.floor(len / 420))
+    for (let i = 0; i <= ringCount; i++) {
+      const t = i / ringCount
+      const d = t * len
+      if (d % entrySpacing < entryLength) continue
+      const rx = x1 + dx * t
+      const rz = z1 + dz * t
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(outerRadius + 5, 7, 8, 40), glowMat)
+      ring.position.set(rx, y, rz)
+      ring.quaternion.copy(ringQ)
+      ring.name = 'NeoTokyoTubeRib'
+      this.scene.add(ring)
+      this.deco.push(ring)
+    }
+
+    for (let d = entryLength * 0.5; d < len; d += entrySpacing) {
+      const t = d / len
+      const ex = x1 + dx * t
+      const ez = z1 + dz * t
+      const gate = new THREE.Mesh(new THREE.TorusGeometry(innerRadius + 10, 5, 8, 36), glowMat)
+      gate.position.set(ex, y, ez)
+      gate.quaternion.copy(ringQ)
+      gate.name = 'NeoTokyoTubeEntry'
+      this.scene.add(gate)
+      this.deco.push(gate)
+    }
   }
 
   private createMegaPillars(): void {
