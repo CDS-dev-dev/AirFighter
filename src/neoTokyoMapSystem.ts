@@ -80,6 +80,42 @@ function makeHwyTex(): THREE.DataTexture {
 
 interface BSpec { type: number; x: number; z: number; w: number; d: number; h: number; ry: number }
 
+interface LandmarkZone {
+  name: string
+  x: number
+  z: number
+  r: number
+  minTowerDistance?: number
+}
+
+const WATER_LEVEL = 1.2
+
+const LANDMARK_ZONES: LandmarkZone[] = [
+  { name: 'Tokyo Station', x: 30, z: 20, r: 720, minTowerDistance: 980 },
+  { name: 'Imperial Palace', x: -500, z: 80, r: 900, minTowerDistance: 1150 },
+  { name: 'Tokyo Tower', x: -600, z: 800, r: 560, minTowerDistance: 820 },
+  { name: 'Skytree', x: 1600, z: -1400, r: 620, minTowerDistance: 900 },
+  { name: 'Rainbow Bridge', x: 1300, z: 1050, r: 760, minTowerDistance: 980 },
+  { name: 'Odaiba', x: 2000, z: 2000, r: 740, minTowerDistance: 980 },
+  { name: 'Sensoji', x: 1500, z: -1500, r: 440, minTowerDistance: 720 },
+  { name: 'Roppongi', x: -930, z: 980, r: 520, minTowerDistance: 780 },
+  { name: 'Shinjuku', x: -2000, z: -200, r: 780, minTowerDistance: 980 },
+]
+
+function isInLandmarkZone(x: number, z: number, extra = 0): boolean {
+  return LANDMARK_ZONES.some(zone => Math.hypot(x - zone.x, z - zone.z) < zone.r + extra)
+}
+
+function isInWaterArea(x: number, z: number): boolean {
+  const tokyoBay = z > 3200 || (x > 850 && x < 2850 && z > 1150 && z < 3150)
+  const sumida = Math.abs(x - 1100) < 90 && z > -4800 && z < 2600
+  const kanda = Math.abs(x + 1500) < 58 && z > -2100 && z < 2800
+  const arakawa = Math.abs(x - 2600) < 135 && z > -4800 && z < 3200
+  const odaibaIsland = Math.hypot(x - 2000, z - 2000) < 620
+  const bridgeApproach = Math.hypot(x - 1300, z - 1050) < 360
+  return (tokyoBay || sumida || kanda || arakawa) && !odaibaIsland && !bridgeApproach
+}
+
 // NEO Tokyo 2087 Redesign — darker, calmer colors for better visibility
 const BTYPE = [
   { bg: [2,  5, 10] as RGB, win: [0,   180, 200] as RGB, cols: 8, rows: 18, em: 0x00ffcc }, // 0 Shinjuku Cyber (cyan)
@@ -137,6 +173,7 @@ export class NeoTokyoMapSystem {
       this.createMegaArches()
     }
     this.createLandmarks()
+    this.createNeoLandmarkExtensions()
     this.createImperialPalace()
     this.buildRainbowBridge()
     if (!this.mobile) {
@@ -150,6 +187,7 @@ export class NeoTokyoMapSystem {
   // Tokyo topography: Musashino Plateau (west, high), CBD (center), Bay (east-south, low)
   // Scale: 1 unit ≈ 3m real. Gaussian bumps approximate real Tokyo elevation.
   static heightAt(x: number, z: number): number {
+    if (isInWaterArea(x, z)) return WATER_LEVEL - 3
     let h = 45 - x * 0.005   // gentle E-W gradient: west higher
     // Shinjuku/Yoyogi hill cluster (NW)
     h += 45 * Math.exp(-((x + 2000) ** 2 / 2500000 + (z + 200) ** 2 / 2000000))
@@ -168,7 +206,7 @@ export class NeoTokyoMapSystem {
   }
 
   getTerrainHeight(x: number, z: number): number { return NeoTokyoMapSystem.heightAt(x, z) }
-  getSafeSpawnPosition(): { x: number; y: number; z: number } { return { x: 0, y: 900, z: -4500 } }
+  getSafeSpawnPosition(): { x: number; y: number; z: number } { return { x: -900, y: 900, z: -4700 } }
 
   // InstancedMesh excluded: Box3.setFromObject(instancedMesh) returns a box covering
   // ALL instances (the entire city), causing false collision hits in building gaps.
@@ -203,7 +241,9 @@ export class NeoTokyoMapSystem {
       const rx = ((x % 600) + 600) % 600, rz = ((z % 600) + 600) % 600
       const dR = Math.min(Math.min(rx, 600 - rx), Math.min(rz, 600 - rz))
       let r: number, g: number, b: number
-      if (dR < 55) {
+      if (isInWaterArea(x, z)) {
+        r = 0.015; g = 0.035; b = 0.065
+      } else if (dR < 55) {
         r = 0.08 + sr(i * 0.009) * 0.02; g = 0.09 + sr(i * 0.011) * 0.01; b = 0.12 + sr(i * 0.013) * 0.02
       } else if (dR < 65) {
         r = 0.15; g = 0.14; b = 0.16
@@ -275,41 +315,45 @@ export class NeoTokyoMapSystem {
     // NEO Tokyo 2087 Redesign: Large buildings, wide streets, flight-first
     // Target: 150-200 buildings (vs 700+), size 200-600m (vs 100m)
 
-    // Exclusion zones - expanded for breathing room
-    const EXCL = [
-      { x: -500,  z:   80, r: 800 },   // Imperial Palace
-      { x: 1600,  z:-1400, r: 400 },   // Skytree area
-      { x: -600,  z:  800, r: 350 },   // Tokyo Tower
-      { x:-2000,  z: -200, r: 700 },   // Shinjuku cluster
-      { x: 2000,  z: 2000, r: 500 },   // Odaiba
-    ]
+    const canPlaceTower = (x: number, z: number, h: number): boolean => {
+      if (isInWaterArea(x, z)) return false
+      for (const zone of LANDMARK_ZONES) {
+        const minDistance = h > 1000 ? zone.minTowerDistance ?? zone.r : zone.r
+        if (Math.hypot(x - zone.x, z - zone.z) < minDistance) return false
+      }
+      return true
+    }
 
     // District 1: Tokyo Station Core (0-1km) — 5-6 mega towers
-    const corePos = [[0, 0], [-400, 400], [400, -400], [-400, -400], [400, 400]]
+    const corePos = [[980, -520], [-1150, -520], [1050, 620], [-1180, 650], [0, -980]]
     for (const [cx, cz] of corePos) {
       const bs = sr(cx * 0.1 + cz * 0.1)
+      const h = 1450 + bs * 420
+      if (!canPlaceTower(cx, cz, h)) continue
       specs.push({
         type: 1,
         x: cx,
         z: cz,
         w: 400 + bs * 200,  // 400-600m
         d: 400 + bs * 200,
-        h: 1500 + bs * 500, // 1500-2000m
+        h,
         ry: sr(bs) > 0.5 ? Math.PI / 2 : 0
       })
     }
 
     // District 2: Shinjuku Mega Towers (west -2km) — 3-4 towers
-    const shinjukuPos = [[-2000, -200], [-2200, 0], [-1800, 0], [-2000, 200]]
+    const shinjukuPos = [[-2950, -420], [-2950, 240], [-1180, -520], [-2920, -980]]
     for (const [cx, cz] of shinjukuPos) {
       const bs = sr(cx * 0.1 + cz * 0.1)
+      const h = 1050 + bs * 520
+      if (!canPlaceTower(cx, cz, h)) continue
       specs.push({
         type: 0,
         x: cx,
         z: cz,
         w: 300 + bs * 200,  // 300-500m
         d: 300 + bs * 200,
-        h: 1200 + bs * 600, // 1200-1800m
+        h,
         ry: sr(bs) > 0.5 ? Math.PI / 2 : 0
       })
     }
@@ -320,30 +364,33 @@ export class NeoTokyoMapSystem {
       const dist = 1500 + (i % 3) * 300
       const cx = Math.cos(angle) * dist
       const cz = Math.sin(angle) * dist
-      if (EXCL.some(e => Math.hypot(cx - e.x, cz - e.z) < e.r)) continue
       const bs = sr(cx * 0.1 + cz * 0.1)
+      const h = 760 + bs * 320
+      if (!canPlaceTower(cx, cz, h)) continue
       specs.push({
         type: 2,
         x: cx,
         z: cz,
         w: 200 + bs * 100,  // 200-300m
         d: 200 + bs * 100,
-        h: 800 + bs * 400,  // 800-1200m
+        h,
         ry: Math.PI / 6  // diagonal
       })
     }
 
     // District 4: Odaiba Platform (southeast) — 5-6 medium
-    const odaibaPos = [[2000, 2000], [1800, 2200], [2200, 2000], [2000, 2400], [1600, 2000]]
+    const odaibaPos = [[1200, 2600], [2800, 2050], [3000, 2500], [1650, 2950], [2700, 1450]]
     for (const [cx, cz] of odaibaPos) {
       const bs = sr(cx * 0.1 + cz * 0.1)
+      const h = 560 + bs * 320
+      if (!canPlaceTower(cx, cz, h)) continue
       specs.push({
         type: 3,
         x: cx,
         z: cz,
         w: 200 + bs * 200,  // 200-400m
         d: 200 + bs * 200,
-        h: 600 + bs * 400,  // 600-1000m
+        h,
         ry: sr(bs) > 0.5 ? Math.PI / 2 : 0
       })
     }
@@ -353,7 +400,6 @@ export class NeoTokyoMapSystem {
       for (let r = 2000; r < 3500; r += 600) {
         const cx = Math.cos(a) * r + (sr(a + r) - 0.5) * 400
         const cz = Math.sin(a) * r + (sr(a - r) - 0.5) * 400
-        if (EXCL.some(e => Math.hypot(cx - e.x, cz - e.z) < e.r)) continue
         if (sr(cx * 0.01 + cz * 0.01) > 0.6) continue  // sparse
 
         const bs = sr(cx * 0.1 + cz * 0.1)
@@ -362,13 +408,15 @@ export class NeoTokyoMapSystem {
         else if (cx < 0 && cz > 500) type = 2  // Shibuya area
         else if (cx > 1000 && cz > 1000) type = 3  // Odaiba area
 
+        const h = 640 + bs * 420
+        if (!canPlaceTower(cx, cz, h)) continue
         specs.push({
           type,
           x: cx,
           z: cz,
           w: 250 + bs * 150,  // 250-400m
           d: 250 + bs * 150,
-          h: 700 + bs * 500,  // 700-1200m
+          h,
           ry: sr(bs) > 0.5 ? Math.PI / 2 : 0
         })
       }
@@ -383,23 +431,24 @@ export class NeoTokyoMapSystem {
   private createMegaPillars(): void {
     // 12 Mega Pillars — vertical support pillars for NEO Tokyo 2087
     const positions: [number, number][] = [
-      [0, 0],         // Tokyo Station Core
-      [-2000, 0],     // Shinjuku
-      [-1300, 800],   // Shibuya
-      [1600, -1400],  // Skytree Base
-      [2000, 2000],   // Odaiba Platform
-      [-2200, -1800], // Ikebukuro
-      [500, -1800],   // Ueno
-      [-1000, 1000],  // Roppongi
-      [1000, 1500],   // Toyosu
-      [-1500, -1500], // West Industrial
-      [1800, -500],   // East Bay
-      [0, -2500],     // North Perimeter
+      [3200, -3200],
+      [-3600, -2600],
+      [-3800, 1500],
+      [3600, 3600],
+      [-500, -3600],
+      [4200, 400],
+      [-3400, 3400],
+      [800, 3600],
+      [3500, -1600],
+      [-4200, -300],
+      [2200, -3600],
+      [-1800, 3600],
     ]
 
     const geo = new THREE.CylinderGeometry(25, 30, 1, 16)
     positions.forEach(([px, pz], i) => {
       const pillarHeight = 2000 + Math.random() * 500
+      if (isInLandmarkZone(px, pz, 260) || isInWaterArea(px, pz)) return
       const gy = NeoTokyoMapSystem.heightAt(px, pz)
 
       const mat = new THREE.MeshStandardMaterial({
@@ -423,10 +472,10 @@ export class NeoTokyoMapSystem {
   private createMegaRings(): void {
     // 4 giant rings you can fly through
     const rings = [
-      { x: 0, z: 0, r: 500, alt: 400, tube: 50, c: 0x0066ff, name: 'Tokyo Station Ring' },
-      { x: -2000, z: 0, r: 400, alt: 600, tube: 45, c: 0x00ffcc, name: 'Shinjuku Ring' },
-      { x: 2000, z: 2000, r: 450, alt: 300, tube: 50, c: 0x00ddff, name: 'Odaiba Ring' },
-      { x: 1600, z: -1400, r: 300, alt: 800, tube: 40, c: 0x00ff88, name: 'Skytree Ring' },
+      { x: 760, z: -760, r: 360, alt: 520, tube: 34, c: 0x0066ff, name: 'Marunouchi Flight Gate' },
+      { x: -2900, z: -760, r: 380, alt: 720, tube: 36, c: 0x00ffcc, name: 'Shinjuku Outer Gate' },
+      { x: 2680, z: 2600, r: 420, alt: 360, tube: 38, c: 0x00ddff, name: 'Odaiba Bay Gate' },
+      { x: 2300, z: -1920, r: 300, alt: 980, tube: 30, c: 0x00ff88, name: 'Skytree Sky Gate' },
     ]
     for (const ring of rings) {
       const gy = NeoTokyoMapSystem.heightAt(ring.x, ring.z)
@@ -451,11 +500,11 @@ export class NeoTokyoMapSystem {
   private createMegaArches(): void {
     // Giant arches connecting buildings
     const arches = [
-      { x1: -400, z1: 0, x2: 400, z2: 0, h: 800, c: 0x0088ff },
-      { x1: 0, z1: -400, x2: 0, z2: 400, h: 800, c: 0x00aaff },
-      { x1: -2200, z1: -200, x2: -1800, z2: 200, h: 600, c: 0x00ffcc },
-      { x1: -1600, z1: 800, x2: -1400, z2: 1200, h: 500, c: 0xff00aa },
-      { x1: 1800, z1: 1800, x2: 2200, z2: 2200, h: 400, c: 0x00ddff },
+      { x1: 820, z1: -740, x2: 1160, z2: -420, h: 620, c: 0x0088ff },
+      { x1: -3300, z1: -650, x2: -2650, z2: -900, h: 680, c: 0x00ffcc },
+      { x1: -1850, z1: 1200, x2: -1300, z2: 1700, h: 520, c: 0xff00aa },
+      { x1: 2500, z1: 2550, x2: 3100, z2: 3000, h: 460, c: 0x00ddff },
+      { x1: 2400, z1: -1850, x2: 3000, z2: -1500, h: 620, c: 0x00ff88 },
     ]
     for (const arch of arches) {
       const dx = arch.x2 - arch.x1
@@ -509,6 +558,7 @@ export class NeoTokyoMapSystem {
       const dist = 600 + (i % 2) * 200
       const x = Math.cos(angle) * dist
       const z = Math.sin(angle) * dist
+      if (isInLandmarkZone(x, z, 160) || isInWaterArea(x, z)) continue
       const gy = NeoTokyoMapSystem.heightAt(x, z)
       const outerR = 120 + i * 10
       const innerR = 70 + i * 5
@@ -546,6 +596,7 @@ export class NeoTokyoMapSystem {
       const dist = 1500 + Math.random() * 2000
       const x = Math.cos(angle) * dist
       const z = Math.sin(angle) * dist
+      if (isInLandmarkZone(x, z, 160) || isInWaterArea(x, z)) continue
       const gy = NeoTokyoMapSystem.heightAt(x, z)
       const r = 75 + Math.random() * 75
       const h = 800 + Math.random() * 800
@@ -567,6 +618,7 @@ export class NeoTokyoMapSystem {
     // Pyramid Buildings (3x in Core/Odaiba)
     const pyramidPos = [[0, -600], [600, 0], [2000, 2200]]
     for (const [x, z] of pyramidPos) {
+      if (isInLandmarkZone(x, z, 160) || isInWaterArea(x, z)) continue
       const gy = NeoTokyoMapSystem.heightAt(x, z)
       const baseR = 200
       const h = 1200
@@ -601,6 +653,125 @@ export class NeoTokyoMapSystem {
     this.buildSensoji(1500, -1500)
     this.buildMast(1000, -800, 20, 500)   // broadcast mast near Skytree
     this.buildMast(-900, 1100, 14, 360)   // Roppongi area mast
+  }
+
+  private createNeoLandmarkExtensions(): void {
+    this.extendTokyoTower(-600, 800)
+    this.extendSkytree(1600, -1400)
+    this.extendTokyoStation(30, 20)
+    this.extendRainbowBridge()
+    this.extendFujiTV(2000, 2000)
+    this.extendSensoji(1500, -1500)
+  }
+
+  private extendTokyoTower(X: number, Z: number): void {
+    const gy = NeoTokyoMapSystem.heightAt(X, Z)
+    const g = new THREE.Group(); g.position.set(X, gy, Z)
+    const redMat = new THREE.MeshLambertMaterial({ color: 0xff3300, emissive: 0xff1100, emissiveIntensity: 2.2 })
+    const ringMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0xff5533, emissiveIntensity: 1.8, transparent: true, opacity: 0.82 })
+    for (const y of [260, 430, 610]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(96, 5, 8, 48), ringMat)
+      ring.position.y = y
+      ring.rotation.x = Math.PI / 2
+      g.add(ring)
+    }
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(3, 8, 220, 8), redMat)
+    mast.position.y = 760
+    g.add(mast)
+    this.scene.add(g); this.landmarks.push(g)
+  }
+
+  private extendSkytree(X: number, Z: number): void {
+    const gy = NeoTokyoMapSystem.heightAt(X, Z)
+    const g = new THREE.Group(); g.position.set(X, gy, Z)
+    const deckMat = new THREE.MeshLambertMaterial({ color: 0x88ccff, emissive: 0x2277ff, emissiveIntensity: 1.5, transparent: true, opacity: 0.72 })
+    const spineMat = new THREE.MeshLambertMaterial({ color: 0x33aaff, emissive: 0x0088ff, emissiveIntensity: 2.2 })
+    for (let i = 0; i < 18; i++) {
+      const a = i * 0.65
+      const y = 280 + i * 62
+      const r = 150 + Math.sin(i * 0.6) * 18
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(120, 6, 14), deckMat)
+      deck.position.set(Math.cos(a) * r, y, Math.sin(a) * r)
+      deck.rotation.y = -a
+      g.add(deck)
+      const strut = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 95, 6), spineMat)
+      strut.position.set(Math.cos(a) * (r - 35), y - 25, Math.sin(a) * (r - 35))
+      strut.rotation.z = 0.35
+      g.add(strut)
+    }
+    const beacon = new THREE.Mesh(new THREE.TorusGeometry(190, 9, 10, 64), spineMat)
+    beacon.position.y = 1360
+    beacon.rotation.x = Math.PI / 2
+    g.add(beacon)
+    this.scene.add(g); this.landmarks.push(g)
+  }
+
+  private extendTokyoStation(X: number, Z: number): void {
+    const gy = NeoTokyoMapSystem.heightAt(X, Z)
+    const g = new THREE.Group(); g.position.set(X, gy, Z)
+    const glassMat = new THREE.MeshLambertMaterial({ color: 0x9bd8ff, emissive: 0x1a66aa, emissiveIntensity: 1.0, transparent: true, opacity: 0.42 })
+    const railMat = new THREE.MeshLambertMaterial({ color: 0xffcc88, emissive: 0xff8844, emissiveIntensity: 1.5 })
+    const terminal = new THREE.Mesh(new THREE.BoxGeometry(620, 54, 220), glassMat)
+    terminal.position.set(0, 150, 0)
+    g.add(terminal)
+    for (const zOff of [-140, 140]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(760, 8, 12), railMat)
+      rail.position.set(0, 185, zOff)
+      g.add(rail)
+    }
+    this.scene.add(g); this.deco.push(g)
+  }
+
+  private extendRainbowBridge(): void {
+    const x1 = 900, z1 = 700, x2 = 1700, z2 = 1400
+    const dx = x2 - x1, dz = z2 - z1
+    const len = Math.hypot(dx, dz)
+    const angle = Math.atan2(dx, dz)
+    const midX = (x1 + x2) / 2, midZ = (z1 + z2) / 2
+    const deckMat = new THREE.MeshLambertMaterial({ color: 0x243040, emissive: 0x102040, emissiveIntensity: 0.5 })
+    const neonMat = new THREE.MeshLambertMaterial({ color: 0x88ddff, emissive: 0x44aaff, emissiveIntensity: 2.2 })
+    const upper = new THREE.Group()
+    upper.position.set(midX, 118, midZ)
+    upper.rotation.y = -angle
+    upper.add(new THREE.Mesh(new THREE.BoxGeometry(len + 360, 8, 34), deckMat))
+    for (const side of [-1, 1]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(len + 380, 4, 3), neonMat)
+      rail.position.set(0, 7, side * 18)
+      upper.add(rail)
+    }
+    this.scene.add(upper); this.deco.push(upper)
+  }
+
+  private extendFujiTV(X: number, Z: number): void {
+    const gy = NeoTokyoMapSystem.heightAt(X, Z)
+    const sphereMat = new THREE.MeshLambertMaterial({ color: 0xaad8ff, emissive: 0x3388ff, emissiveIntensity: 1.2 })
+    const ringMat = new THREE.MeshLambertMaterial({ color: 0x00ddff, emissive: 0x00aaff, emissiveIntensity: 2.0 })
+    for (const [dx, y, r] of [[-120, 210, 34], [120, 245, 28], [0, 300, 24]] as [number, number, number][]) {
+      const sphere = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 12), sphereMat)
+      sphere.position.set(X + dx, gy + y, Z)
+      this.scene.add(sphere); this.deco.push(sphere)
+    }
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(130, 5, 8, 48), ringMat)
+    halo.position.set(X, gy + 170, Z)
+    halo.rotation.x = Math.PI / 2
+    this.scene.add(halo); this.deco.push(halo)
+  }
+
+  private extendSensoji(X: number, Z: number): void {
+    const gy = NeoTokyoMapSystem.heightAt(X, Z)
+    const lanternMat = new THREE.MeshLambertMaterial({ color: 0xff5533, emissive: 0xff2200, emissiveIntensity: 2.4 })
+    const pathMat = new THREE.MeshLambertMaterial({ color: 0x552211, emissive: 0xff5522, emissiveIntensity: 0.8, transparent: true, opacity: 0.55 })
+    const path = new THREE.Mesh(new THREE.BoxGeometry(38, 1.5, 520), pathMat)
+    path.position.set(X, gy + 2.5, Z - 230)
+    this.scene.add(path); this.deco.push(path)
+    for (let i = 0; i < 11; i++) {
+      const z = Z - 470 + i * 42
+      for (const side of [-1, 1]) {
+        const lantern = new THREE.Mesh(new THREE.SphereGeometry(7, 8, 6), lanternMat)
+        lantern.position.set(X + side * 42, gy + 24, z)
+        this.scene.add(lantern); this.deco.push(lantern)
+      }
+    }
   }
 
   private buildSkytree(X: number, Z: number): void {
@@ -1039,41 +1210,67 @@ export class NeoTokyoMapSystem {
       const disc = new THREE.Mesh(new THREE.CylinderGeometry(40, 40, 3, 16), new THREE.MeshLambertMaterial({ color: holo.c, emissive: new THREE.Color(holo.c), emissiveIntensity: 2.0 }))
       disc.position.set(holo.x, gy + 1.5, holo.z); this.scene.add(disc); this.deco.push(disc)
     }
-    // Neon road grid — 1200m spacing only (removed 600m)
+    // Neon road grid — keep water clear to avoid shimmer over bay/river surfaces
     const neonMat = new THREE.MeshLambertMaterial({ color: 0x00aacc, emissive: 0x006688, emissiveIntensity: 0.5 })
     for (let x = -6000; x <= 6000; x += 1200) {
-      const strip = new THREE.Mesh(new THREE.BoxGeometry(3, 0.5, 14400), neonMat)
-      strip.position.set(x, NeoTokyoMapSystem.heightAt(x, 0) + 0.3, 0); this.scene.add(strip); this.deco.push(strip)
+      this.addNeonRoadSegment(x, -6000, x, 6000, neonMat)
     }
     for (let z = -6000; z <= 6000; z += 1200) {
-      const strip = new THREE.Mesh(new THREE.BoxGeometry(14400, 0.5, 3), neonMat)
-      strip.position.set(0, NeoTokyoMapSystem.heightAt(0, z) + 0.3, z); this.scene.add(strip); this.deco.push(strip)
+      this.addNeonRoadSegment(-6000, z, 6000, z, neonMat)
     }
   }
 
-  // ===== WATER (polygonOffset prevents z-fighting with terrain) =====
+  private addNeonRoadSegment(x1: number, z1: number, x2: number, z2: number, mat: THREE.Material): void {
+    const STEPS = 48
+    let start: number | null = null
+    const dx = x2 - x1, dz = z2 - z1
+    for (let i = 0; i <= STEPS; i++) {
+      const t = i / STEPS
+      const x = x1 + dx * t, z = z1 + dz * t
+      const blocked = isInWaterArea(x, z) || isInLandmarkZone(x, z, 80)
+      if (!blocked && start === null) start = t
+      if ((blocked || i === STEPS) && start !== null) {
+        const end = blocked ? (i - 1) / STEPS : t
+        if (end > start) {
+          const sx = x1 + dx * start, sz = z1 + dz * start
+          const ex = x1 + dx * end, ez = z1 + dz * end
+          const len = Math.hypot(ex - sx, ez - sz)
+          if (len > 80) {
+            const mx = (sx + ex) / 2, mz = (sz + ez) / 2
+            const strip = new THREE.Mesh(new THREE.BoxGeometry(len, 0.5, 3), mat)
+            strip.position.set(mx, NeoTokyoMapSystem.heightAt(mx, mz) + 0.3, mz)
+            strip.rotation.y = -Math.atan2(ex - sx, ez - sz) + Math.PI / 2
+            this.scene.add(strip); this.deco.push(strip)
+          }
+        }
+        start = null
+      }
+    }
+  }
+
+  // ===== WATER =====
 
   private createWater(): void {
     const wMat = new THREE.MeshLambertMaterial({
       color: 0x05101e, emissive: 0x000c18, emissiveIntensity: 0.3,
-      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
+      transparent: true, opacity: 0.92,
     })
     // Tokyo Bay (large, southeast)
     const bay = new THREE.Mesh(new THREE.PlaneGeometry(10000, 8000), wMat)
-    bay.rotation.x = -Math.PI / 2; bay.position.set(2500, 2.0, 5500)
+    bay.rotation.x = -Math.PI / 2; bay.position.set(2500, WATER_LEVEL, 5500)
     this.scene.add(bay); this.deco.push(bay)
     // Inner bay near Odaiba/Shibaura
-    const inner = new THREE.Mesh(new THREE.BoxGeometry(3000, 0.5, 2000), wMat)
-    inner.position.set(1500, 2.0, 1800); this.scene.add(inner); this.deco.push(inner)
+    const inner = new THREE.Mesh(new THREE.PlaneGeometry(3000, 2000), wMat)
+    inner.rotation.x = -Math.PI / 2; inner.position.set(1500, WATER_LEVEL + 0.02, 2200); this.scene.add(inner); this.deco.push(inner)
     // Sumida River (north-south through east Tokyo)
-    const sumida = new THREE.Mesh(new THREE.BoxGeometry(90, 0.5, 8000), wMat)
-    sumida.position.set(1100, 2.0, -1000); this.scene.add(sumida); this.deco.push(sumida)
+    const sumida = new THREE.Mesh(new THREE.PlaneGeometry(90, 8000), wMat)
+    sumida.rotation.x = -Math.PI / 2; sumida.position.set(1100, WATER_LEVEL + 0.04, -1000); this.scene.add(sumida); this.deco.push(sumida)
     // Kanda/Tama rivers
-    const kanda = new THREE.Mesh(new THREE.BoxGeometry(60, 0.5, 5000), wMat)
-    kanda.position.set(-1500, 2.0, 500); this.scene.add(kanda); this.deco.push(kanda)
+    const kanda = new THREE.Mesh(new THREE.PlaneGeometry(60, 5000), wMat)
+    kanda.rotation.x = -Math.PI / 2; kanda.position.set(-1500, WATER_LEVEL + 0.06, 500); this.scene.add(kanda); this.deco.push(kanda)
     // Arakawa river (far east)
-    const arakawa = new THREE.Mesh(new THREE.BoxGeometry(120, 0.5, 8000), wMat)
-    arakawa.position.set(2600, 2.0, -500); this.scene.add(arakawa); this.deco.push(arakawa)
+    const arakawa = new THREE.Mesh(new THREE.PlaneGeometry(120, 8000), wMat)
+    arakawa.rotation.x = -Math.PI / 2; arakawa.position.set(2600, WATER_LEVEL + 0.08, -500); this.scene.add(arakawa); this.deco.push(arakawa)
   }
 
   private buildMast(x: number, z: number, radius: number, h: number): void {

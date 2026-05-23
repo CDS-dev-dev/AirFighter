@@ -6,7 +6,7 @@ import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
-const VERSION = '5.3.0'
+const VERSION = '5.5.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -2965,10 +2965,11 @@ async function switchMap(map: GameMap) {
     }
     await neoTokyoMapSystem.initialize()
 
-    // ステップ3: プレイヤーを台地上空に配置（峡谷を避けた安全地点）
-    player.position.set(0, 600, -900)
+    // Step 3: place the player in a clear northern approach corridor
+    const tokyoSpawn = neoTokyoMapSystem.getSafeSpawnPosition()
+    player.position.set(tokyoSpawn.x, tokyoSpawn.y, tokyoSpawn.z)
     player.rotation.set(0, 0, 0)
-    console.log('✈️ プレイヤーをNEO東京・台地上空600mに配置')
+    console.log('✈️ プレイヤーをNEO東京・北側進入空域に配置')
 
     // ステップ4: 補給ポイントを新地形に合わせて再配置（台地上）
     const tokyoSupplyPositions = [
