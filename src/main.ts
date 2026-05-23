@@ -6,7 +6,7 @@ import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
-const VERSION = '5.8.0'
+const VERSION = '5.9.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -2896,6 +2896,10 @@ async function switchMap(map: GameMap) {
   if (map === 'tokyo') {
     // ===== NEO東京MAP =====
     console.log('🌃 NEO東京MAPに切り替え（サイバーパンク）')
+    scene.background = new THREE.Color(0x0b1724)
+    scene.fog = new THREE.FogExp2(0x102238, 0.00011)
+    sky.visible = false
+    renderer.toneMappingExposure = 0.7
 
     // ステップ1: オリジナルMAPのすべてのオブジェクトを削除
     const to_remove: THREE.Object3D[] = []
@@ -3002,6 +3006,10 @@ async function switchMap(map: GameMap) {
   } else {
     // ===== オリジナルMAP =====
     console.log('🏔️ オリジナルMAPに切り替え')
+    scene.background = new THREE.Color(0x7da8c8)
+    scene.fog = new THREE.FogExp2(0x8db5cc, 0.000075)
+    sky.visible = !isMobileDevice
+    renderer.toneMappingExposure = 0.78
 
     // NEO東京MAPを完全削除
     if (neoTokyoMapSystem) {

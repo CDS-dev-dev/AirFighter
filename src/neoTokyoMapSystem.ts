@@ -80,16 +80,6 @@ function makeHwyTex(): THREE.DataTexture {
 
 interface BSpec { type: number; x: number; z: number; w: number; d: number; h: number; ry: number }
 
-interface TerrainValleySegment {
-  name: string
-  x1: number
-  z1: number
-  x2: number
-  z2: number
-  width: number
-  depth: number
-}
-
 interface LandmarkZone {
   name: string
   x: number
@@ -112,16 +102,6 @@ const LANDMARK_ZONES: LandmarkZone[] = [
   { name: 'Shinjuku', x: -2000, z: -200, r: 780, minTowerDistance: 980 },
 ]
 
-const TERRAIN_VALLEYS: TerrainValleySegment[] = [
-  { name: 'Marunouchi Low Route', x1: 30, z1: 20, x2: -600, z2: 800, width: 420, depth: 170 },
-  { name: 'Minato Bay Cut', x1: -600, z1: 800, x2: 1300, z2: 1050, width: 520, depth: 210 },
-  { name: 'Rainbow Bay Bowl', x1: 1300, z1: 1050, x2: 2200, z2: 2400, width: 680, depth: 260 },
-  { name: 'Sumida Sky Valley', x1: 1700, z1: 2100, x2: 1500, z2: -1800, width: 560, depth: 230 },
-  { name: 'Asakusa Inner Cut', x1: 1500, z1: -1500, x2: 30, z2: 20, width: 500, depth: 190 },
-  { name: 'West Tokyo Saddle', x1: 30, z1: 20, x2: -2200, z2: -200, width: 620, depth: 220 },
-  { name: 'Shibuya Ravine', x1: -2200, z1: -200, x2: -1300, z2: 900, width: 520, depth: 180 },
-]
-
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v))
 }
@@ -129,26 +109,6 @@ function clamp01(v: number): number {
 function smooth01(v: number): number {
   const t = clamp01(v)
   return t * t * (3 - 2 * t)
-}
-
-function distToSegment2D(x: number, z: number, x1: number, z1: number, x2: number, z2: number): number {
-  const dx = x2 - x1
-  const dz = z2 - z1
-  const lenSq = dx * dx + dz * dz
-  if (lenSq <= 0.0001) return Math.hypot(x - x1, z - z1)
-  const t = Math.max(0, Math.min(1, ((x - x1) * dx + (z - z1) * dz) / lenSq))
-  const px = x1 + dx * t
-  const pz = z1 + dz * t
-  return Math.hypot(x - px, z - pz)
-}
-
-function valleyInfluence(x: number, z: number, seg: TerrainValleySegment, extra = 0): number {
-  const d = distToSegment2D(x, z, seg.x1, seg.z1, seg.x2, seg.z2)
-  return smooth01(1 - d / (seg.width / 2 + extra))
-}
-
-function isInTerrainValley(x: number, z: number, extra = 0): boolean {
-  return TERRAIN_VALLEYS.some(seg => valleyInfluence(x, z, seg, extra) > 0)
 }
 
 function isInLandmarkZone(x: number, z: number, extra = 0): boolean {
@@ -165,12 +125,12 @@ function isInWaterArea(x: number, z: number): boolean {
   return (tokyoBay || sumida || kanda || arakawa) && !odaibaIsland && !bridgeApproach
 }
 
-// NEO Tokyo 2087 Redesign — darker, calmer colors for better visibility
+// NEO Tokyo 2077 palette — dark wet steel, cyan/magenta signage, sparse amber traffic
 const BTYPE = [
-  { bg: [2,  5, 10] as RGB, win: [0,   180, 200] as RGB, cols: 8, rows: 18, em: 0x00ffcc }, // 0 Shinjuku Cyber (cyan)
-  { bg: [2,  5, 12] as RGB, win: [50,  100, 180] as RGB, cols: 10, rows: 20, em: 0x003366 }, // 1 Core (dark blue)
-  { bg: [5,  0, 8 ] as RGB, win: [200,  50, 150] as RGB, cols: 6, rows: 12, em: 0xff00aa }, // 2 Shibuya Neon (pink)
-  { bg: [0,  5, 10] as RGB, win: [0,   180, 220] as RGB, cols: 8, rows: 16, em: 0x00ddff }, // 3 Odaiba Aqua
+  { bg: [4,  8, 14] as RGB, win: [55,  210, 255] as RGB, cols: 9, rows: 24, em: 0x1688ff },
+  { bg: [5,  7, 12] as RGB, win: [180, 205, 255] as RGB, cols: 11, rows: 28, em: 0x3355ff },
+  { bg: [9,  4, 10] as RGB, win: [255,  45, 175] as RGB, cols: 7, rows: 20, em: 0xff2299 },
+  { bg: [3,  8, 12] as RGB, win: [255, 125,  35] as RGB, cols: 10, rows: 18, em: 0xff6a22 },
 ]
 
 // Yamanote Line waypoints — real Tokyo loop at game scale (~1 game unit = 3m)
@@ -217,6 +177,7 @@ export class NeoTokyoMapSystem {
     this.createBuildings()
     this.createVariedBuildings()
     if (!this.mobile) {
+      this.createLayeredSkyCity()
       this.createMegaPillars()
       this.createMegaRings()
       this.createMegaArches()
@@ -238,31 +199,22 @@ export class NeoTokyoMapSystem {
   static heightAt(x: number, z: number): number {
     if (isInWaterArea(x, z)) return WATER_LEVEL - 3
 
-    let h = 120 - x * 0.007
-    h += 260 * Math.exp(-((x + 2600) ** 2 / 5200000 + (z + 400) ** 2 / 3600000))
-    h += 240 * Math.exp(-((x + 2050) ** 2 / 1700000 + (z + 250) ** 2 / 1500000))
-    h += 180 * Math.exp(-((x + 950) ** 2 / 1500000 + (z - 900) ** 2 / 1300000))
-    h += 150 * Math.exp(-((x - 450) ** 2 / 1900000 + (z + 1550) ** 2 / 1300000))
-    h += 120 * Math.exp(-((x - 1700) ** 2 / 1700000 + (z + 1300) ** 2 / 1600000))
-    h += 90 * Math.exp(-((x + 500) ** 2 / 1200000 + (z - 80) ** 2 / 1100000))
-    h -= 95 * Math.exp(-((x - 2100) ** 2 / 3800000 + (z - 2100) ** 2 / 3200000))
-
-    for (const valley of TERRAIN_VALLEYS) {
-      h -= valley.depth * valleyInfluence(x, z, valley)
-    }
-
-    h += Math.sin(x * 0.0018) * Math.cos(z * 0.0022) * 70
-    h += Math.sin(x * 0.0042 + 1.3) * Math.sin(z * 0.0035) * 48
-    h += Math.sin((x + z) * 0.0022) * 34
-    h += Math.cos((x - z) * 0.0015 + 0.7) * 28
+    let h = 10 - x * 0.0028
+    h += 28 * Math.exp(-((x + 2200) ** 2 / 6000000 + (z + 150) ** 2 / 4000000))
+    h += 20 * Math.exp(-((x + 1150) ** 2 / 2200000 + (z - 900) ** 2 / 1700000))
+    h += 14 * Math.exp(-((x - 300) ** 2 / 1600000 + (z + 1500) ** 2 / 1400000))
+    h += 8 * Math.exp(-((x + 450) ** 2 / 1400000 + (z - 40) ** 2 / 1200000))
+    h -= 18 * Math.exp(-((x - 2100) ** 2 / 4200000 + (z - 2100) ** 2 / 3400000))
+    h += Math.sin(x * 0.0014) * Math.cos(z * 0.0018) * 4
+    h += Math.sin((x + z) * 0.0012 + 0.9) * 3
 
     const bayDrop = z - 4000
-    if (bayDrop > 0) h -= bayDrop * 0.02
+    if (bayDrop > 0) h -= bayDrop * 0.006
     return Math.max(0, h)
   }
 
   getTerrainHeight(x: number, z: number): number { return NeoTokyoMapSystem.heightAt(x, z) }
-  getSafeSpawnPosition(): { x: number; y: number; z: number } { return { x: -900, y: 900, z: -4700 } }
+  getSafeSpawnPosition(): { x: number; y: number; z: number } { return { x: -900, y: 680, z: -3400 } }
 
   // InstancedMesh excluded: Box3.setFromObject(instancedMesh) returns a box covering
   // ALL instances (the entire city), causing false collision hits in building gaps.
@@ -301,17 +253,16 @@ export class NeoTokyoMapSystem {
       if (isInWaterArea(x, z)) {
         r = 0.015; g = 0.035; b = 0.065
       } else if (dR < 55) {
-        const roadShade = 0.78 + clamp01(y / 520) * 0.25
-        r = (0.075 + sr(i * 0.009) * 0.02) * roadShade; g = (0.085 + sr(i * 0.011) * 0.01) * roadShade; b = (0.115 + sr(i * 0.013) * 0.02) * roadShade
+        const wet = 0.9 + sr(i * 0.009) * 0.16
+        r = 0.035 * wet; g = 0.045 * wet; b = 0.065 * wet
       } else if (dR < 65) {
-        r = 0.15; g = 0.14; b = 0.16
+        r = 0.08; g = 0.065; b = 0.08
       } else {
-        const high = clamp01(y / 560)
-        const low = 1 - smooth01(y / 160)
-        const speckle = sr(i * 0.017) * 0.035
-        r = 0.10 + high * 0.12 + low * 0.02 + speckle
-        g = 0.10 + high * 0.10 + low * 0.03 + sr(i * 0.021) * 0.025
-        b = 0.12 + high * 0.13 + low * 0.025 + sr(i * 0.025) * 0.035
+        const wet = 0.75 + sr(i * 0.017) * 0.2
+        const low = 1 - smooth01(y / 55)
+        r = 0.045 * wet + low * 0.014
+        g = 0.052 * wet + low * 0.012
+        b = 0.068 * wet + low * 0.018
       }
       cols[i] = Math.max(0, Math.min(1, r))
       cols[i + 1] = Math.max(0, Math.min(1, g))
@@ -375,12 +326,11 @@ export class NeoTokyoMapSystem {
   private collectBuildingSpecs(): BSpec[] {
     const specs: BSpec[] = []
 
-    // NEO Tokyo 2087 Redesign: Large buildings, wide streets, flight-first
-    // Target: 150-200 buildings (vs 700+), size 200-600m (vs 100m)
+    // NEO Tokyo 2077 Redesign: dense vertical city, narrow supertowers, flight-first
+    // Target: 100+ readable towers, still sparse enough for flight gaps.
 
     const canPlaceTower = (x: number, z: number, h: number): boolean => {
       if (isInWaterArea(x, z)) return false
-      if (isInTerrainValley(x, z, h > 1000 ? 220 : 120)) return false
       for (const zone of LANDMARK_ZONES) {
         const minDistance = h > 1000 ? zone.minTowerDistance ?? zone.r : zone.r
         if (Math.hypot(x - zone.x, z - zone.z) < minDistance) return false
@@ -388,35 +338,35 @@ export class NeoTokyoMapSystem {
       return true
     }
 
-    // District 1: Tokyo Station Core (0-1km) — 5-6 mega towers
-    const corePos = [[980, -520], [-1150, -520], [1050, 620], [-1180, 650], [0, -980]]
+    // District 1: Corporate core supertowers around Marunouchi
+    const corePos = [[820, -520], [-980, -520], [980, 520], [-1080, 620], [0, -1080], [420, 980], [-480, 980]]
     for (const [cx, cz] of corePos) {
       const bs = sr(cx * 0.1 + cz * 0.1)
-      const h = 1450 + bs * 420
+      const h = 1700 + bs * 720
       if (!canPlaceTower(cx, cz, h)) continue
       specs.push({
         type: 1,
         x: cx,
         z: cz,
-        w: 400 + bs * 200,  // 400-600m
-        d: 400 + bs * 200,
+        w: 220 + bs * 170,
+        d: 220 + bs * 170,
         h,
         ry: sr(bs) > 0.5 ? Math.PI / 2 : 0
       })
     }
 
-    // District 2: Shinjuku Mega Towers (west -2km) — 3-4 towers
-    const shinjukuPos = [[-2950, -420], [-2950, 240], [-1180, -520], [-2920, -980]]
+    // District 2: Shinjuku and west-side tower forest
+    const shinjukuPos = [[-2950, -420], [-2950, 240], [-2600, -980], [-2350, 560], [-3300, -1080], [-3500, 520]]
     for (const [cx, cz] of shinjukuPos) {
       const bs = sr(cx * 0.1 + cz * 0.1)
-      const h = 1050 + bs * 520
+      const h = 1150 + bs * 760
       if (!canPlaceTower(cx, cz, h)) continue
       specs.push({
         type: 0,
         x: cx,
         z: cz,
-        w: 300 + bs * 200,  // 300-500m
-        d: 300 + bs * 200,
+        w: 180 + bs * 160,
+        d: 180 + bs * 160,
         h,
         ry: sr(bs) > 0.5 ? Math.PI / 2 : 0
       })
@@ -429,14 +379,14 @@ export class NeoTokyoMapSystem {
       const cx = Math.cos(angle) * dist
       const cz = Math.sin(angle) * dist
       const bs = sr(cx * 0.1 + cz * 0.1)
-      const h = 760 + bs * 320
+      const h = 760 + bs * 520
       if (!canPlaceTower(cx, cz, h)) continue
       specs.push({
         type: 2,
         x: cx,
         z: cz,
-        w: 200 + bs * 100,  // 200-300m
-        d: 200 + bs * 100,
+        w: 150 + bs * 105,
+        d: 150 + bs * 105,
         h,
         ry: Math.PI / 6  // diagonal
       })
@@ -446,25 +396,25 @@ export class NeoTokyoMapSystem {
     const odaibaPos = [[1200, 2600], [2800, 2050], [3000, 2500], [1650, 2950], [2700, 1450]]
     for (const [cx, cz] of odaibaPos) {
       const bs = sr(cx * 0.1 + cz * 0.1)
-      const h = 560 + bs * 320
+      const h = 520 + bs * 460
       if (!canPlaceTower(cx, cz, h)) continue
       specs.push({
         type: 3,
         x: cx,
         z: cz,
-        w: 200 + bs * 200,  // 200-400m
-        d: 200 + bs * 200,
+        w: 160 + bs * 170,
+        d: 160 + bs * 170,
         h,
         ry: sr(bs) > 0.5 ? Math.PI / 2 : 0
       })
     }
 
-    // District 5: Mid-ring scattered towers (2-3.5km) — ~30 buildings
-    for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
-      for (let r = 2000; r < 3500; r += 600) {
-        const cx = Math.cos(a) * r + (sr(a + r) - 0.5) * 400
-        const cz = Math.sin(a) * r + (sr(a - r) - 0.5) * 400
-        if (sr(cx * 0.01 + cz * 0.01) > 0.6) continue  // sparse
+    // District 5: metropolitan tower field
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 10) {
+      for (let r = 1400; r < 4700; r += 500) {
+        const cx = Math.cos(a) * r + (sr(a + r) - 0.5) * 300
+        const cz = Math.sin(a) * r + (sr(a - r) - 0.5) * 300
+        if (sr(cx * 0.01 + cz * 0.01) > 0.78) continue
 
         const bs = sr(cx * 0.1 + cz * 0.1)
         let type = 1
@@ -472,28 +422,136 @@ export class NeoTokyoMapSystem {
         else if (cx < 0 && cz > 500) type = 2  // Shibuya area
         else if (cx > 1000 && cz > 1000) type = 3  // Odaiba area
 
-        const h = 640 + bs * 420
+        const h = 520 + bs * 780
         if (!canPlaceTower(cx, cz, h)) continue
         specs.push({
           type,
           x: cx,
           z: cz,
-          w: 250 + bs * 150,  // 250-400m
-          d: 250 + bs * 150,
+          w: 90 + bs * 120,
+          d: 90 + bs * 120,
           h,
           ry: sr(bs) > 0.5 ? Math.PI / 2 : 0
         })
       }
     }
 
-    console.log(`[NEO Tokyo Redesign] Generated ${specs.length} large buildings (target: 150-200)`)
+    console.log(`[NEO Tokyo 2077] Generated ${specs.length} dense skyline towers`)
     return specs
   }
 
   // ===== MEGA STRUCTURES (Vertical City Infrastructure) =====
 
+  private createLayeredSkyCity(): void {
+    const platformMat = new THREE.MeshLambertMaterial({
+      color: 0x141a24,
+      emissive: 0x0c1830,
+      emissiveIntensity: 0.55
+    })
+    const railCyan = new THREE.MeshLambertMaterial({ color: 0x3ddcff, emissive: 0x00aaff, emissiveIntensity: 1.6 })
+    const railPink = new THREE.MeshLambertMaterial({ color: 0xff3aa8, emissive: 0xff1177, emissiveIntensity: 1.5 })
+    const railAmber = new THREE.MeshLambertMaterial({ color: 0xff8a26, emissive: 0xff5a10, emissiveIntensity: 1.4 })
+
+    const central = new THREE.Group()
+    central.name = 'NeoTokyoCentralDome'
+    const domeBaseY = NeoTokyoMapSystem.heightAt(260, 220)
+    central.position.set(260, domeBaseY, 220)
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(360, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({
+      color: 0x33465c,
+      emissive: 0x163a55,
+      emissiveIntensity: 0.9,
+      transparent: true,
+      opacity: 0.74,
+      depthWrite: false
+    }))
+    dome.position.y = 88
+    central.add(dome)
+    for (const y of [110, 170, 235]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(370 + y * 0.25, 5, 8, 72), y === 170 ? railPink : railCyan)
+      ring.position.y = y
+      ring.rotation.x = Math.PI / 2
+      central.add(ring)
+    }
+    this.scene.add(central)
+    this.deco.push(central)
+
+    for (const ring of [
+      { r: 1500, y: 420, w: 34, c: railCyan, n: 48 },
+      { r: 2450, y: 690, w: 42, c: railPink, n: 64 },
+      { r: 3550, y: 980, w: 54, c: railAmber, n: 72 },
+    ]) {
+      this.buildSkyRing(ring.r, ring.y, ring.w, ring.n, platformMat, ring.c)
+    }
+
+    for (const seg of [
+      [-2800, -900, 1200, -520, 560, railCyan],
+      [-2600, 760, 1800, 1100, 460, railPink],
+      [-900, 1500, 2600, 2400, 330, railAmber],
+      [1400, -1850, 2600, 200, 760, railCyan],
+      [-3400, -1300, -900, 1150, 640, railPink],
+    ] as [number, number, number, number, number, THREE.Material][]) {
+      this.buildSkyway(seg[0], seg[1], seg[2], seg[3], seg[4], 42, platformMat, seg[5])
+    }
+
+    const spireMat = new THREE.MeshLambertMaterial({ color: 0x101622, emissive: 0x5ac8ff, emissiveIntensity: 1.25 })
+    for (const [x, z, h] of [
+      [420, -620, 1450],
+      [980, -980, 1280],
+      [-1250, -760, 1180],
+      [-2750, -120, 1360],
+      [2100, -1100, 1550],
+    ] as [number, number, number][]) {
+      if (isInLandmarkZone(x, z, 220) || isInWaterArea(x, z)) continue
+      const gy = NeoTokyoMapSystem.heightAt(x, z)
+      const spire = new THREE.Mesh(new THREE.CylinderGeometry(12, 46, h, 7), spireMat)
+      spire.position.set(x, gy + h / 2, z)
+      this.scene.add(spire)
+      this.landmarks.push(spire)
+    }
+  }
+
+  private buildSkyRing(R: number, Y: number, roadW: number, N: number, deckMat: THREE.Material, railMat: THREE.Material): void {
+    for (let i = 0; i < N; i++) {
+      const am = ((i + 0.5) / N) * Math.PI * 2
+      const len = 2 * R * Math.sin(Math.PI / N) + 1
+      const seg = new THREE.Group()
+      seg.position.set(Math.cos(am) * R, Y, Math.sin(am) * R)
+      seg.rotation.y = -am + Math.PI / 2
+      seg.name = 'NeoTokyoSkyRing'
+      seg.add(new THREE.Mesh(new THREE.BoxGeometry(len, 8, roadW), deckMat))
+      for (const side of [-1, 1]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 3, 2), railMat)
+        rail.position.set(0, 6, side * roadW * 0.47)
+        seg.add(rail)
+      }
+      this.scene.add(seg)
+      this.deco.push(seg)
+    }
+  }
+
+  private buildSkyway(x1: number, z1: number, x2: number, z2: number, y: number, w: number, deckMat: THREE.Material, railMat: THREE.Material): void {
+    const dx = x2 - x1
+    const dz = z2 - z1
+    const len = Math.hypot(dx, dz)
+    const midX = (x1 + x2) / 2
+    const midZ = (z1 + z2) / 2
+    const angle = Math.atan2(dx, dz)
+    const deck = new THREE.Group()
+    deck.name = 'NeoTokyoSkyway'
+    deck.position.set(midX, y, midZ)
+    deck.rotation.y = -angle
+    deck.add(new THREE.Mesh(new THREE.BoxGeometry(len, 7, w), deckMat))
+    for (const side of [-1, 1]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 3, 2), railMat)
+      rail.position.set(0, 6, side * w * 0.46)
+      deck.add(rail)
+    }
+    this.scene.add(deck)
+    this.deco.push(deck)
+  }
+
   private createMegaPillars(): void {
-    // 12 Mega Pillars — vertical support pillars for NEO Tokyo 2087
+    // 12 Mega Pillars — vertical support pillars for NEO Tokyo 2077
     const positions: [number, number][] = [
       [3200, -3200],
       [-3600, -2600],
