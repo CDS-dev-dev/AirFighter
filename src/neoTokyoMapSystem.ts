@@ -14,16 +14,20 @@ function makeWinTex(bg: RGB, win: RGB, cols: number, rows: number): THREE.DataTe
     for (let px = 0; px < W; px++) {
       const cx = (px % cw) / cw, cy = (py % rh) / rh
       const row = Math.floor(py / rh), col = Math.floor(px / cw)
-      const inW = cx > 0.08 && cx < 0.92 && cy > 0.08 && cy < 0.88
-      const neonStrip = cy > 0.91 && cy < 0.99
-      const bright = sr(row * 7.1 + col * 3.3) > 0.35
-      const dimmed = sr(row * 2.3 + col * 5.7) < 0.15
+      const inW = cx > 0.18 && cx < 0.82 && cy > 0.18 && cy < 0.72
+      const neonStrip = cy > 0.88 && cy < 0.96 && sr(row * 4.2 + col * 6.1) > 0.68
+      const bright = sr(row * 7.1 + col * 3.3) > 0.78
+      const halfLit = sr(row * 1.7 + col * 9.1) > 0.58
+      const signage = col % 5 === 0 && cy > 0.12 && cy < 0.9 && sr(row * 3.9 + col) > 0.82
       let r: number, g: number, b: number
       if (neonStrip) {
         r = win[0]; g = win[1]; b = win[2]
-      } else if (inW && !dimmed) {
-        const boost = bright ? 35 : 0
-        r = Math.min(255, win[0] + boost); g = Math.min(255, win[1] + boost); b = Math.min(255, win[2] + boost)
+      } else if (signage) {
+        r = Math.min(255, win[0] + 20); g = Math.min(255, win[1] + 20); b = Math.min(255, win[2] + 20)
+      } else if (inW && bright) {
+        r = Math.min(255, win[0] * 0.72 + 26); g = Math.min(255, win[1] * 0.72 + 26); b = Math.min(255, win[2] * 0.72 + 26)
+      } else if (inW && halfLit) {
+        r = Math.min(255, win[0] * 0.24 + bg[0]); g = Math.min(255, win[1] * 0.24 + bg[1]); b = Math.min(255, win[2] * 0.24 + bg[2])
       } else {
         r = bg[0]; g = bg[1]; b = bg[2]
       }
@@ -80,6 +84,14 @@ function makeHwyTex(): THREE.DataTexture {
 
 interface BSpec { type: number; x: number; z: number; w: number; d: number; h: number; ry: number }
 
+interface UrbanCanyon {
+  x1: number
+  z1: number
+  x2: number
+  z2: number
+  width: number
+}
+
 interface LandmarkZone {
   name: string
   x: number
@@ -102,6 +114,15 @@ const LANDMARK_ZONES: LandmarkZone[] = [
   { name: 'Shinjuku', x: -2000, z: -200, r: 780, minTowerDistance: 980 },
 ]
 
+const URBAN_CANYONS: UrbanCanyon[] = [
+  { x1: -900, z1: -3400, x2: -180, z2: -860, width: 330 },
+  { x1: -180, z1: -860, x2: 260, z2: 220, width: 300 },
+  { x1: 260, z1: 220, x2: -600, z2: 800, width: 260 },
+  { x1: -2400, z1: -420, x2: -1450, z2: 820, width: 270 },
+  { x1: 1600, z1: -1400, x2: 1300, z2: 1050, width: 310 },
+  { x1: 1300, z1: 1050, x2: 2100, z2: 2100, width: 360 },
+]
+
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v))
 }
@@ -109,6 +130,21 @@ function clamp01(v: number): number {
 function smooth01(v: number): number {
   const t = clamp01(v)
   return t * t * (3 - 2 * t)
+}
+
+function distToSegment2D(x: number, z: number, x1: number, z1: number, x2: number, z2: number): number {
+  const dx = x2 - x1
+  const dz = z2 - z1
+  const lenSq = dx * dx + dz * dz
+  if (lenSq <= 0.0001) return Math.hypot(x - x1, z - z1)
+  const t = Math.max(0, Math.min(1, ((x - x1) * dx + (z - z1) * dz) / lenSq))
+  const px = x1 + dx * t
+  const pz = z1 + dz * t
+  return Math.hypot(x - px, z - pz)
+}
+
+function isInUrbanCanyon(x: number, z: number, extra = 0): boolean {
+  return URBAN_CANYONS.some(canyon => distToSegment2D(x, z, canyon.x1, canyon.z1, canyon.x2, canyon.z2) < canyon.width / 2 + extra)
 }
 
 function isInLandmarkZone(x: number, z: number, extra = 0): boolean {
@@ -178,6 +214,8 @@ export class NeoTokyoMapSystem {
     this.createVariedBuildings()
     if (!this.mobile) {
       this.createLayeredSkyCity()
+      this.createHeroTowers()
+      this.createDistantSkyline()
       this.createMegaPillars()
       this.createMegaRings()
       this.createMegaArches()
@@ -214,7 +252,7 @@ export class NeoTokyoMapSystem {
   }
 
   getTerrainHeight(x: number, z: number): number { return NeoTokyoMapSystem.heightAt(x, z) }
-  getSafeSpawnPosition(): { x: number; y: number; z: number } { return { x: -900, y: 680, z: -3400 } }
+  getSafeSpawnPosition(): { x: number; y: number; z: number } { return { x: -900, y: 560, z: -2650 } }
 
   // InstancedMesh excluded: Box3.setFromObject(instancedMesh) returns a box covering
   // ALL instances (the entire city), causing false collision hits in building gaps.
@@ -291,14 +329,16 @@ export class NeoTokyoMapSystem {
     for (let t = 0; t < BTYPE.length; t++) {
       const list = specs.filter(s => s.type === t)
       if (!list.length) continue
-      // Cyberpunk boost: brighter emissive for neon feel
-      let emIntensity = 0.4  // Base
-      if (t === 0) emIntensity = 0.6  // Shinjuku cyan
-      else if (t === 2) emIntensity = 0.7  // Shibuya pink
-      else emIntensity = 0.5  // Core/Odaiba
+      let emIntensity = 0.18
+      if (t === 0) emIntensity = 0.26
+      else if (t === 2) emIntensity = 0.34
+      else if (t === 3) emIntensity = 0.28
 
       const mat = new THREE.MeshLambertMaterial({
-        map: textures[t], emissive: new THREE.Color(BTYPE[t].em), emissiveIntensity: emIntensity,
+        map: textures[t],
+        color: 0x9aa8ba,
+        emissive: new THREE.Color(BTYPE[t].em),
+        emissiveIntensity: emIntensity,
       })
       const mesh = new THREE.InstancedMesh(unitGeo, mat, list.length)
       mesh.castShadow = !this.mobile; mesh.name = `NT_B_${t}`
@@ -331,6 +371,7 @@ export class NeoTokyoMapSystem {
 
     const canPlaceTower = (x: number, z: number, h: number): boolean => {
       if (isInWaterArea(x, z)) return false
+      if (isInUrbanCanyon(x, z, h > 1100 ? 120 : 70)) return false
       for (const zone of LANDMARK_ZONES) {
         const minDistance = h > 1000 ? zone.minTowerDistance ?? zone.r : zone.r
         if (Math.hypot(x - zone.x, z - zone.z) < minDistance) return false
@@ -507,6 +548,117 @@ export class NeoTokyoMapSystem {
       spire.position.set(x, gy + h / 2, z)
       this.scene.add(spire)
       this.landmarks.push(spire)
+    }
+  }
+
+  private createHeroTowers(): void {
+    const towers: Array<{ x: number; z: number; h: number; w: number; c: number; style: number }> = [
+      { x: -420, z: -980, h: 1680, w: 110, c: 0x59d8ff, style: 0 },
+      { x: 720, z: -760, h: 1460, w: 120, c: 0xff3aa8, style: 1 },
+      { x: -1480, z: 1180, h: 1180, w: 135, c: 0xff7a2a, style: 2 },
+      { x: 2420, z: 260, h: 1320, w: 100, c: 0x79f2ff, style: 0 },
+      { x: -3120, z: 820, h: 1260, w: 125, c: 0xff3aa8, style: 1 },
+      { x: 2920, z: 2140, h: 960, w: 150, c: 0xff8a26, style: 2 },
+    ]
+    for (const t of towers) {
+      if (isInLandmarkZone(t.x, t.z, 220) || isInWaterArea(t.x, t.z) || isInUrbanCanyon(t.x, t.z, 80)) continue
+      const gy = NeoTokyoMapSystem.heightAt(t.x, t.z)
+      const g = new THREE.Group()
+      g.name = 'NeoTokyoHeroTower'
+      g.position.set(t.x, gy, t.z)
+      const bodyMat = new THREE.MeshLambertMaterial({ color: 0x101722, emissive: 0x08111e, emissiveIntensity: 0.55 })
+      const glowMat = new THREE.MeshLambertMaterial({ color: t.c, emissive: new THREE.Color(t.c), emissiveIntensity: 1.7 })
+      const glassMat = new THREE.MeshLambertMaterial({
+        color: 0x182436,
+        emissive: new THREE.Color(t.c),
+        emissiveIntensity: 0.35,
+        transparent: true,
+        opacity: 0.72
+      })
+
+      if (t.style === 0) {
+        for (let i = 0; i < 4; i++) {
+          const sectionH = t.h * (0.31 - i * 0.035)
+          const y = t.h * (0.15 + i * 0.235)
+          const scale = 1 - i * 0.12
+          const block = new THREE.Mesh(new THREE.BoxGeometry(t.w * scale, sectionH, t.w * 0.82 * scale), i % 2 ? glassMat : bodyMat)
+          block.position.set((i % 2 ? 18 : -12) * scale, y, 0)
+          block.rotation.y = i * 0.28
+          g.add(block)
+        }
+        const mast = new THREE.Mesh(new THREE.CylinderGeometry(4, 16, t.h * 0.28, 7), glowMat)
+        mast.position.y = t.h * 1.02
+        g.add(mast)
+      } else if (t.style === 1) {
+        const core = new THREE.Mesh(new THREE.CylinderGeometry(t.w * 0.38, t.w * 0.55, t.h, 8), bodyMat)
+        core.position.y = t.h / 2
+        g.add(core)
+        for (let i = 0; i < 9; i++) {
+          const y = 120 + i * (t.h - 260) / 8
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(t.w * (0.76 + i * 0.015), 5, 6, 32), glowMat)
+          ring.position.y = y
+          ring.rotation.x = Math.PI / 2
+          ring.rotation.z = i * 0.22
+          g.add(ring)
+        }
+      } else {
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(t.w * 0.7, t.w * 0.9, t.h * 0.7, 5), bodyMat)
+        base.position.y = t.h * 0.35
+        g.add(base)
+        const crown = new THREE.Mesh(new THREE.BoxGeometry(t.w * 1.45, t.h * 0.16, t.w * 1.45), glassMat)
+        crown.position.y = t.h * 0.78
+        crown.rotation.y = Math.PI / 4
+        g.add(crown)
+        const spire = new THREE.Mesh(new THREE.CylinderGeometry(2, 18, t.h * 0.32, 6), glowMat)
+        spire.position.y = t.h * 1.02
+        g.add(spire)
+      }
+
+      for (let i = 0; i < 4; i++) {
+        const a = i * Math.PI / 2 + Math.PI / 4
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(4, t.h * 0.78, 4), glowMat)
+        strip.position.set(Math.cos(a) * t.w * 0.58, t.h * 0.43, Math.sin(a) * t.w * 0.58)
+        g.add(strip)
+      }
+
+      this.scene.add(g)
+      this.landmarks.push(g)
+    }
+  }
+
+  private createDistantSkyline(): void {
+    const mat = new THREE.MeshLambertMaterial({
+      color: 0x0d1724,
+      emissive: 0x15253a,
+      emissiveIntensity: 0.55,
+      transparent: true,
+      opacity: 0.78,
+      depthWrite: false
+    })
+    const glowMat = new THREE.MeshLambertMaterial({ color: 0x274f78, emissive: 0x163c65, emissiveIntensity: 0.8 })
+    const geo = new THREE.BoxGeometry(1, 1, 1)
+    for (let i = 0; i < 120; i++) {
+      const a = (i / 120) * Math.PI * 2
+      const r = 6500 + sr(i * 1.9) * 420
+      const x = Math.cos(a) * r
+      const z = Math.sin(a) * r
+      if (isInWaterArea(x, z)) continue
+      const gy = NeoTokyoMapSystem.heightAt(x, z)
+      const h = 180 + sr(i * 4.3) * 560
+      const w = 38 + sr(i * 7.2) * 64
+      const tower = new THREE.Mesh(geo, mat)
+      tower.position.set(x, gy + h / 2, z)
+      tower.scale.set(w, h, w * (0.7 + sr(i * 2.1) * 0.6))
+      tower.rotation.y = sr(i) * Math.PI
+      this.scene.add(tower)
+      this.deco.push(tower)
+      if (i % 5 === 0) {
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(w * 1.15, 8, w * 0.9), glowMat)
+        cap.position.set(x, gy + h + 6, z)
+        cap.rotation.y = tower.rotation.y
+        this.scene.add(cap)
+        this.deco.push(cap)
+      }
     }
   }
 
