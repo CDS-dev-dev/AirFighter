@@ -6,7 +6,7 @@ import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
-const VERSION = '5.14.0'
+const VERSION = '5.15.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -4448,8 +4448,14 @@ function loop() {
       const py = player.position.y - tube.y
       const pz = player.position.z - cz
       const radial = Math.sqrt(px * px + py * py + pz * pz)
+      const inTubeOpening = neoTokyoMapSystem.getTubeOpenings().some(opening => {
+        const ox = player.position.x - opening.x
+        const oy = player.position.y - opening.y
+        const oz = player.position.z - opening.z
+        return Math.sqrt(ox * ox + oy * oy + oz * oz) < opening.radius
+      })
 
-      if (!inEntrySlot && radial > tube.innerRadius - collisionRadius && radial < tube.outerRadius + collisionRadius) {
+      if (!inEntrySlot && !inTubeOpening && radial > tube.innerRadius - collisionRadius && radial < tube.outerRadius + collisionRadius) {
         const targetRadius = radial < (tube.innerRadius + tube.outerRadius) / 2
           ? tube.innerRadius - collisionRadius
           : tube.outerRadius + collisionRadius
