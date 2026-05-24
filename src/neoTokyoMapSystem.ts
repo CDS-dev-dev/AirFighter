@@ -120,9 +120,6 @@ export interface TubeOpening {
   y: number
   z: number
   radius: number
-  x2?: number
-  y2?: number
-  z2?: number
 }
 
 interface LandmarkZone {
@@ -399,9 +396,7 @@ export class NeoTokyoMapSystem {
 
   private createUrbanFabric(): void {
     const podiumMat = new THREE.MeshLambertMaterial({ color: 0x101620, emissive: 0x0a1522, emissiveIntensity: 0.45 })
-    const roofMat = new THREE.MeshLambertMaterial({ color: 0x182233, emissive: 0x0d2238, emissiveIntensity: 0.55 })
-    const cyanMat = new THREE.MeshLambertMaterial({ color: 0x2ddcff, emissive: 0x00aaff, emissiveIntensity: 1.35 })
-    const amberMat = new THREE.MeshLambertMaterial({ color: 0xff8a26, emissive: 0xff5a10, emissiveIntensity: 1.1 })
+    const roofMat = new THREE.MeshLambertMaterial({ color: 0x151d2a, emissive: 0x08131f, emissiveIntensity: 0.3 })
 
     for (let ix = -5; ix <= 5; ix++) {
       for (let iz = -5; iz <= 5; iz++) {
@@ -422,15 +417,9 @@ export class NeoTokyoMapSystem {
         slab.position.y = h / 2
         g.add(slab)
 
-        const roof = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 4, d * 0.72), roofMat)
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(w * 0.68, 3, d * 0.62), roofMat)
         roof.position.y = h + 3
         g.add(roof)
-
-        for (const side of [-1, 1]) {
-          const rail = new THREE.Mesh(new THREE.BoxGeometry(w * 0.82, 2.5, 3), side > 0 ? cyanMat : amberMat)
-          rail.position.set(0, h + 7, side * d * 0.38)
-          g.add(rail)
-        }
 
         if (sr(ix + iz * 1.7) > 0.55) {
           const stackH = major ? 88 : 52
@@ -751,31 +740,38 @@ export class NeoTokyoMapSystem {
       const outward = new THREE.Vector3(p.x, 0, p.z)
       if (outward.lengthSq() < 1) outward.set(-0.7, 0, 0.7)
       outward.normalize()
-      const sx = p.x + outward.x * 520
-      const sz = p.z + outward.z * 520
+      const sx = p.x + outward.x * 760
+      const sz = p.z + outward.z * 760
       const rampAxis = new THREE.Vector3(p.x - sx, 0, p.z - sz).normalize()
       const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), rampAxis)
-      this.tubeOpenings.push({ x: p.x, y, z: p.z, radius: 320 })
-      this.tubeOpenings.push({ x: sx, y, z: sz, x2: p.x, y2: y, z2: p.z, radius: 175 })
+      this.tubeOpenings.push({ x: p.x, y, z: p.z, radius: 285 })
+      this.tubeOpenings.push({ x: sx, y, z: sz, radius: 285 })
       ramps.push({ sx, sz, px: p.x, pz: p.z, q })
     }
 
     this.buildCurvedSkyway(YAMANOTE_WP.slice(0, -1), y, w, railMat)
 
     for (const ramp of ramps) {
-      this.buildOpenSkyway(ramp.sx, ramp.sz, ramp.px, ramp.pz, y, w * 1.35, platformMat, railMat)
+      this.buildSkyway(ramp.sx, ramp.sz, ramp.px, ramp.pz, y, w, platformMat, railMat, false)
 
-      const gate = new THREE.Mesh(new THREE.TorusGeometry(225, 12, 8, 64), railMat)
+      const gate = new THREE.Mesh(new THREE.TorusGeometry(250, 12, 8, 64), railMat)
       gate.position.set(ramp.px, y, ramp.pz)
       gate.quaternion.copy(ramp.q)
       gate.name = 'NeoTokyoYamanoteTubeEntry'
       this.scene.add(gate)
       this.deco.push(gate)
 
-      const mergeMat = new THREE.MeshLambertMaterial({ color: 0xff9a2a, emissive: 0xff5a10, emissiveIntensity: 2.4 })
-      for (const [t, lift, width] of [[0.14, 60, 280], [0.42, 85, 390], [0.72, 68, 320]] as [number, number, number][]) {
-        const marker = new THREE.Mesh(new THREE.BoxGeometry(width, 10, 24), mergeMat)
-        marker.position.set(ramp.sx + (ramp.px - ramp.sx) * t, y + lift, ramp.sz + (ramp.pz - ramp.sz) * t)
+      const mouth = new THREE.Mesh(new THREE.TorusGeometry(250, 14, 8, 64), railMat)
+      mouth.position.set(ramp.sx, y, ramp.sz)
+      mouth.quaternion.copy(ramp.q)
+      mouth.name = 'NeoTokyoYamanoteTubeMouth'
+      this.scene.add(mouth)
+      this.deco.push(mouth)
+
+      const mergeMat = new THREE.MeshLambertMaterial({ color: 0xff9a2a, emissive: 0xff5a10, emissiveIntensity: 2.6 })
+      for (const [t, width] of [[0.18, 300], [0.5, 430], [0.82, 300]] as [number, number][]) {
+        const marker = new THREE.Mesh(new THREE.BoxGeometry(width, 12, 30), mergeMat)
+        marker.position.set(ramp.sx + (ramp.px - ramp.sx) * t, y + 88, ramp.sz + (ramp.pz - ramp.sz) * t)
         marker.quaternion.copy(ramp.q)
         marker.name = 'NeoTokyoYamanoteEntryGuide'
         this.scene.add(marker)
@@ -783,10 +779,10 @@ export class NeoTokyoMapSystem {
       }
 
       for (const side of [-1, 1]) {
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(520, 12, 12), railMat)
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(12, 12, 760), railMat)
         rail.position.set((ramp.sx + ramp.px) / 2, y + 22, (ramp.sz + ramp.pz) / 2)
         rail.quaternion.copy(ramp.q)
-        rail.translateX(side * 72)
+        rail.translateX(side * 135)
         rail.name = 'NeoTokyoYamanoteMergeRail'
         this.scene.add(rail)
         this.deco.push(rail)
@@ -1060,15 +1056,23 @@ export class NeoTokyoMapSystem {
     const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis)
     const ringQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis)
     const shellMat = new THREE.MeshLambertMaterial({
-      color: 0x07101a,
-      emissive: 0x07182a,
-      emissiveIntensity: 0.48,
+      color: 0x122338,
+      emissive: 0x10365c,
+      emissiveIntensity: 0.92,
       transparent: true,
-      opacity: 0.94,
+      opacity: 0.86,
       side: THREE.DoubleSide,
       depthWrite: true,
     })
     const glowMat = railMat
+    const innerMat = new THREE.MeshLambertMaterial({
+      color: 0x65dcff,
+      emissive: 0x18a8ff,
+      emissiveIntensity: 2.2,
+      transparent: true,
+      opacity: 0.7,
+      depthWrite: false,
+    })
     const chunkLen = 220
     let cursor = 0
     while (cursor < len) {
@@ -1097,6 +1101,13 @@ export class NeoTokyoMapSystem {
       tube.name = 'NeoTokyoFlightTube'
       this.scene.add(tube)
       this.deco.push(tube)
+
+      const guide = new THREE.Mesh(new THREE.CylinderGeometry(innerRadius * 0.12, innerRadius * 0.12, actualLen, 10, 1), innerMat)
+      guide.position.set(cx, y, cz)
+      guide.quaternion.copy(q)
+      guide.name = 'NeoTokyoTubeInnerGuide'
+      this.scene.add(guide)
+      this.deco.push(guide)
 
       for (const side of [-1, 1]) {
         const strip = new THREE.Mesh(new THREE.BoxGeometry(5, actualLen, 7), glowMat)
