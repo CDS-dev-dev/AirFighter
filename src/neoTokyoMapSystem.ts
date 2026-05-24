@@ -133,7 +133,7 @@ interface LandmarkZone {
 const WATER_LEVEL = 1.2
 
 const TUBE_CORRIDOR_LAYOUT: TubeCorridor[] = []
-const YAMANOTE_TUBE_RESERVE = 430
+const YAMANOTE_TUBE_RESERVE = 560
 
 const LANDMARK_ZONES: LandmarkZone[] = [
   { name: 'Tokyo Station', x: 30, z: 20, r: 720, minTowerDistance: 980 },
@@ -739,8 +739,8 @@ export class NeoTokyoMapSystem {
   }
 
   private createYamanoteFlightTube(platformMat: THREE.Material, railMat: THREE.Material): void {
-    const y = 360
-    const w = 58
+    const y = 720
+    const w = 74
     const entryIndices = [0, 3, 8, 10, 13, 17]
     const ramps: Array<{ sx: number; sz: number; px: number; pz: number; q: THREE.Quaternion }> = []
     for (const i of entryIndices) {
@@ -757,7 +757,7 @@ export class NeoTokyoMapSystem {
           x: sx + (p.x - sx) * t,
           y,
           z: sz + (p.z - sz) * t,
-          radius: t === 1 ? 760 : 220
+          radius: t === 1 ? 920 : 300
         })
       }
       ramps.push({ sx, sz, px: p.x, pz: p.z, q })
@@ -768,19 +768,21 @@ export class NeoTokyoMapSystem {
     for (const ramp of ramps) {
       this.buildOpenSkyway(ramp.sx, ramp.sz, ramp.px, ramp.pz, y, w, platformMat, railMat)
 
-      const gate = new THREE.Mesh(new THREE.TorusGeometry(260, 9, 8, 56), railMat)
+      const gate = new THREE.Mesh(new THREE.TorusGeometry(340, 12, 8, 64), railMat)
       gate.position.set(ramp.px, y, ramp.pz)
       gate.quaternion.copy(ramp.q)
       gate.name = 'NeoTokyoYamanoteTubeEntry'
       this.scene.add(gate)
       this.deco.push(gate)
 
-      const marker = new THREE.Mesh(new THREE.BoxGeometry(220, 8, 18), railMat)
-      marker.position.set((ramp.sx + ramp.px) / 2, y + 82, (ramp.sz + ramp.pz) / 2)
-      marker.quaternion.copy(ramp.q)
-      marker.name = 'NeoTokyoYamanoteEntryGuide'
-      this.scene.add(marker)
-      this.deco.push(marker)
+      for (const [t, lift, width] of [[0.18, 125, 260], [0.5, 155, 360], [0.82, 125, 260]] as [number, number, number][]) {
+        const marker = new THREE.Mesh(new THREE.BoxGeometry(width, 10, 24), railMat)
+        marker.position.set(ramp.sx + (ramp.px - ramp.sx) * t, y + lift, ramp.sz + (ramp.pz - ramp.sz) * t)
+        marker.quaternion.copy(ramp.q)
+        marker.name = 'NeoTokyoYamanoteEntryGuide'
+        this.scene.add(marker)
+        this.deco.push(marker)
+      }
     }
   }
 
@@ -916,7 +918,7 @@ export class NeoTokyoMapSystem {
   }
 
   private buildOpenSkyway(x1: number, z1: number, x2: number, z2: number, y: number, w: number, deckMat: THREE.Material, railMat: THREE.Material): void {
-    if (isSegmentInTubeReserve(x1, z1, x2, z2, 60) && Math.abs(y - 360) > 80) return
+    if (isSegmentInTubeReserve(x1, z1, x2, z2, 60) && Math.abs(y - 720) > 100) return
     const dx = x2 - x1
     const dz = z2 - z1
     const len = Math.hypot(dx, dz)
@@ -943,13 +945,21 @@ export class NeoTokyoMapSystem {
     const outerRadius = innerRadius + 30
     const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(p.x, y, p.z)), true, 'catmullrom', 0.35)
     const shellMat = new THREE.MeshLambertMaterial({
-      color: 0x07101a,
-      emissive: 0x07182a,
-      emissiveIntensity: 0.5,
+      color: 0x122338,
+      emissive: 0x10365c,
+      emissiveIntensity: 0.95,
       transparent: true,
-      opacity: 0.95,
+      opacity: 0.86,
       side: THREE.DoubleSide,
       depthWrite: true,
+    })
+    const innerGlowMat = new THREE.MeshLambertMaterial({
+      color: 0x65dcff,
+      emissive: 0x18a8ff,
+      emissiveIntensity: 2.4,
+      transparent: true,
+      opacity: 0.76,
+      depthWrite: false,
     })
     const sampleCount = 168
     const samples = curve.getSpacedPoints(sampleCount)
@@ -957,6 +967,11 @@ export class NeoTokyoMapSystem {
     fullTube.name = 'NeoTokyoCurvedFlightTube'
     this.scene.add(fullTube)
     this.deco.push(fullTube)
+
+    const guideTube = new THREE.Mesh(new THREE.TubeGeometry(curve, 256, innerRadius * 0.18, 10, true), innerGlowMat)
+    guideTube.name = 'NeoTokyoTubeInnerGuide'
+    this.scene.add(guideTube)
+    this.deco.push(guideTube)
 
     const isOpeningPoint = (p: THREE.Vector3): boolean => this.tubeOpenings.some(opening => {
       const ox = p.x - opening.x
@@ -996,6 +1011,15 @@ export class NeoTokyoMapSystem {
       ring.name = 'NeoTokyoTubeRib'
       this.scene.add(ring)
       this.deco.push(ring)
+
+      if (i % 16 === 0) {
+        const lamp = new THREE.Mesh(new THREE.SphereGeometry(18, 12, 8), innerGlowMat)
+        lamp.position.copy(p)
+        lamp.position.y -= innerRadius * 0.48
+        lamp.name = 'NeoTokyoTubeInnerLamp'
+        this.scene.add(lamp)
+        this.deco.push(lamp)
+      }
     }
   }
 
@@ -1319,7 +1343,7 @@ export class NeoTokyoMapSystem {
 
   private createLandmarks(): void {
     this.buildSkytree(1600, -1400)
-    this.buildTokyoTower(-600, 800)
+    this.buildTokyoTower(-420, 2140)
     this.buildShinjukuCluster()
     this.buildTokyoStation(30, 20)
     this.buildRoppongiHills(-1000, 1000)
@@ -1332,7 +1356,7 @@ export class NeoTokyoMapSystem {
   }
 
   private createNeoLandmarkExtensions(): void {
-    this.extendTokyoTower(-600, 800)
+    this.extendTokyoTower(-420, 2140)
     this.extendSkytree(1600, -1400)
     this.extendTokyoStation(30, 20)
     this.extendRainbowBridge()
@@ -1507,6 +1531,7 @@ export class NeoTokyoMapSystem {
     ]
     const neonColors = [0x00ffcc, 0xff00aa, 0x0088ff, 0xffcc00, 0xff4400, 0x88ff00, 0x00aaff, 0xff8800]
     towers.forEach((p, i) => {
+      if (isInTubeReserve(p.x, p.z, 160)) return
       const gy = NeoTokyoMapSystem.heightAt(p.x, p.z)
       const nC = neonColors[i % neonColors.length]
       const winRGB: RGB = [(nC >> 16) & 0xff, (nC >> 8) & 0xff, nC & 0xff]

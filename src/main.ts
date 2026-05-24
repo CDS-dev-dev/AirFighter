@@ -6,7 +6,7 @@ import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
-const VERSION = '5.18.0'
+const VERSION = '5.19.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -4434,6 +4434,23 @@ function loop() {
   // 東京MAPの建物・ランドマークとの衝突
   if (currentMap === 'tokyo' && neoTokyoMapSystem) {
     let insideTube = false
+    let tubeHit: {
+      x: number
+      y: number
+      z: number
+      targetRadius: number
+      radial: number
+      px: number
+      py: number
+      pz: number
+    } | null = null
+    const nearTubeOpening = neoTokyoMapSystem.getTubeOpenings().some(opening => {
+      const ox = player.position.x - opening.x
+      const oy = player.position.y - opening.y
+      const oz = player.position.z - opening.z
+      return Math.sqrt(ox * ox + oy * oy + oz * oz) < opening.radius
+    })
+
     for (const tube of neoTokyoMapSystem.getTubeCorridors()) {
       const dx = tube.x2 - tube.x1
       const dz = tube.z2 - tube.z1
@@ -4448,29 +4465,19 @@ function loop() {
       const py = player.position.y - tube.y
       const pz = player.position.z - cz
       const radial = Math.sqrt(px * px + py * py + pz * pz)
-      const inTubeOpening = neoTokyoMapSystem.getTubeOpenings().some(opening => {
-        const ox = player.position.x - opening.x
-        const oy = player.position.y - opening.y
-        const oz = player.position.z - opening.z
-        return Math.sqrt(ox * ox + oy * oy + oz * oz) < opening.radius
-      })
-
-      if (!inEntrySlot && !inTubeOpening && radial > tube.innerRadius - collisionRadius && radial < tube.outerRadius + collisionRadius) {
-        const targetRadius = radial < (tube.innerRadius + tube.outerRadius) / 2
-          ? tube.innerRadius - collisionRadius
-          : tube.outerRadius + collisionRadius
-        const inv = radial > 0.001 ? 1 / radial : 0
-        player.position.x = cx + px * inv * targetRadius
-        player.position.y = tube.y + py * inv * targetRadius
-        player.position.z = cz + pz * inv * targetRadius
-        hitFlashTimer = 0.3
-        camShakeAmt = Math.max(camShakeAmt, 0.5)
-        insideTube = targetRadius < tube.innerRadius
-        break
-      }
 
       if (radial < tube.innerRadius - collisionRadius) {
         insideTube = true
+      }
+
+      if (!inEntrySlot && !nearTubeOpening && radial > tube.innerRadius - collisionRadius && radial < tube.outerRadius + collisionRadius) {
+        const targetRadius = radial < (tube.innerRadius + tube.outerRadius) / 2
+          ? tube.innerRadius - collisionRadius
+          : tube.outerRadius + collisionRadius
+        const penetration = Math.abs(radial - targetRadius)
+        if (!tubeHit || penetration < Math.abs(tubeHit.radial - tubeHit.targetRadius)) {
+          tubeHit = { x: cx, y: tube.y, z: cz, targetRadius, radial, px, py, pz }
+        }
       }
     }
 
@@ -4483,7 +4490,11 @@ function loop() {
       const inEntrySlot = angle % tube.entryAngleSpacing < tube.entryAngle
       const radial = Math.sqrt((horizontalRadius - tube.radius) ** 2 + (player.position.y - tube.y) ** 2)
 
-      if (!inEntrySlot && radial > tube.innerRadius - collisionRadius && radial < tube.outerRadius + collisionRadius) {
+      if (radial < tube.innerRadius - collisionRadius) {
+        insideTube = true
+      }
+
+      if (!inEntrySlot && !nearTubeOpening && radial > tube.innerRadius - collisionRadius && radial < tube.outerRadius + collisionRadius) {
         const targetRadius = radial < (tube.innerRadius + tube.outerRadius) / 2
           ? tube.innerRadius - collisionRadius
           : tube.outerRadius + collisionRadius
@@ -4493,28 +4504,23 @@ function loop() {
         const px = player.position.x - cx
         const py = player.position.y - tube.y
         const pz = player.position.z - cz
-        const inv = radial > 0.001 ? 1 / radial : 0
-        player.position.x = cx + px * inv * targetRadius
-        player.position.y = tube.y + py * inv * targetRadius
-        player.position.z = cz + pz * inv * targetRadius
-        hitFlashTimer = 0.3
-        camShakeAmt = Math.max(camShakeAmt, 0.5)
-        insideTube = targetRadius < tube.innerRadius
-        break
-      }
-
-      if (radial < tube.innerRadius - collisionRadius) {
-        insideTube = true
+        const penetration = Math.abs(radial - targetRadius)
+        if (!tubeHit || penetration < Math.abs(tubeHit.radial - tubeHit.targetRadius)) {
+          tubeHit = { x: cx, y: tube.y, z: cz, targetRadius, radial, px, py, pz }
+        }
       }
     }
 
+    if (!insideTube && !nearTubeOpening && tubeHit) {
+      const inv = tubeHit.radial > 0.001 ? 1 / tubeHit.radial : 0
+      player.position.x = tubeHit.x + tubeHit.px * inv * tubeHit.targetRadius
+      player.position.y = tubeHit.y + tubeHit.py * inv * tubeHit.targetRadius
+      player.position.z = tubeHit.z + tubeHit.pz * inv * tubeHit.targetRadius
+      hitFlashTimer = 0.3
+      camShakeAmt = Math.max(camShakeAmt, 0.5)
+    }
+
     const collisionObjects = neoTokyoMapSystem.getCollisionObjects()
-    const nearTubeOpening = neoTokyoMapSystem.getTubeOpenings().some(opening => {
-      const ox = player.position.x - opening.x
-      const oy = player.position.y - opening.y
-      const oz = player.position.z - opening.z
-      return Math.sqrt(ox * ox + oy * oy + oz * oz) < opening.radius
-    })
     if (!insideTube && !nearTubeOpening) {
       for (const obj of collisionObjects) {
         if (!(obj as any).isMesh) continue
