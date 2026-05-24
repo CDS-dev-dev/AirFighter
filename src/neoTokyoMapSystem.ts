@@ -175,6 +175,15 @@ function distToSegment2D(x: number, z: number, x1: number, z1: number, x2: numbe
   return Math.hypot(x - px, z - pz)
 }
 
+function isSegmentInTubeReserve(x1: number, z1: number, x2: number, z2: number, extra = 0): boolean {
+  const steps = 10
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps
+    if (isInTubeReserve(x1 + (x2 - x1) * t, z1 + (z2 - z1) * t, extra)) return true
+  }
+  return false
+}
+
 function isInUrbanCanyon(x: number, z: number, extra = 0): boolean {
   return URBAN_CANYONS.some(canyon => distToSegment2D(x, z, canyon.x1, canyon.z1, canyon.x2, canyon.z2) < canyon.width / 2 + extra)
 }
@@ -719,7 +728,7 @@ export class NeoTokyoMapSystem {
       [-2750, -120, 1360],
       [2100, -1100, 1550],
     ] as [number, number, number][]) {
-      if (isInLandmarkZone(x, z, 220) || isInWaterArea(x, z)) continue
+      if (isInLandmarkZone(x, z, 220) || isInWaterArea(x, z) || isInTubeReserve(x, z, 260)) continue
       const gy = NeoTokyoMapSystem.heightAt(x, z)
       const spire = new THREE.Mesh(new THREE.CylinderGeometry(12, 46, h, 7), spireMat)
       spire.position.set(x, gy + h / 2, z)
@@ -730,38 +739,28 @@ export class NeoTokyoMapSystem {
 
   private createYamanoteFlightTube(platformMat: THREE.Material, railMat: THREE.Material): void {
     const y = 360
+    const w = 58
     const entryIndices = [0, 3, 8, 10, 13, 17]
     const ramps: Array<{ sx: number; sz: number; px: number; pz: number; q: THREE.Quaternion }> = []
     for (const i of entryIndices) {
       const p = YAMANOTE_WP[i]
-      const prev = YAMANOTE_WP[Math.max(0, i - 1)]
-      const next = YAMANOTE_WP[Math.min(YAMANOTE_WP.length - 1, i + 1)]
-      const dx = next.x - prev.x
-      const dz = next.z - prev.z
-      const len = Math.hypot(dx, dz)
-      if (len < 1) continue
-      const axis = new THREE.Vector3(dx / len, 0, dz / len)
-      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis)
       const outward = new THREE.Vector3(p.x, 0, p.z)
       if (outward.lengthSq() < 1) outward.set(-0.7, 0, 0.7)
       outward.normalize()
       const sx = p.x + outward.x * 520
       const sz = p.z + outward.z * 520
-      this.tubeOpenings.push({ x: p.x, y, z: p.z, radius: 135 })
-      this.tubeOpenings.push({ x: sx, y, z: sz, radius: 128 })
+      const rampAxis = new THREE.Vector3(p.x - sx, 0, p.z - sz).normalize()
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), rampAxis)
+      this.tubeOpenings.push({ x: p.x, y, z: p.z, radius: 360 })
       ramps.push({ sx, sz, px: p.x, pz: p.z, q })
     }
 
-    for (let i = 0; i < YAMANOTE_WP.length - 1; i++) {
-      const a = YAMANOTE_WP[i]
-      const b = YAMANOTE_WP[i + 1]
-      this.buildSkyway(a.x, a.z, b.x, b.z, y, 52, platformMat, railMat, false)
-    }
+    this.buildCurvedSkyway(YAMANOTE_WP.slice(0, -1), y, w, railMat)
 
     for (const ramp of ramps) {
-      this.buildSkyway(ramp.sx, ramp.sz, ramp.px, ramp.pz, y, 40, platformMat, railMat, false)
+      this.buildOpenSkyway(ramp.sx, ramp.sz, ramp.px, ramp.pz, y, w, platformMat, railMat)
 
-      const gate = new THREE.Mesh(new THREE.TorusGeometry(114, 5, 8, 36), railMat)
+      const gate = new THREE.Mesh(new THREE.TorusGeometry(205, 7, 8, 48), railMat)
       gate.position.set(ramp.px, y, ramp.pz)
       gate.quaternion.copy(ramp.q)
       gate.name = 'NeoTokyoYamanoteTubeEntry'
@@ -780,7 +779,7 @@ export class NeoTokyoMapSystem {
       { x: 2920, z: 2140, h: 960, w: 150, c: 0xff8a26, style: 2 },
     ]
     for (const t of towers) {
-      if (isInLandmarkZone(t.x, t.z, 220) || isInWaterArea(t.x, t.z) || isInUrbanCanyon(t.x, t.z, 80)) continue
+      if (isInLandmarkZone(t.x, t.z, 220) || isInWaterArea(t.x, t.z) || isInUrbanCanyon(t.x, t.z, 80) || isInTubeReserve(t.x, t.z, 300)) continue
       const gy = NeoTokyoMapSystem.heightAt(t.x, t.z)
       const g = new THREE.Group()
       g.name = 'NeoTokyoHeroTower'
@@ -902,6 +901,7 @@ export class NeoTokyoMapSystem {
   }
 
   private buildOpenSkyway(x1: number, z1: number, x2: number, z2: number, y: number, w: number, deckMat: THREE.Material, railMat: THREE.Material): void {
+    if (isSegmentInTubeReserve(x1, z1, x2, z2, 60) && Math.abs(y - 360) > 80) return
     const dx = x2 - x1
     const dz = z2 - z1
     const len = Math.hypot(dx, dz)
@@ -923,7 +923,84 @@ export class NeoTokyoMapSystem {
     this.deco.push(deck)
   }
 
-  private buildSkyway(x1: number, z1: number, x2: number, z2: number, y: number, w: number, _deckMat: THREE.Material, railMat: THREE.Material, showEntries = true): void {
+  private buildCurvedSkyway(points: Array<{ x: number; z: number }>, y: number, w: number, railMat: THREE.Material): void {
+    const innerRadius = Math.max(78, w * 1.72)
+    const outerRadius = innerRadius + 30
+    const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(p.x, y, p.z)), true, 'catmullrom', 0.35)
+    const shellMat = new THREE.MeshLambertMaterial({
+      color: 0x07101a,
+      emissive: 0x07182a,
+      emissiveIntensity: 0.5,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide,
+      depthWrite: true,
+    })
+    const sampleCount = 168
+    const samples = curve.getSpacedPoints(sampleCount)
+    const isOpeningPoint = (p: THREE.Vector3): boolean => this.tubeOpenings.some(opening => {
+      const ox = p.x - opening.x
+      const oy = p.y - opening.y
+      const oz = p.z - opening.z
+      return Math.sqrt(ox * ox + oy * oy + oz * oz) < opening.radius
+    })
+    let run: THREE.Vector3[] = []
+
+    const flushRun = (): void => {
+      if (run.length < 2) {
+        run = []
+        return
+      }
+      const subCurve = new THREE.CatmullRomCurve3(run, false, 'catmullrom', 0.35)
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(subCurve, Math.max(8, run.length * 2), outerRadius, 30, false), shellMat)
+      tube.name = 'NeoTokyoCurvedFlightTube'
+      this.scene.add(tube)
+      this.deco.push(tube)
+
+      const ringStep = Math.max(2, Math.floor(run.length / 3))
+      for (let i = 1; i < run.length - 1; i += ringStep) {
+        const p = run[i]
+        const prev = run[Math.max(0, i - 1)]
+        const next = run[Math.min(run.length - 1, i + 1)]
+        const axis = new THREE.Vector3(next.x - prev.x, 0, next.z - prev.z).normalize()
+        const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis)
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(outerRadius + 5, 4, 8, 42), railMat)
+        ring.position.copy(p)
+        ring.quaternion.copy(q)
+        ring.name = 'NeoTokyoTubeRib'
+        this.scene.add(ring)
+        this.deco.push(ring)
+      }
+      run = []
+    }
+
+    for (let i = 0; i < samples.length - 1; i++) {
+      const a = samples[i]
+      const b = samples[i + 1]
+      const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5)
+      const blockedByOpening = isOpeningPoint(a) || isOpeningPoint(b) || isOpeningPoint(mid)
+      if (blockedByOpening) {
+        flushRun()
+        continue
+      }
+      this.tubeCorridors.push({
+        x1: a.x,
+        z1: a.z,
+        x2: b.x,
+        z2: b.z,
+        y,
+        innerRadius,
+        outerRadius,
+        entrySpacing: 999999,
+        entryLength: 0
+      })
+      if (run.length === 0) run.push(a.clone())
+      run.push(b.clone())
+    }
+    flushRun()
+  }
+
+  buildSkyway(x1: number, z1: number, x2: number, z2: number, y: number, w: number, _deckMat: THREE.Material, railMat: THREE.Material, showEntries = true): void {
     const dx = x2 - x1
     const dz = z2 - z1
     const len = Math.hypot(dx, dz)
@@ -1044,7 +1121,7 @@ export class NeoTokyoMapSystem {
     const geo = new THREE.CylinderGeometry(25, 30, 1, 16)
     positions.forEach(([px, pz], i) => {
       const pillarHeight = 2000 + Math.random() * 500
-      if (isInLandmarkZone(px, pz, 260) || isInWaterArea(px, pz)) return
+      if (isInLandmarkZone(px, pz, 260) || isInWaterArea(px, pz) || isInTubeReserve(px, pz, 260)) return
       const gy = NeoTokyoMapSystem.heightAt(px, pz)
 
       const mat = new THREE.MeshStandardMaterial({
@@ -1074,6 +1151,7 @@ export class NeoTokyoMapSystem {
       { x: 2300, z: -1920, r: 300, alt: 980, tube: 30, c: 0x00ff88, name: 'Skytree Sky Gate' },
     ]
     for (const ring of rings) {
+      if (isInTubeReserve(ring.x, ring.z, ring.r + 140)) continue
       const gy = NeoTokyoMapSystem.heightAt(ring.x, ring.z)
       const geo = new THREE.TorusGeometry(ring.r, ring.tube, 24, 64)
       const mat = new THREE.MeshLambertMaterial({
@@ -1104,6 +1182,7 @@ export class NeoTokyoMapSystem {
       { x1: 2400, z1: -1850, x2: 3000, z2: -1500, h: 620, c: 0x00ff88 },
     ]
     for (const arch of arches) {
+      if (isSegmentInTubeReserve(arch.x1, arch.z1, arch.x2, arch.z2, 220)) continue
       const dx = arch.x2 - arch.x1
       const dz = arch.z2 - arch.z1
       const span = Math.hypot(dx, dz)
@@ -1156,7 +1235,7 @@ export class NeoTokyoMapSystem {
       const dist = 600 + (i % 2) * 200
       const x = Math.cos(angle) * dist
       const z = Math.sin(angle) * dist
-      if (isInLandmarkZone(x, z, 160) || isInWaterArea(x, z)) continue
+      if (isInLandmarkZone(x, z, 160) || isInWaterArea(x, z) || isInTubeReserve(x, z, 260)) continue
       const gy = NeoTokyoMapSystem.heightAt(x, z)
       const outerR = 120 + i * 10
       const innerR = 70 + i * 5
@@ -1194,7 +1273,7 @@ export class NeoTokyoMapSystem {
       const dist = 1500 + Math.random() * 2000
       const x = Math.cos(angle) * dist
       const z = Math.sin(angle) * dist
-      if (isInLandmarkZone(x, z, 160) || isInWaterArea(x, z)) continue
+      if (isInLandmarkZone(x, z, 160) || isInWaterArea(x, z) || isInTubeReserve(x, z, 240)) continue
       const gy = NeoTokyoMapSystem.heightAt(x, z)
       const r = 75 + Math.random() * 75
       const h = 800 + Math.random() * 800
@@ -1216,7 +1295,7 @@ export class NeoTokyoMapSystem {
     // Pyramid Buildings (3x in Core/Odaiba)
     const pyramidPos = [[0, -600], [600, 0], [2000, 2200]]
     for (const [x, z] of pyramidPos) {
-      if (isInLandmarkZone(x, z, 160) || isInWaterArea(x, z)) continue
+      if (isInLandmarkZone(x, z, 160) || isInWaterArea(x, z) || isInTubeReserve(x, z, 280)) continue
       const gy = NeoTokyoMapSystem.heightAt(x, z)
       const baseR = 200
       const h = 1200
