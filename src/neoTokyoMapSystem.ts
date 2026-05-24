@@ -730,13 +730,9 @@ export class NeoTokyoMapSystem {
 
   private createYamanoteFlightTube(platformMat: THREE.Material, railMat: THREE.Material): void {
     const y = 360
-    for (let i = 0; i < YAMANOTE_WP.length - 1; i++) {
-      const a = YAMANOTE_WP[i]
-      const b = YAMANOTE_WP[i + 1]
-      this.buildSkyway(a.x, a.z, b.x, b.z, y, 52, platformMat, railMat, false)
-    }
-
-    for (const i of [0, 3, 8, 10, 13, 17]) {
+    const entryIndices = [0, 3, 8, 10, 13, 17]
+    const ramps: Array<{ sx: number; sz: number; px: number; pz: number; q: THREE.Quaternion }> = []
+    for (const i of entryIndices) {
       const p = YAMANOTE_WP[i]
       const prev = YAMANOTE_WP[Math.max(0, i - 1)]
       const next = YAMANOTE_WP[Math.min(YAMANOTE_WP.length - 1, i + 1)]
@@ -751,12 +747,23 @@ export class NeoTokyoMapSystem {
       outward.normalize()
       const sx = p.x + outward.x * 520
       const sz = p.z + outward.z * 520
-      this.buildSkyway(sx, sz, p.x, p.z, y, 40, platformMat, railMat, false)
       this.tubeOpenings.push({ x: p.x, y, z: p.z, radius: 135 })
+      this.tubeOpenings.push({ x: sx, y, z: sz, radius: 128 })
+      ramps.push({ sx, sz, px: p.x, pz: p.z, q })
+    }
+
+    for (let i = 0; i < YAMANOTE_WP.length - 1; i++) {
+      const a = YAMANOTE_WP[i]
+      const b = YAMANOTE_WP[i + 1]
+      this.buildSkyway(a.x, a.z, b.x, b.z, y, 52, platformMat, railMat, false)
+    }
+
+    for (const ramp of ramps) {
+      this.buildSkyway(ramp.sx, ramp.sz, ramp.px, ramp.pz, y, 40, platformMat, railMat, false)
 
       const gate = new THREE.Mesh(new THREE.TorusGeometry(114, 5, 8, 36), railMat)
-      gate.position.set(p.x, y, p.z)
-      gate.quaternion.copy(q)
+      gate.position.set(ramp.px, y, ramp.pz)
+      gate.quaternion.copy(ramp.q)
       gate.name = 'NeoTokyoYamanoteTubeEntry'
       this.scene.add(gate)
       this.deco.push(gate)
@@ -953,6 +960,16 @@ export class NeoTokyoMapSystem {
       const t = (cursor + actualLen * 0.5) / len
       const cx = x1 + dx * t
       const cz = z1 + dz * t
+      const nearOpening = this.tubeOpenings.some(opening => {
+        const ox = cx - opening.x
+        const oy = y - opening.y
+        const oz = cz - opening.z
+        return Math.sqrt(ox * ox + oy * oy + oz * oz) < opening.radius
+      })
+      if (nearOpening) {
+        cursor += actualLen
+        continue
+      }
       const tube = new THREE.Mesh(new THREE.CylinderGeometry(outerRadius, outerRadius, actualLen, 28, 1, true), shellMat)
       tube.position.set(cx, y, cz)
       tube.quaternion.copy(q)
@@ -977,6 +994,13 @@ export class NeoTokyoMapSystem {
       if (entryLength > 0 && d % entrySpacing < entryLength) continue
       const rx = x1 + dx * t
       const rz = z1 + dz * t
+      const nearOpening = this.tubeOpenings.some(opening => {
+        const ox = rx - opening.x
+        const oy = y - opening.y
+        const oz = rz - opening.z
+        return Math.sqrt(ox * ox + oy * oy + oz * oz) < opening.radius
+      })
+      if (nearOpening) continue
       const ring = new THREE.Mesh(new THREE.TorusGeometry(outerRadius + 5, 4, 8, 40), glowMat)
       ring.position.set(rx, y, rz)
       ring.quaternion.copy(ringQ)
