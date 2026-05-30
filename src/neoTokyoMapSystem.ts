@@ -275,14 +275,12 @@ export class NeoTokyoMapSystem {
     this.createUrbanFabric()
     this.createBuildings()
     this.createVariedBuildings()
-    if (!this.mobile) {
-      this.createLayeredSkyCity()
-      this.createChunkyMegaBlocks()
-      this.createHeroTowers()
-      this.createFlightCanyonRoute()
-      this.createRouteSideDensity()
-      this.createDistantSkyline()
-    }
+    this.createLayeredSkyCity()
+    this.createChunkyMegaBlocks()
+    this.createHeroTowers()
+    this.createFlightCanyonRoute()
+    this.createRouteSideDensity()
+    this.createDistantSkyline()
     this.createLandmarks()
     this.createNeoLandmarkExtensions()
     this.createImperialPalace()
@@ -349,7 +347,7 @@ export class NeoTokyoMapSystem {
   // ===== TERRAIN =====
 
   private createTerrain(): void {
-    const SIZE = 14000, SEGS = this.mobile ? 64 : 128
+    const SIZE = 14000, SEGS = 128
     const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEGS, SEGS)
     geo.rotateX(-Math.PI / 2)
     const pos = geo.attributes.position.array as Float32Array
