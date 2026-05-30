@@ -14,20 +14,21 @@ function makeWinTex(bg: RGB, win: RGB, cols: number, rows: number): THREE.DataTe
     for (let px = 0; px < W; px++) {
       const cx = (px % cw) / cw, cy = (py % rh) / rh
       const row = Math.floor(py / rh), col = Math.floor(px / cw)
-      const inW = cx > 0.18 && cx < 0.82 && cy > 0.18 && cy < 0.72
-      const neonStrip = cy > 0.88 && cy < 0.96 && sr(row * 4.2 + col * 6.1) > 0.68
-      const bright = sr(row * 7.1 + col * 3.3) > 0.78
-      const halfLit = sr(row * 1.7 + col * 9.1) > 0.58
-      const signage = col % 5 === 0 && cy > 0.12 && cy < 0.9 && sr(row * 3.9 + col) > 0.82
+      const inW = cx > 0.2 && cx < 0.8 && cy > 0.2 && cy < 0.7
+      const band = row % 7 === 2 && cy > 0.74 && cy < 0.88
+      const neonStrip = band && sr(row * 4.2 + col * 6.1) > 0.44
+      const bright = sr(Math.floor(row / 2) * 7.1 + Math.floor(col / 2) * 3.3) > 0.72
+      const halfLit = sr(row * 1.7 + col * 9.1) > 0.5
+      const signage = col % 6 === 1 && cy > 0.12 && cy < 0.9 && sr(row * 3.9 + col) > 0.9
       let r: number, g: number, b: number
       if (neonStrip) {
         r = win[0]; g = win[1]; b = win[2]
       } else if (signage) {
-        r = Math.min(255, win[0] + 20); g = Math.min(255, win[1] + 20); b = Math.min(255, win[2] + 20)
+        r = Math.min(255, win[0] + 16); g = Math.min(255, win[1] + 16); b = Math.min(255, win[2] + 16)
       } else if (inW && bright) {
-        r = Math.min(255, win[0] * 0.72 + 26); g = Math.min(255, win[1] * 0.72 + 26); b = Math.min(255, win[2] * 0.72 + 26)
+        r = Math.min(255, win[0] * 0.54 + 36); g = Math.min(255, win[1] * 0.54 + 36); b = Math.min(255, win[2] * 0.54 + 36)
       } else if (inW && halfLit) {
-        r = Math.min(255, win[0] * 0.24 + bg[0]); g = Math.min(255, win[1] * 0.24 + bg[1]); b = Math.min(255, win[2] * 0.24 + bg[2])
+        r = Math.min(255, win[0] * 0.14 + bg[0]); g = Math.min(255, win[1] * 0.14 + bg[1]); b = Math.min(255, win[2] * 0.14 + bg[2])
       } else {
         r = bg[0]; g = bg[1]; b = bg[2]
       }
@@ -220,12 +221,12 @@ function isInWaterArea(x: number, z: number): boolean {
   return (tokyoBay || sumida || kanda || arakawa) && !odaibaIsland && !bridgeApproach
 }
 
-// NEO Tokyo 2077 palette — dark wet steel, cyan/magenta signage, sparse amber traffic
+// NEO Tokyo 2077 palette — brighter wet glass, grouped cyan/magenta signage, warm amber windows
 const BTYPE = [
-  { bg: [4,  8, 14] as RGB, win: [55,  210, 255] as RGB, cols: 9, rows: 24, em: 0x1688ff },
-  { bg: [5,  7, 12] as RGB, win: [180, 205, 255] as RGB, cols: 11, rows: 28, em: 0x3355ff },
-  { bg: [9,  4, 10] as RGB, win: [255,  45, 175] as RGB, cols: 7, rows: 20, em: 0xff2299 },
-  { bg: [3,  8, 12] as RGB, win: [255, 125,  35] as RGB, cols: 10, rows: 18, em: 0xff6a22 },
+  { bg: [9,  18, 30] as RGB, win: [82,  220, 255] as RGB, cols: 8, rows: 18, em: 0x249dff },
+  { bg: [10, 14, 24] as RGB, win: [178, 214, 255] as RGB, cols: 9, rows: 20, em: 0x466dff },
+  { bg: [15,  8, 20] as RGB, win: [255,  74, 172] as RGB, cols: 6, rows: 16, em: 0xff3aa8 },
+  { bg: [10, 16, 24] as RGB, win: [255, 152,  58] as RGB, cols: 8, rows: 16, em: 0xff8a26 },
 ]
 
 // Yamanote Line waypoints — real Tokyo loop at game scale (~1 game unit = 3m)
@@ -361,18 +362,18 @@ export class NeoTokyoMapSystem {
       const dR = Math.min(Math.min(rx, 600 - rx), Math.min(rz, 600 - rz))
       let r: number, g: number, b: number
       if (isInWaterArea(x, z)) {
-        r = 0.015; g = 0.035; b = 0.065
+        r = 0.02; g = 0.052; b = 0.09
       } else if (dR < 55) {
         const wet = 0.9 + sr(i * 0.009) * 0.16
-        r = 0.035 * wet; g = 0.045 * wet; b = 0.065 * wet
+        r = 0.052 * wet; g = 0.064 * wet; b = 0.088 * wet
       } else if (dR < 65) {
-        r = 0.08; g = 0.065; b = 0.08
+        r = 0.105; g = 0.088; b = 0.1
       } else {
         const wet = 0.75 + sr(i * 0.017) * 0.2
         const low = 1 - smooth01(y / 55)
-        r = 0.045 * wet + low * 0.014
-        g = 0.052 * wet + low * 0.012
-        b = 0.068 * wet + low * 0.018
+        r = 0.062 * wet + low * 0.018
+        g = 0.071 * wet + low * 0.018
+        b = 0.092 * wet + low * 0.026
       }
       cols[i] = Math.max(0, Math.min(1, r))
       cols[i + 1] = Math.max(0, Math.min(1, g))
@@ -388,8 +389,8 @@ export class NeoTokyoMapSystem {
   // ===== BUILDINGS (InstancedMesh — 6 draw calls for 700+ buildings) =====
 
   private createUrbanFabric(): void {
-    const podiumMat = new THREE.MeshLambertMaterial({ color: 0x101620, emissive: 0x0a1522, emissiveIntensity: 0.45 })
-    const roofMat = new THREE.MeshLambertMaterial({ color: 0x151d2a, emissive: 0x08131f, emissiveIntensity: 0.3 })
+    const podiumMat = new THREE.MeshLambertMaterial({ color: 0x172234, emissive: 0x10223a, emissiveIntensity: 0.5 })
+    const roofMat = new THREE.MeshLambertMaterial({ color: 0x1a2940, emissive: 0x10243c, emissiveIntensity: 0.36 })
 
     for (let ix = -7; ix <= 7; ix++) {
       for (let iz = -7; iz <= 7; iz++) {
@@ -441,14 +442,14 @@ export class NeoTokyoMapSystem {
     for (let t = 0; t < BTYPE.length; t++) {
       const list = specs.filter(s => s.type === t)
       if (!list.length) continue
-      let emIntensity = 0.18
-      if (t === 0) emIntensity = 0.26
-      else if (t === 2) emIntensity = 0.34
-      else if (t === 3) emIntensity = 0.28
+      let emIntensity = 0.24
+      if (t === 0) emIntensity = 0.34
+      else if (t === 2) emIntensity = 0.38
+      else if (t === 3) emIntensity = 0.36
 
       const mat = new THREE.MeshLambertMaterial({
         map: textures[t],
-        color: 0x9aa8ba,
+        color: 0xaebbd0,
         emissive: new THREE.Color(BTYPE[t].em),
         emissiveIntensity: emIntensity,
       })
@@ -714,6 +715,7 @@ export class NeoTokyoMapSystem {
 
     for (const ramp of ramps) {
       this.buildSkyway(ramp.sx, ramp.sz, ramp.px, ramp.pz, y, w, platformMat, railMat, false)
+      this.createTubeInterchangePortal(ramp.sx, ramp.sz, ramp.px, ramp.pz, y, ramp.q)
 
       const gate = new THREE.Mesh(new THREE.TorusGeometry(250, 12, 8, 64), railMat)
       gate.position.set(ramp.px, y, ramp.pz)
@@ -749,6 +751,51 @@ export class NeoTokyoMapSystem {
         this.deco.push(rail)
       }
     }
+  }
+
+  private createTubeInterchangePortal(sx: number, sz: number, px: number, pz: number, y: number, q: THREE.Quaternion): void {
+    const dx = px - sx
+    const dz = pz - sz
+    const len = Math.hypot(dx, dz)
+    if (len < 1) return
+
+    const g = new THREE.Group()
+    g.name = 'NeoTokyoTubeInterchangePortal'
+    g.position.set((sx + px) / 2, y, (sz + pz) / 2)
+    g.quaternion.copy(q)
+
+    const shellMat = new THREE.MeshLambertMaterial({ color: 0x18263a, emissive: 0x12345a, emissiveIntensity: 0.82, transparent: true, opacity: 0.82, depthWrite: false })
+    const cyanMat = new THREE.MeshLambertMaterial({ color: 0x68e6ff, emissive: 0x1cbcff, emissiveIntensity: 1.65 })
+    const amberMat = new THREE.MeshLambertMaterial({ color: 0xffb468, emissive: 0xff8428, emissiveIntensity: 1.35 })
+    const magentaMat = new THREE.MeshLambertMaterial({ color: 0xff58b6, emissive: 0xff2e94, emissiveIntensity: 1.1 })
+
+    const throat = new THREE.Mesh(new THREE.CylinderGeometry(162, 132, len * 0.72, 18, 1, true), shellMat)
+    throat.rotation.x = Math.PI / 2
+    g.add(throat)
+
+    for (const z of [-len * 0.32, 0, len * 0.32]) {
+      const frame = new THREE.Mesh(new THREE.TorusGeometry(168, 8, 8, 48), cyanMat)
+      frame.position.z = z
+      g.add(frame)
+    }
+
+    for (const side of [-1, 1]) {
+      const spar = new THREE.Mesh(new THREE.BoxGeometry(18, 18, len * 0.78), side > 0 ? amberMat : magentaMat)
+      spar.position.set(side * 142, -74, 0)
+      g.add(spar)
+
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(20, 165, len * 0.42), shellMat)
+      fin.position.set(side * 192, 0, -len * 0.08)
+      fin.rotation.z = side * 0.16
+      g.add(fin)
+    }
+
+    const approach = new THREE.Mesh(new THREE.BoxGeometry(360, 10, 72), amberMat)
+    approach.position.set(0, -138, -len * 0.42)
+    g.add(approach)
+
+    this.scene.add(g)
+    this.deco.push(g)
   }
 
   private createHeroTowers(): void {
