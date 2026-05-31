@@ -6,7 +6,7 @@ import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
-const VERSION = '5.27.0'
+const VERSION = '5.28.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -4493,33 +4493,43 @@ function loop() {
       return Math.sqrt(ox * ox + oy * oy + oz * oz) < opening.radius
     })
 
+    const tubeSweepSteps = Math.max(1, Math.ceil(prevPos.distanceTo(player.position) / 42))
     for (const tube of neoTokyoMapSystem.getTubeCorridors()) {
       const dx = tube.x2 - tube.x1
+      const dy = (tube.y2 ?? tube.y) - tube.y
       const dz = tube.z2 - tube.z1
-      const lenSq = dx * dx + dz * dz
+      const lenSq = dx * dx + dy * dy + dz * dz
       if (lenSq <= 0.0001) continue
-      const t = Math.max(0, Math.min(1, ((player.position.x - tube.x1) * dx + (player.position.z - tube.z1) * dz) / lenSq))
-      const along = Math.sqrt(lenSq) * t
-      const inEntrySlot = along % tube.entrySpacing < tube.entryLength
-      const cx = tube.x1 + dx * t
-      const cz = tube.z1 + dz * t
-      const px = player.position.x - cx
-      const py = player.position.y - tube.y
-      const pz = player.position.z - cz
-      const radial = Math.sqrt(px * px + py * py + pz * pz)
 
-      if (radial < tube.innerRadius - collisionRadius) {
-        insideTube = true
-        insideTubeClearance = Math.max(insideTubeClearance, tube.innerRadius - collisionRadius - radial)
-      }
+      for (let sweep = 1; sweep <= tubeSweepSteps; sweep++) {
+        const sweepT = sweep / tubeSweepSteps
+        const sx = prevPos.x + (player.position.x - prevPos.x) * sweepT
+        const sy = prevPos.y + (player.position.y - prevPos.y) * sweepT
+        const sz = prevPos.z + (player.position.z - prevPos.z) * sweepT
+        const t = Math.max(0, Math.min(1, ((sx - tube.x1) * dx + (sy - tube.y) * dy + (sz - tube.z1) * dz) / lenSq))
+        const along = Math.sqrt(lenSq) * t
+        const inEntrySlot = along % tube.entrySpacing < tube.entryLength
+        const cx = tube.x1 + dx * t
+        const cy = tube.y + dy * t
+        const cz = tube.z1 + dz * t
+        const px = sx - cx
+        const py = sy - cy
+        const pz = sz - cz
+        const radial = Math.sqrt(px * px + py * py + pz * pz)
 
-      if (!inEntrySlot && !nearTubeOpening && radial > tube.innerRadius - collisionRadius && radial < tube.outerRadius + collisionRadius) {
-        const targetRadius = radial < (tube.innerRadius + tube.outerRadius) / 2
-          ? tube.innerRadius - collisionRadius
-          : tube.outerRadius + collisionRadius
-        const penetration = Math.abs(radial - targetRadius)
-        if (!tubeHit || penetration < Math.abs(tubeHit.radial - tubeHit.targetRadius)) {
-          tubeHit = { x: cx, y: tube.y, z: cz, targetRadius, radial, px, py, pz }
+        if (radial < tube.innerRadius - collisionRadius) {
+          insideTube = true
+          insideTubeClearance = Math.max(insideTubeClearance, tube.innerRadius - collisionRadius - radial)
+        }
+
+        if (!inEntrySlot && !nearTubeOpening && radial > tube.innerRadius - collisionRadius && radial < tube.outerRadius + collisionRadius) {
+          const targetRadius = radial < (tube.innerRadius + tube.outerRadius) / 2
+            ? tube.innerRadius - collisionRadius
+            : tube.outerRadius + collisionRadius
+          const penetration = Math.abs(radial - targetRadius)
+          if (!tubeHit || penetration < Math.abs(tubeHit.radial - tubeHit.targetRadius)) {
+            tubeHit = { x: cx, y: cy, z: cz, targetRadius, radial, px, py, pz }
+          }
         }
       }
     }
@@ -4567,9 +4577,8 @@ function loop() {
     const collisionObjects = neoTokyoMapSystem.getCollisionObjects()
     if (!insideTube && !nearTubeOpening) {
       for (const obj of collisionObjects) {
-        if (!(obj as any).isMesh) continue
-        const mesh = obj as THREE.Mesh
-        const box = new THREE.Box3().setFromObject(mesh)
+        const box = new THREE.Box3().setFromObject(obj)
+        if (box.isEmpty()) continue
         const center = box.getCenter(new THREE.Vector3())
         const size = box.getSize(new THREE.Vector3())
 
