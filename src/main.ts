@@ -6,7 +6,7 @@ import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
-const VERSION = '5.26.0'
+const VERSION = '5.27.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -1446,7 +1446,10 @@ function cycleLock() {
 // ===== ENEMIES =====
 function spawnEnemyAt(sx: number, sz: number) {
   const group = createAircraft(0xcc2222, 0x661111)
-  group.position.set(sx, terrainH(sx, sz) + 75 + Math.random() * 55, sz)
+  const spawnY = currentMap === 'tokyo'
+    ? Math.max(terrainH(sx, sz) + 240, 520 + Math.random() * 260)
+    : terrainH(sx, sz) + 75 + Math.random() * 55
+  group.position.set(sx, spawnY, sz)
 
   // 前方が開けた方向を向く（南側にスポーンするので北向き）
   if (currentMode === 'dogfight') {
@@ -1493,13 +1496,27 @@ function spawnEnemyAt(sx: number, sz: number) {
 }
 
 function spawnEnemy() {
+  if (currentMap === 'tokyo') {
+    const anchors = [
+      { x: 520, z: -360 },
+      { x: 940, z: 520 },
+      { x: 1760, z: 1540 },
+      { x: -460, z: 1740 },
+    ]
+    const p = anchors[Math.floor(Math.random() * anchors.length)]
+    spawnEnemyAt(p.x + (Math.random() - 0.5) * 520, p.z + (Math.random() - 0.5) * 520)
+    return
+  }
   const angle = Math.random() * Math.PI * 2
   spawnEnemyAt(Math.cos(angle) * (220 + Math.random() * 220), Math.sin(angle) * (220 + Math.random() * 220))
 }
 
 function spawnAlly(sx: number, sz: number) {
   const group = createAircraft(0x22cc55, 0x116633)
-  group.position.set(sx, terrainH(sx, sz) + 75 + Math.random() * 55, sz)
+  const spawnY = currentMap === 'tokyo'
+    ? Math.max(terrainH(sx, sz) + 220, 660 + Math.random() * 120)
+    : terrainH(sx, sz) + 75 + Math.random() * 55
+  group.position.set(sx, spawnY, sz)
 
   // 前方が開けた方向を向く（北側にスポーンするので南向き）
   group.rotation.y = Math.PI  // 南向き（z正方向）
@@ -2644,27 +2661,48 @@ function startGame(mode: GameMode) {
     case 'dogfight': {
       modeObjectiveTotal = 0
       setObjective('敵機を撃墜せよ — SCORE: 0')
+      const tokyoDogfightSpawn = currentMap === 'tokyo' && neoTokyoMapSystem
+        ? neoTokyoMapSystem.getSafeSpawnPosition()
+        : null
       // 敵は南側、味方・プレイヤーは北側にスポーン
       for (let i = 0; i < dfEnemyCount; i++) {
-        const a = Math.PI + (Math.random() - 0.5) * 1.2
-        const r = 550 + Math.random() * 350
-        spawnEnemyAt(Math.cos(a) * r, Math.sin(a) * r)
+        if (tokyoDogfightSpawn) {
+          const anchors = [
+            { x: 520, z: -360 },
+            { x: 940, z: 520 },
+            { x: 1760, z: 1540 },
+            { x: -460, z: 1740 },
+          ]
+          const p = anchors[i % anchors.length]
+          spawnEnemyAt(p.x + (Math.random() - 0.5) * 420, p.z + (Math.random() - 0.5) * 420)
+        } else {
+          const a = Math.PI + (Math.random() - 0.5) * 1.2
+          const r = 550 + Math.random() * 350
+          spawnEnemyAt(Math.cos(a) * r, Math.sin(a) * r)
+        }
       }
       console.log(`Spawning ${dfAllyCount} allies`)
       for (let i = 0; i < dfAllyCount; i++) {
-        // プレイヤーの近くにスポーン（より視認しやすく）
-        const a = (Math.random() - 0.5) * 0.8
-        const r = 150 + Math.random() * 150  // 150-300mの範囲に変更（元：550-900m）
-        spawnAlly(Math.cos(a) * r, Math.sin(a) * r)
-        console.log(`Ally ${i+1} spawned at position:`, Math.cos(a) * r, Math.sin(a) * r)
+        if (tokyoDogfightSpawn) {
+          const side = i % 2 === 0 ? -1 : 1
+          const sx = tokyoDogfightSpawn.x + side * (220 + Math.random() * 90)
+          const sz = tokyoDogfightSpawn.z + 160 + i * 120
+          spawnAlly(sx, sz)
+          console.log(`Ally ${i+1} spawned at position:`, sx, sz)
+        } else {
+          // プレイヤーの近くにスポーン（より視認しやすく）
+          const a = (Math.random() - 0.5) * 0.8
+          const r = 150 + Math.random() * 150  // 150-300mの範囲に変更（元：550-900m）
+          spawnAlly(Math.cos(a) * r, Math.sin(a) * r)
+          console.log(`Ally ${i+1} spawned at position:`, Math.cos(a) * r, Math.sin(a) * r)
+        }
       }
       console.log(`Total allies after spawn: ${allies.length}`)
       // プレイヤーも味方側（北）にスポーン
-      if (currentMap === 'tokyo' && neoTokyoMapSystem) {
-        const safePos = neoTokyoMapSystem.getSafeSpawnPosition()
-        dfSpawnX = safePos.x
-        dfSpawnZ = safePos.z
-        player.position.set(safePos.x, safePos.y, safePos.z)
+      if (tokyoDogfightSpawn) {
+        dfSpawnX = tokyoDogfightSpawn.x
+        dfSpawnZ = tokyoDogfightSpawn.z
+        player.position.set(tokyoDogfightSpawn.x, tokyoDogfightSpawn.y, tokyoDogfightSpawn.z)
       } else {
         // 味方と同じ範囲に配置（r=150-300、北側）
         const a = (Math.random() - 0.5) * 0.8

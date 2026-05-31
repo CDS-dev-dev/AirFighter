@@ -149,8 +149,8 @@ const LANDMARK_ZONES: LandmarkZone[] = [
 ]
 
 const URBAN_CANYONS: UrbanCanyon[] = [
-  { x1: 0, z1: -3400, x2: 0, z2: -2300, width: 940 },
-  { x1: 0, z1: -2100, x2: 160, z2: -1120, width: 860 },
+  { x1: 0, z1: -4400, x2: 0, z2: -1700, width: 1500 },
+  { x1: 0, z1: -1700, x2: 160, z2: -1120, width: 1040 },
   { x1: 160, z1: -1120, x2: 940, z2: 520, width: 880 },
   { x1: 940, z1: 520, x2: 1760, z2: 1540, width: 900 },
   { x1: 1760, z1: 1540, x2: -460, z2: 1740, width: 920 },
@@ -193,6 +193,10 @@ function isSegmentInTubeReserve(x1: number, z1: number, x2: number, z2: number, 
 
 function isInUrbanCanyon(x: number, z: number, extra = 0): boolean {
   return URBAN_CANYONS.some(canyon => distToSegment2D(x, z, canyon.x1, canyon.z1, canyon.x2, canyon.z2) < canyon.width / 2 + extra)
+}
+
+function isInSpawnApproach(x: number, z: number, extra = 0): boolean {
+  return z < -1500 && z > -4550 && Math.abs(x) < 720 + extra
 }
 
 function isInTubeReserve(x: number, z: number, extra = 0): boolean {
@@ -316,7 +320,7 @@ export class NeoTokyoMapSystem {
   }
 
   getTerrainHeight(x: number, z: number): number { return NeoTokyoMapSystem.heightAt(x, z) }
-  getSafeSpawnPosition(): { x: number; y: number; z: number } { return { x: 0, y: 620, z: -3000 } }
+  getSafeSpawnPosition(): { x: number; y: number; z: number } { return { x: 0, y: 760, z: -3900 } }
 
   // InstancedMesh excluded: Box3.setFromObject(instancedMesh) returns a box covering
   // ALL instances (the entire city), causing false collision hits in building gaps.
@@ -402,7 +406,7 @@ export class NeoTokyoMapSystem {
       for (let iz = -7; iz <= 7; iz++) {
         const x = ix * 520 + (sr(ix * 3.1 + iz) - 0.5) * 44
         const z = iz * 520 + (sr(ix - iz * 4.4) - 0.5) * 44
-        if (Math.hypot(x, z) > 4300 || isInWaterArea(x, z) || isInLandmarkZone(x, z, 320) || isInUrbanCanyon(x, z, 92) || isInTubeReserve(x, z, 125)) continue
+        if (Math.hypot(x, z) > 4300 || isInWaterArea(x, z) || isInLandmarkZone(x, z, 320) || isInUrbanCanyon(x, z, 92) || isInSpawnApproach(x, z, 220) || isInTubeReserve(x, z, 125)) continue
         const gy = NeoTokyoMapSystem.heightAt(x, z)
         const major = sr(ix * 7.3 + iz) > 0.5
         const w = major ? 610 : 470
@@ -491,6 +495,7 @@ export class NeoTokyoMapSystem {
     const canPlaceTower = (x: number, z: number, h: number): boolean => {
       if (isInWaterArea(x, z)) return false
       if (isInUrbanCanyon(x, z, h > 1100 ? 120 : 70)) return false
+      if (isInSpawnApproach(x, z, h > 1100 ? 360 : 220)) return false
       if (isInTubeReserve(x, z, h > 1100 ? 260 : 190)) return false
       for (const zone of LANDMARK_ZONES) {
         const minDistance = h > 1000 ? zone.minTowerDistance ?? zone.r : zone.r
@@ -627,7 +632,7 @@ export class NeoTokyoMapSystem {
     ]
 
     for (const b of blocks) {
-      if (isInWaterArea(b.x, b.z) || isInLandmarkZone(b.x, b.z, 260) || isInUrbanCanyon(b.x, b.z, 120)) continue
+      if (isInWaterArea(b.x, b.z) || isInLandmarkZone(b.x, b.z, 260) || isInUrbanCanyon(b.x, b.z, 120) || isInSpawnApproach(b.x, b.z, 360)) continue
       const gy = NeoTokyoMapSystem.heightAt(b.x, b.z)
       const g = new THREE.Group()
       g.name = 'NeoTokyoMegaBlock'
@@ -676,13 +681,13 @@ export class NeoTokyoMapSystem {
       emissive: 0x0c1830,
       emissiveIntensity: 0.55
     })
-    const railCyan = new THREE.MeshLambertMaterial({ color: 0x2faed8, emissive: 0x0a6fa8, emissiveIntensity: 1.05 })
+    const railCyan = new THREE.MeshLambertMaterial({ color: 0x2faed8, emissive: 0x0a6fa8, emissiveIntensity: 0.72 })
 
     this.createYamanoteFlightTube(platformMat, railCyan)
   }
 
   private createYamanoteFlightTube(platformMat: THREE.Material, railMat: THREE.Material): void {
-    const y = 2860
+    const y = 4200
     const w = 54
     const entryIndices = [0, 3, 10, 17]
     const ramps: Array<{ sx: number; sz: number; px: number; pz: number; q: THREE.Quaternion }> = []
@@ -720,7 +725,7 @@ export class NeoTokyoMapSystem {
       this.scene.add(mouth)
       this.deco.push(mouth)
 
-      const mergeMat = new THREE.MeshLambertMaterial({ color: 0xff9a2a, emissive: 0xff5a10, emissiveIntensity: 1.55 })
+      const mergeMat = new THREE.MeshLambertMaterial({ color: 0xff9a2a, emissive: 0xff5a10, emissiveIntensity: 1.05 })
       for (const [t, width] of [[0.18, 300], [0.5, 430], [0.82, 300]] as [number, number][]) {
         const marker = new THREE.Mesh(new THREE.BoxGeometry(width, 12, 30), mergeMat)
         marker.position.set(ramp.sx + (ramp.px - ramp.sx) * t, y + 88, ramp.sz + (ramp.pz - ramp.sz) * t)
@@ -797,7 +802,7 @@ export class NeoTokyoMapSystem {
       { x: 2920, z: 2140, h: 960, w: 150, c: 0xff8a26, style: 2 },
     ]
     for (const t of towers) {
-      if (isInLandmarkZone(t.x, t.z, 220) || isInWaterArea(t.x, t.z) || isInUrbanCanyon(t.x, t.z, 80) || isInTubeReserve(t.x, t.z, 300)) continue
+      if (isInLandmarkZone(t.x, t.z, 220) || isInWaterArea(t.x, t.z) || isInUrbanCanyon(t.x, t.z, 80) || isInSpawnApproach(t.x, t.z, 420) || isInTubeReserve(t.x, t.z, 300)) continue
       const gy = NeoTokyoMapSystem.heightAt(t.x, t.z)
       const g = new THREE.Group()
       g.name = 'NeoTokyoHeroTower'
@@ -868,8 +873,8 @@ export class NeoTokyoMapSystem {
     const amberMat = new THREE.MeshLambertMaterial({ color: 0xffb04a, emissive: 0xff7a18, emissiveIntensity: 1.35 })
     const magentaMat = new THREE.MeshLambertMaterial({ color: 0xff58b6, emissive: 0xff2e94, emissiveIntensity: 1.1 })
     const route: Array<{ x: number; z: number; y: number; w: number; h: number }> = [
-      { x: 0, z: -1960, y: 620, w: 760, h: 520 },
-      { x: 160, z: -1120, y: 640, w: 740, h: 520 },
+      { x: 0, z: -1280, y: 620, w: 760, h: 520 },
+      { x: 520, z: -360, y: 640, w: 740, h: 520 },
       { x: 940, z: 520, y: 570, w: 700, h: 480 },
       { x: 1760, z: 1540, y: 540, w: 720, h: 460 },
       { x: -460, z: 1740, y: 560, w: 680, h: 460 },
@@ -932,8 +937,8 @@ export class NeoTokyoMapSystem {
     const magentaMat = new THREE.MeshLambertMaterial({ color: 0xff4cad, emissive: 0xff2d96, emissiveIntensity: 1.15 })
     const amberMat = new THREE.MeshLambertMaterial({ color: 0xffb75e, emissive: 0xff7c24, emissiveIntensity: 1.08 })
     const segments = [
-      { a: { x: 0, z: -2160 }, b: { x: 160, z: -1120 }, clear: 500 },
-      { a: { x: 160, z: -1120 }, b: { x: 940, z: 520 }, clear: 560 },
+      { a: { x: 0, z: -1500 }, b: { x: 520, z: -360 }, clear: 620 },
+      { a: { x: 520, z: -360 }, b: { x: 940, z: 520 }, clear: 600 },
       { a: { x: 940, z: 520 }, b: { x: 1760, z: 1540 }, clear: 580 },
       { a: { x: 1760, z: 1540 }, b: { x: -460, z: 1740 }, clear: 620 },
     ]
@@ -950,7 +955,8 @@ export class NeoTokyoMapSystem {
       const forwardX = dx / len
       const forwardZ = dz / len
 
-      for (const t of [0.22, 0.48, 0.74]) {
+      const breakerTs = si === 0 ? [0.68] : [0.24, 0.54, 0.8]
+      for (const t of breakerTs) {
         const cx = seg.a.x + dx * t
         const cz = seg.a.z + dz * t
         for (const side of [-1, 1]) {
@@ -958,7 +964,7 @@ export class NeoTokyoMapSystem {
           const offset = seg.clear + 160 + sr(seed) * 120
           const x = cx + sideX * side * offset
           const z = cz + sideZ * side * offset
-          if (isInWaterArea(x, z) || isInLandmarkZone(x, z, 260) || isInTubeReserve(x, z, 140)) continue
+          if (isInWaterArea(x, z) || isInLandmarkZone(x, z, 260) || isInSpawnApproach(x, z, 280) || isInTubeReserve(x, z, 140)) continue
           const gy = NeoTokyoMapSystem.heightAt(x, z)
           const h = 380 + sr(seed * 1.7) * 360
           const w = 260 + sr(seed * 2.1) * 170
@@ -994,12 +1000,13 @@ export class NeoTokyoMapSystem {
         }
       }
 
-      for (const t of [0.35, 0.66]) {
+      const overpassTs = si === 0 ? [0.82] : [0.38, 0.7]
+      for (const t of overpassTs) {
         const cx = seg.a.x + dx * t
         const cz = seg.a.z + dz * t
         const x = cx + forwardX * 40
         const z = cz + forwardZ * 40
-        if (isInWaterArea(x, z) || isInLandmarkZone(x, z, 320)) continue
+        if (isInWaterArea(x, z) || isInLandmarkZone(x, z, 320) || isInSpawnApproach(x, z, 340)) continue
         const gy = NeoTokyoMapSystem.heightAt(x, z)
         const bridge = new THREE.Group()
         bridge.name = 'NeoTokyoCombatOverpass'
@@ -1038,11 +1045,9 @@ export class NeoTokyoMapSystem {
     const cyanMat = new THREE.MeshLambertMaterial({ color: 0x67e8ff, emissive: 0x1ebfff, emissiveIntensity: 1.45 })
     const amberMat = new THREE.MeshLambertMaterial({ color: 0xffb85c, emissive: 0xff7c24, emissiveIntensity: 1.25 })
     const route: Array<{ x: number; z: number }> = [
-      { x: 0, z: -2940 },
-      { x: 0, z: -1960 },
-      { x: 80, z: -1500 },
-      { x: 160, z: -1120 },
-      { x: 520, z: -240 },
+      { x: 0, z: -1860 },
+      { x: 0, z: -1280 },
+      { x: 520, z: -360 },
       { x: 940, z: 520 },
     ]
 
@@ -1062,7 +1067,7 @@ export class NeoTokyoMapSystem {
         const offset = 430 + sr(seed) * 60
         const x = (a.x + b.x) / 2 + sideX * side * offset
         const z = (a.z + b.z) / 2 + sideZ * side * offset
-        if (isInWaterArea(x, z) || isInLandmarkZone(x, z, 260) || isInTubeReserve(x, z, 115)) continue
+        if (isInWaterArea(x, z) || isInLandmarkZone(x, z, 260) || isInSpawnApproach(x, z, 260) || isInTubeReserve(x, z, 115)) continue
 
         const gy = NeoTokyoMapSystem.heightAt(x, z)
         const h = 150 + sr(seed * 1.8) * 180
@@ -1105,7 +1110,7 @@ export class NeoTokyoMapSystem {
         const offset = 560 + sr(seed) * 220
         const x = p.x + sideX * side * offset
         const z = p.z + sideZ * side * offset
-        if (isInWaterArea(x, z) || isInLandmarkZone(x, z, 300) || isInTubeReserve(x, z, 150)) continue
+        if (isInWaterArea(x, z) || isInLandmarkZone(x, z, 300) || isInSpawnApproach(x, z, 300) || isInTubeReserve(x, z, 150)) continue
 
         const gy = NeoTokyoMapSystem.heightAt(x, z)
         const h = 520 + sr(seed * 1.7) * 620
@@ -1229,9 +1234,9 @@ export class NeoTokyoMapSystem {
     const innerGlowMat = new THREE.MeshLambertMaterial({
       color: 0x65dcff,
       emissive: 0x18a8ff,
-      emissiveIntensity: 1.25,
+      emissiveIntensity: 0.85,
       transparent: true,
-      opacity: 0.36,
+      opacity: 0.24,
       depthWrite: false,
     })
     const sampleCount = 168
@@ -1268,7 +1273,7 @@ export class NeoTokyoMapSystem {
       })
     }
 
-    for (let i = 0; i < samples.length; i += 84) {
+    for (let i = 0; i < samples.length; i += 126) {
       const p = samples[i]
       const prev = samples[(i - 1 + samples.length) % samples.length]
       const next = samples[(i + 1) % samples.length]
@@ -1294,7 +1299,7 @@ export class NeoTokyoMapSystem {
         this.deco.push(wallStrip)
       }
 
-      if (i % 168 === 0) {
+      if (i % 252 === 0) {
         const lamp = new THREE.Mesh(new THREE.SphereGeometry(18, 12, 8), innerGlowMat)
         lamp.position.copy(p)
         lamp.position.y -= innerRadius * 0.48
