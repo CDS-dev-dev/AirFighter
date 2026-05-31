@@ -149,6 +149,11 @@ const LANDMARK_ZONES: LandmarkZone[] = [
 ]
 
 const URBAN_CANYONS: UrbanCanyon[] = [
+  { x1: 0, z1: -3400, x2: 0, z2: -2300, width: 940 },
+  { x1: 0, z1: -2100, x2: 160, z2: -1120, width: 860 },
+  { x1: 160, z1: -1120, x2: 940, z2: 520, width: 880 },
+  { x1: 940, z1: 520, x2: 1760, z2: 1540, width: 900 },
+  { x1: 1760, z1: 1540, x2: -460, z2: 1740, width: 920 },
   { x1: -900, z1: -3400, x2: -180, z2: -860, width: 330 },
   { x1: -180, z1: -860, x2: 260, z2: 220, width: 300 },
   { x1: 260, z1: 220, x2: -600, z2: 800, width: 260 },
@@ -276,12 +281,13 @@ export class NeoTokyoMapSystem {
     this.createUrbanFabric()
     this.createBuildings()
     this.createVariedBuildings()
-    this.createLayeredSkyCity()
     this.createChunkyMegaBlocks()
     this.createHeroTowers()
     this.createFlightCanyonRoute()
+    this.createCombatArenaRoutes()
     this.createRouteSideDensity()
     this.createDistantSkyline()
+    this.createLayeredSkyCity()
     this.createLandmarks()
     this.createNeoLandmarkExtensions()
     this.createImperialPalace()
@@ -664,36 +670,19 @@ export class NeoTokyoMapSystem {
     }
   }
 
-  private createLayeredSkyCity(): void {
+  createLayeredSkyCity(): void {
     const platformMat = new THREE.MeshLambertMaterial({
       color: 0x141a24,
       emissive: 0x0c1830,
       emissiveIntensity: 0.55
     })
-    const railCyan = new THREE.MeshLambertMaterial({ color: 0x56dcff, emissive: 0x00aaff, emissiveIntensity: 1.7 })
-
-    const central = new THREE.Group()
-    central.name = 'NeoTokyoCentralDome'
-    const domeBaseY = NeoTokyoMapSystem.heightAt(260, 220)
-    central.position.set(260, domeBaseY, 220)
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(360, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({
-      color: 0x33465c,
-      emissive: 0x163a55,
-      emissiveIntensity: 0.9,
-      transparent: true,
-      opacity: 0.36,
-      depthWrite: false
-    }))
-    dome.position.y = 88
-    central.add(dome)
-    this.scene.add(central)
-    this.deco.push(central)
+    const railCyan = new THREE.MeshLambertMaterial({ color: 0x2faed8, emissive: 0x0a6fa8, emissiveIntensity: 1.05 })
 
     this.createYamanoteFlightTube(platformMat, railCyan)
   }
 
   private createYamanoteFlightTube(platformMat: THREE.Material, railMat: THREE.Material): void {
-    const y = 1220
+    const y = 2860
     const w = 54
     const entryIndices = [0, 3, 10, 17]
     const ramps: Array<{ sx: number; sz: number; px: number; pz: number; q: THREE.Quaternion }> = []
@@ -731,7 +720,7 @@ export class NeoTokyoMapSystem {
       this.scene.add(mouth)
       this.deco.push(mouth)
 
-      const mergeMat = new THREE.MeshLambertMaterial({ color: 0xff9a2a, emissive: 0xff5a10, emissiveIntensity: 2.6 })
+      const mergeMat = new THREE.MeshLambertMaterial({ color: 0xff9a2a, emissive: 0xff5a10, emissiveIntensity: 1.55 })
       for (const [t, width] of [[0.18, 300], [0.5, 430], [0.82, 300]] as [number, number][]) {
         const marker = new THREE.Mesh(new THREE.BoxGeometry(width, 12, 30), mergeMat)
         marker.position.set(ramp.sx + (ramp.px - ramp.sx) * t, y + 88, ramp.sz + (ramp.pz - ramp.sz) * t)
@@ -764,7 +753,7 @@ export class NeoTokyoMapSystem {
     g.position.set((sx + px) / 2, y, (sz + pz) / 2)
     g.quaternion.copy(q)
 
-    const shellMat = new THREE.MeshLambertMaterial({ color: 0x18263a, emissive: 0x12345a, emissiveIntensity: 0.82, transparent: true, opacity: 0.82, depthWrite: false })
+    const shellMat = new THREE.MeshLambertMaterial({ color: 0x18263a, emissive: 0x12345a, emissiveIntensity: 0.82 })
     const cyanMat = new THREE.MeshLambertMaterial({ color: 0x68e6ff, emissive: 0x1cbcff, emissiveIntensity: 1.65 })
     const amberMat = new THREE.MeshLambertMaterial({ color: 0xffb468, emissive: 0xff8428, emissiveIntensity: 1.35 })
     const magentaMat = new THREE.MeshLambertMaterial({ color: 0xff58b6, emissive: 0xff2e94, emissiveIntensity: 1.1 })
@@ -820,8 +809,6 @@ export class NeoTokyoMapSystem {
         color: 0x182436,
         emissive: new THREE.Color(t.c),
         emissiveIntensity: 0.35,
-        transparent: true,
-        opacity: 0.72
       })
 
       if (t.style === 0) {
@@ -875,12 +862,17 @@ export class NeoTokyoMapSystem {
   }
 
   private createFlightCanyonRoute(): void {
-    const frameMat = new THREE.MeshLambertMaterial({ color: 0x76eaff, emissive: 0x16a8ff, emissiveIntensity: 1.9, transparent: true, opacity: 0.62, depthWrite: false })
-    const beaconMat = new THREE.MeshLambertMaterial({ color: 0xffb04a, emissive: 0xff7a18, emissiveIntensity: 2.2 })
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0x172235, emissive: 0x10243c, emissiveIntensity: 0.72 })
+    const coreMat = new THREE.MeshLambertMaterial({ color: 0x22344a, emissive: 0x17304b, emissiveIntensity: 0.7 })
+    const cyanMat = new THREE.MeshLambertMaterial({ color: 0x76eaff, emissive: 0x16a8ff, emissiveIntensity: 1.55 })
+    const amberMat = new THREE.MeshLambertMaterial({ color: 0xffb04a, emissive: 0xff7a18, emissiveIntensity: 1.35 })
+    const magentaMat = new THREE.MeshLambertMaterial({ color: 0xff58b6, emissive: 0xff2e94, emissiveIntensity: 1.1 })
     const route: Array<{ x: number; z: number; y: number; w: number; h: number }> = [
-      { x: 0, z: -2520, y: 620, w: 620, h: 310 },
-      { x: 160, z: -1120, y: 640, w: 590, h: 300 },
-      { x: 940, z: 520, y: 570, w: 560, h: 290 },
+      { x: 0, z: -1960, y: 620, w: 760, h: 520 },
+      { x: 160, z: -1120, y: 640, w: 740, h: 520 },
+      { x: 940, z: 520, y: 570, w: 700, h: 480 },
+      { x: 1760, z: 1540, y: 540, w: 720, h: 460 },
+      { x: -460, z: 1740, y: 560, w: 680, h: 460 },
     ]
 
     for (let i = 0; i < route.length; i++) {
@@ -892,27 +884,150 @@ export class NeoTokyoMapSystem {
       const angle = Math.atan2(dx, dz)
       const g = new THREE.Group()
       g.name = 'NeoTokyoFlightCanyonGate'
-      g.position.set(gate.x, gate.y, gate.z)
+      const groundY = NeoTokyoMapSystem.heightAt(gate.x, gate.z)
+      g.position.set(gate.x, groundY, gate.z)
       g.rotation.y = -angle
 
-      const sideH = gate.h
-      const thickness = 12
-      const left = new THREE.Mesh(new THREE.BoxGeometry(thickness, sideH, thickness), frameMat)
-      left.position.set(-gate.w / 2, 0, 0)
-      g.add(left)
-      const right = new THREE.Mesh(new THREE.BoxGeometry(thickness, sideH, thickness), frameMat)
-      right.position.set(gate.w / 2, 0, 0)
-      g.add(right)
-      const top = new THREE.Mesh(new THREE.BoxGeometry(gate.w + thickness, thickness, thickness), frameMat)
-      top.position.set(0, sideH / 2, 0)
-      g.add(top)
+      const deckY = Math.max(gate.y + gate.h / 2, 760)
+      const sideH = deckY - groundY
+      for (const side of [-1, 1]) {
+        const pylon = new THREE.Mesh(new THREE.BoxGeometry(132, sideH, 150), bodyMat)
+        pylon.position.set(side * gate.w / 2, sideH / 2, 0)
+        g.add(pylon)
+        this.buildingColliders.push(pylon)
 
-      const beacon = new THREE.Mesh(new THREE.BoxGeometry(80, 8, 18), beaconMat)
-      beacon.position.set(0, -sideH / 2 + 26, -gate.w * 0.08)
-      g.add(beacon)
+        const core = new THREE.Mesh(new THREE.CylinderGeometry(56, 72, sideH * 0.92, 6), coreMat)
+        core.position.set(side * (gate.w / 2 + 92), sideH * 0.48, 0)
+        core.rotation.y = Math.PI / 6
+        g.add(core)
+        this.buildingColliders.push(core)
+
+        const verticalBand = new THREE.Mesh(new THREE.BoxGeometry(12, sideH * 0.64, 16), side > 0 ? cyanMat : magentaMat)
+        verticalBand.position.set(side * (gate.w / 2 - 72), sideH * 0.5, -82)
+        g.add(verticalBand)
+      }
+
+      const skyDeck = new THREE.Mesh(new THREE.BoxGeometry(gate.w + 280, 70, 150), bodyMat)
+      skyDeck.position.set(0, sideH, 0)
+      g.add(skyDeck)
+      this.buildingColliders.push(skyDeck)
+
+      const lip = new THREE.Mesh(new THREE.BoxGeometry(gate.w + 120, 10, 22), cyanMat)
+      lip.position.set(0, sideH + 44, -86)
+      g.add(lip)
+
+      const approach = new THREE.Mesh(new THREE.BoxGeometry(380, 12, 48), amberMat)
+      approach.position.set(0, gate.y - groundY - gate.h / 2 + 42, -gate.w * 0.08)
+      g.add(approach)
 
       this.scene.add(g)
       this.deco.push(g)
+    }
+  }
+
+  private createCombatArenaRoutes(): void {
+    const wallMat = new THREE.MeshLambertMaterial({ color: 0x121b28, emissive: 0x0a1828, emissiveIntensity: 0.72 })
+    const capMat = new THREE.MeshLambertMaterial({ color: 0x243348, emissive: 0x142b46, emissiveIntensity: 0.75 })
+    const cyanMat = new THREE.MeshLambertMaterial({ color: 0x72e8ff, emissive: 0x16b7ff, emissiveIntensity: 1.35 })
+    const magentaMat = new THREE.MeshLambertMaterial({ color: 0xff4cad, emissive: 0xff2d96, emissiveIntensity: 1.15 })
+    const amberMat = new THREE.MeshLambertMaterial({ color: 0xffb75e, emissive: 0xff7c24, emissiveIntensity: 1.08 })
+    const segments = [
+      { a: { x: 0, z: -2160 }, b: { x: 160, z: -1120 }, clear: 500 },
+      { a: { x: 160, z: -1120 }, b: { x: 940, z: 520 }, clear: 560 },
+      { a: { x: 940, z: 520 }, b: { x: 1760, z: 1540 }, clear: 580 },
+      { a: { x: 1760, z: 1540 }, b: { x: -460, z: 1740 }, clear: 620 },
+    ]
+
+    for (let si = 0; si < segments.length; si++) {
+      const seg = segments[si]
+      const dx = seg.b.x - seg.a.x
+      const dz = seg.b.z - seg.a.z
+      const len = Math.hypot(dx, dz)
+      if (len < 1) continue
+      const yaw = Math.atan2(dx, dz)
+      const sideX = dz / len
+      const sideZ = -dx / len
+      const forwardX = dx / len
+      const forwardZ = dz / len
+
+      for (const t of [0.22, 0.48, 0.74]) {
+        const cx = seg.a.x + dx * t
+        const cz = seg.a.z + dz * t
+        for (const side of [-1, 1]) {
+          const seed = si * 37 + t * 101 + side * 13
+          const offset = seg.clear + 160 + sr(seed) * 120
+          const x = cx + sideX * side * offset
+          const z = cz + sideZ * side * offset
+          if (isInWaterArea(x, z) || isInLandmarkZone(x, z, 260) || isInTubeReserve(x, z, 140)) continue
+          const gy = NeoTokyoMapSystem.heightAt(x, z)
+          const h = 380 + sr(seed * 1.7) * 360
+          const w = 260 + sr(seed * 2.1) * 170
+          const d = 230 + sr(seed * 3.2) * 150
+          const g = new THREE.Group()
+          g.name = 'NeoTokyoMissileBreaker'
+          g.position.set(x, gy, z)
+          g.rotation.y = -yaw + side * 0.18
+
+          const slab = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat)
+          slab.position.y = h / 2
+          g.add(slab)
+          this.buildingColliders.push(slab)
+
+          const crown = new THREE.Mesh(new THREE.BoxGeometry(w * 1.08, 28, d * 1.15), capMat)
+          crown.position.y = h + 14
+          g.add(crown)
+          this.buildingColliders.push(crown)
+
+          const finMat = (si + side) % 2 === 0 ? cyanMat : magentaMat
+          const fin = new THREE.Mesh(new THREE.BoxGeometry(14, h * 0.72, 16), finMat)
+          fin.position.set(side * w * 0.42, h * 0.5, -d * 0.53)
+          g.add(fin)
+
+          const shoulder = new THREE.Mesh(new THREE.CylinderGeometry(w * 0.22, w * 0.27, h * 0.56, 6), capMat)
+          shoulder.position.set(-side * w * 0.24, h * 0.74, d * 0.08)
+          shoulder.rotation.y = Math.PI / 6
+          g.add(shoulder)
+          this.buildingColliders.push(shoulder)
+
+          this.scene.add(g)
+          this.landmarks.push(g)
+        }
+      }
+
+      for (const t of [0.35, 0.66]) {
+        const cx = seg.a.x + dx * t
+        const cz = seg.a.z + dz * t
+        const x = cx + forwardX * 40
+        const z = cz + forwardZ * 40
+        if (isInWaterArea(x, z) || isInLandmarkZone(x, z, 320)) continue
+        const gy = NeoTokyoMapSystem.heightAt(x, z)
+        const bridge = new THREE.Group()
+        bridge.name = 'NeoTokyoCombatOverpass'
+        bridge.position.set(x, gy, z)
+        bridge.rotation.y = -yaw
+
+        const leftPier = new THREE.Mesh(new THREE.BoxGeometry(120, 430, 150), wallMat)
+        leftPier.position.set(-seg.clear * 0.62, 215, 0)
+        bridge.add(leftPier)
+        this.buildingColliders.push(leftPier)
+
+        const rightPier = new THREE.Mesh(new THREE.BoxGeometry(120, 430, 150), wallMat)
+        rightPier.position.set(seg.clear * 0.62, 215, 0)
+        bridge.add(rightPier)
+        this.buildingColliders.push(rightPier)
+
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(seg.clear * 1.44, 54, 130), capMat)
+        deck.position.y = 590
+        bridge.add(deck)
+        this.buildingColliders.push(deck)
+
+        const marker = new THREE.Mesh(new THREE.BoxGeometry(seg.clear * 0.78, 10, 18), si % 2 === 0 ? amberMat : cyanMat)
+        marker.position.set(0, 624, -74)
+        bridge.add(marker)
+
+        this.scene.add(bridge)
+        this.deco.push(bridge)
+      }
     }
   }
 
@@ -924,8 +1039,8 @@ export class NeoTokyoMapSystem {
     const amberMat = new THREE.MeshLambertMaterial({ color: 0xffb85c, emissive: 0xff7c24, emissiveIntensity: 1.25 })
     const route: Array<{ x: number; z: number }> = [
       { x: 0, z: -2940 },
-      { x: 0, z: -2520 },
-      { x: 80, z: -1820 },
+      { x: 0, z: -1960 },
+      { x: 80, z: -1500 },
       { x: 160, z: -1120 },
       { x: 520, z: -240 },
       { x: 940, z: 520 },
@@ -1034,12 +1149,9 @@ export class NeoTokyoMapSystem {
 
   private createDistantSkyline(): void {
     const mat = new THREE.MeshLambertMaterial({
-      color: 0x0d1724,
-      emissive: 0x15253a,
-      emissiveIntensity: 0.55,
-      transparent: true,
-      opacity: 0.78,
-      depthWrite: false
+      color: 0x142235,
+      emissive: 0x1b4160,
+      emissiveIntensity: 0.62
     })
     const glowMat = new THREE.MeshLambertMaterial({ color: 0x274f78, emissive: 0x163c65, emissiveIntensity: 0.8 })
     const geo = new THREE.BoxGeometry(1, 1, 1)
@@ -1114,29 +1226,16 @@ export class NeoTokyoMapSystem {
     const innerRadius = Math.max(78, w * 1.72)
     const outerRadius = innerRadius + 30
     const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(p.x, y, p.z)), true, 'catmullrom', 0.35)
-    const shellMat = new THREE.MeshLambertMaterial({
-      color: 0x122338,
-      emissive: 0x10365c,
-      emissiveIntensity: 0.7,
-      transparent: true,
-      opacity: 0.48,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    })
     const innerGlowMat = new THREE.MeshLambertMaterial({
       color: 0x65dcff,
       emissive: 0x18a8ff,
-      emissiveIntensity: 2.4,
+      emissiveIntensity: 1.25,
       transparent: true,
-      opacity: 0.76,
+      opacity: 0.36,
       depthWrite: false,
     })
     const sampleCount = 168
     const samples = curve.getSpacedPoints(sampleCount)
-    const fullTube = new THREE.Mesh(new THREE.TubeGeometry(curve, 256, outerRadius, 30, true), shellMat)
-    fullTube.name = 'NeoTokyoCurvedFlightTube'
-    this.scene.add(fullTube)
-    this.deco.push(fullTube)
 
     const guideTube = new THREE.Mesh(new THREE.TubeGeometry(curve, 256, innerRadius * 0.12, 10, true), innerGlowMat)
     guideTube.name = 'NeoTokyoTubeInnerGuide'
@@ -1169,7 +1268,7 @@ export class NeoTokyoMapSystem {
       })
     }
 
-    for (let i = 0; i < samples.length; i += 18) {
+    for (let i = 0; i < samples.length; i += 84) {
       const p = samples[i]
       const prev = samples[(i - 1 + samples.length) % samples.length]
       const next = samples[(i + 1) % samples.length]
@@ -1195,7 +1294,7 @@ export class NeoTokyoMapSystem {
         this.deco.push(wallStrip)
       }
 
-      if (i % 36 === 0) {
+      if (i % 168 === 0) {
         const lamp = new THREE.Mesh(new THREE.SphereGeometry(18, 12, 8), innerGlowMat)
         lamp.position.copy(p)
         lamp.position.y -= innerRadius * 0.48
@@ -1221,15 +1320,6 @@ export class NeoTokyoMapSystem {
     const axis = new THREE.Vector3(dx / len, 0, dz / len)
     const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis)
     const ringQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis)
-    const shellMat = new THREE.MeshLambertMaterial({
-      color: 0x122338,
-      emissive: 0x10365c,
-      emissiveIntensity: 0.7,
-      transparent: true,
-      opacity: 0.48,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    })
     const glowMat = railMat
     const innerMat = new THREE.MeshLambertMaterial({
       color: 0x65dcff,
@@ -1261,13 +1351,6 @@ export class NeoTokyoMapSystem {
         cursor += actualLen
         continue
       }
-      const tube = new THREE.Mesh(new THREE.CylinderGeometry(outerRadius, outerRadius, actualLen, 28, 1, true), shellMat)
-      tube.position.set(cx, y, cz)
-      tube.quaternion.copy(q)
-      tube.name = 'NeoTokyoFlightTube'
-      this.scene.add(tube)
-      this.deco.push(tube)
-
       const guide = new THREE.Mesh(new THREE.CylinderGeometry(innerRadius * 0.12, innerRadius * 0.12, actualLen, 10, 1), innerMat)
       guide.position.set(cx, y, cz)
       guide.quaternion.copy(q)
@@ -1549,8 +1632,6 @@ export class NeoTokyoMapSystem {
     this.buildDietBuilding(-600, 700)
     this.buildFujiTV(2000, 2000)
     this.buildSensoji(1500, -1500)
-    this.buildMast(1000, -800, 20, 500)   // broadcast mast near Skytree
-    this.buildMast(-900, 1100, 14, 360)   // Roppongi area mast
   }
 
   private createNeoLandmarkExtensions(): void {
@@ -1566,7 +1647,7 @@ export class NeoTokyoMapSystem {
     const gy = NeoTokyoMapSystem.heightAt(X, Z)
     const g = new THREE.Group(); g.position.set(X, gy, Z)
     const redMat = new THREE.MeshLambertMaterial({ color: 0xff3300, emissive: 0xff1100, emissiveIntensity: 2.2 })
-    const ringMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0xff5533, emissiveIntensity: 1.8, transparent: true, opacity: 0.82 })
+    const ringMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0xff5533, emissiveIntensity: 1.8 })
     for (const y of [260, 430, 610]) {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(96, 5, 8, 48), ringMat)
       ring.position.y = y
@@ -1582,7 +1663,7 @@ export class NeoTokyoMapSystem {
   private extendSkytree(X: number, Z: number): void {
     const gy = NeoTokyoMapSystem.heightAt(X, Z)
     const g = new THREE.Group(); g.position.set(X, gy, Z)
-    const deckMat = new THREE.MeshLambertMaterial({ color: 0x88ccff, emissive: 0x2277ff, emissiveIntensity: 1.5, transparent: true, opacity: 0.72 })
+    const deckMat = new THREE.MeshLambertMaterial({ color: 0x88ccff, emissive: 0x2277ff, emissiveIntensity: 1.5 })
     const spineMat = new THREE.MeshLambertMaterial({ color: 0x33aaff, emissive: 0x0088ff, emissiveIntensity: 2.2 })
     for (let i = 0; i < 18; i++) {
       const a = i * 0.65
@@ -1607,7 +1688,7 @@ export class NeoTokyoMapSystem {
   private extendTokyoStation(X: number, Z: number): void {
     const gy = NeoTokyoMapSystem.heightAt(X, Z)
     const g = new THREE.Group(); g.position.set(X, gy, Z)
-    const glassMat = new THREE.MeshLambertMaterial({ color: 0x9bd8ff, emissive: 0x1a66aa, emissiveIntensity: 1.0, transparent: true, opacity: 0.42 })
+    const glassMat = new THREE.MeshLambertMaterial({ color: 0x9bd8ff, emissive: 0x1a66aa, emissiveIntensity: 1.0 })
     const railMat = new THREE.MeshLambertMaterial({ color: 0xffcc88, emissive: 0xff8844, emissiveIntensity: 1.5 })
     const terminal = new THREE.Mesh(new THREE.BoxGeometry(620, 54, 220), glassMat)
     terminal.position.set(0, 150, 0)
@@ -1646,7 +1727,7 @@ export class NeoTokyoMapSystem {
   private extendSensoji(X: number, Z: number): void {
     const gy = NeoTokyoMapSystem.heightAt(X, Z)
     const lanternMat = new THREE.MeshLambertMaterial({ color: 0xff5533, emissive: 0xff2200, emissiveIntensity: 2.4 })
-    const pathMat = new THREE.MeshLambertMaterial({ color: 0x552211, emissive: 0xff5522, emissiveIntensity: 0.8, transparent: true, opacity: 0.55 })
+    const pathMat = new THREE.MeshLambertMaterial({ color: 0x552211, emissive: 0xff5522, emissiveIntensity: 0.8 })
     const path = new THREE.Mesh(new THREE.BoxGeometry(38, 1.5, 520), pathMat)
     path.position.set(X, gy + 2.5, Z - 230)
     this.scene.add(path); this.deco.push(path)
@@ -2162,13 +2243,4 @@ export class NeoTokyoMapSystem {
     arakawa.rotation.x = -Math.PI / 2; arakawa.position.set(2600, WATER_LEVEL + 0.08, -500); this.scene.add(arakawa); this.deco.push(arakawa)
   }
 
-  private buildMast(x: number, z: number, radius: number, h: number): void {
-    const gy = NeoTokyoMapSystem.heightAt(x, z)
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.06, radius * 0.22, h, 6),
-      new THREE.MeshLambertMaterial({ color: 0x707080 }))
-    shaft.position.set(x, gy + h / 2, z); this.scene.add(shaft); this.landmarks.push(shaft)
-    const beacon = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.28, 6, 4),
-      new THREE.MeshLambertMaterial({ color: 0xff1100, emissive: 0xff1100, emissiveIntensity: 3.5 }))
-    beacon.position.set(x, gy + h, z); this.scene.add(beacon); this.landmarks.push(beacon)
-  }
 }

@@ -6,7 +6,7 @@ import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
-const VERSION = '5.25.0'
+const VERSION = '5.26.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -42,8 +42,11 @@ const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x7da8c8)
 // 指数フォグ：距離に比例した大気の霞み（より自然なフォールオフ）
 scene.fog = new THREE.FogExp2(0x8db5cc, 0.000075)
+const neoTokyoBackgroundTexture = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}neo-tokyo-panorama.png`)
+neoTokyoBackgroundTexture.colorSpace = THREE.SRGBColorSpace
+neoTokyoBackgroundTexture.mapping = THREE.EquirectangularReflectionMapping
 
-const camera = new THREE.PerspectiveCamera(70, initW / initH, 0.1, 8000)
+const camera = new THREE.PerspectiveCamera(70, initW / initH, 0.1, 16000)
 
 // ===== POST-PROCESSING =====
 // ブルームは白飛びの原因になるため Phase 1 では無効化
@@ -2896,8 +2899,8 @@ async function switchMap(map: GameMap) {
   if (map === 'tokyo') {
     // ===== NEO東京MAP =====
     console.log('🌃 NEO東京MAPに切り替え（サイバーパンク）')
-    scene.background = new THREE.Color(0x0b1724)
-    scene.fog = new THREE.FogExp2(0x102238, 0.00011)
+    scene.background = neoTokyoBackgroundTexture
+    scene.fog = new THREE.FogExp2(0x214a68, 0.000055)
     sky.visible = false
     renderer.toneMappingExposure = 0.7
 
@@ -4616,8 +4619,8 @@ function loop() {
 
   updateBullets(dt)
   updateMissileArr(playerMissiles, dt, m => createExplosion(m.mesh.position.clone(), 0.6), true)
-  updateMissileArr(enemyMissiles, dt, m => createExplosion(m.mesh.position.clone(), 0.5))
-  updateMissileArr(allyMissiles, dt, m => createExplosion(m.mesh.position.clone(), 0.6))
+  updateMissileArr(enemyMissiles, dt, m => createExplosion(m.mesh.position.clone(), 0.5), true)
+  updateMissileArr(allyMissiles, dt, m => createExplosion(m.mesh.position.clone(), 0.6), true)
   updateFlares(dt)
   if (currentMode !== null && !missionComplete) {
     updateEnemies(dt)
