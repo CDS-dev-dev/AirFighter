@@ -6,7 +6,7 @@ import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
-const VERSION = '5.28.0'
+const VERSION = '5.29.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
 console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
@@ -1078,6 +1078,14 @@ const multiLockTargets: Enemy[] = []
 let flareBurstLeft = 0
 let flareBurstTimer = 0
 
+// バレルロール機動状態
+const barrelRollState = {
+  active: false,
+  direction: 0,  // -1: 左, +1: 右
+  progress: 0,   // 0 → 1
+  duration: 0.6  // 継続時間（秒）
+}
+
 // ===== INPUT =====
 const keys: Record<string, boolean> = {}
 const keysJustPressed = new Set<string>()
@@ -1115,6 +1123,13 @@ renderer.domElement.addEventListener('wheel', (e) => {
   const changeRate = -e.deltaY * 0.0001  // deltaY=-100で0.01（1%）の変化
   const delta = wheelSpeedTarget * changeRate
   wheelSpeedTarget = Math.max(8, Math.min(600, wheelSpeedTarget + delta))
+
+  // 横スクロール（deltaX）でバレルロール開始
+  if (Math.abs(e.deltaX) > 1 && !barrelRollState.active && currentMode !== null) {
+    barrelRollState.active = true
+    barrelRollState.direction = e.deltaX > 0 ? 1 : -1  // 右: +1, 左: -1
+    barrelRollState.progress = 0
+  }
 }, { passive: true })
 
 // ===== TOUCH INPUT =====
@@ -4410,6 +4425,24 @@ function loop() {
     const targetBankZ = -yawInput * 0.72
     const fwdAxis = _fwd.clone().applyQuaternion(player.quaternion)
     player.quaternion.multiply(_sq1.setFromAxisAngle(fwdAxis, targetBankZ * dt * 5))
+  }
+
+  // バレルロール機動
+  if (barrelRollState.active) {
+    barrelRollState.progress += dt / barrelRollState.duration
+    if (barrelRollState.progress >= 1) {
+      barrelRollState.active = false
+      barrelRollState.progress = 0
+    } else {
+      const rollSpeed = (Math.PI * 2) / barrelRollState.duration  // 360度/秒
+      const fwdAxis = _fwd.clone().applyQuaternion(player.quaternion)
+      player.quaternion.multiply(_sq1.setFromAxisAngle(fwdAxis, barrelRollState.direction * rollSpeed * dt))
+
+      const lateralDist = 40  // 横移動距離（m）
+      const rightVec = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion)
+      const lateralMove = rightVec.multiplyScalar(barrelRollState.direction * lateralDist * dt / barrelRollState.duration)
+      player.position.add(lateralMove)
+    }
   }
 
   // 自動水平復帰（ロールのみ・ピッチは補正しない）
