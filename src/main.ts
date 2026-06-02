@@ -1083,7 +1083,8 @@ const barrelRollState = {
   active: false,
   direction: 0,  // -1: 左, +1: 右
   progress: 0,   // 0 → 1
-  duration: 0.6  // 継続時間（秒）
+  duration: 0.6,  // 継続時間（秒）
+  lateralAxis: new THREE.Vector3()  // バレルロール開始時の横方向軸（固定）
 }
 
 // ===== INPUT =====
@@ -1129,6 +1130,8 @@ renderer.domElement.addEventListener('wheel', (e) => {
     barrelRollState.active = true
     barrelRollState.direction = e.deltaX > 0 ? 1 : -1  // 右: +1, 左: -1
     barrelRollState.progress = 0
+    // バレルロール開始時の横方向軸を保存（機体の現在の右方向）
+    barrelRollState.lateralAxis.set(1, 0, 0).applyQuaternion(player.quaternion)
   }
 }, { passive: true })
 
@@ -4439,8 +4442,7 @@ function loop() {
       player.quaternion.multiply(_sq1.setFromAxisAngle(fwdAxis, barrelRollState.direction * rollSpeed * dt))
 
       const lateralDist = 40  // 横移動距離（m）
-      const rightVec = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion)
-      const lateralMove = rightVec.multiplyScalar(barrelRollState.direction * lateralDist * dt / barrelRollState.duration)
+      const lateralMove = barrelRollState.lateralAxis.clone().multiplyScalar(barrelRollState.direction * lateralDist * dt / barrelRollState.duration)
       player.position.add(lateralMove)
     }
   }
