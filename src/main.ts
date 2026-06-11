@@ -4657,7 +4657,7 @@ function _drawCornerBrackets(ctx: CanvasRenderingContext2D, sx: number, sy: numb
   }
 }
 
-function _drawOffscreenArrow(ctx: CanvasRenderingContext2D, worldPos: THREE.Vector3, w: number, h: number) {
+function _drawOffscreenArrow(ctx: CanvasRenderingContext2D, worldPos: THREE.Vector3, w: number, h: number, color: string = 'rgba(255,80,80,0.9)') {
   const toTarget = worldPos.clone().sub(camera.position)
   const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion)
   const camUp    = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion)
@@ -4666,7 +4666,7 @@ function _drawOffscreenArrow(ctx: CanvasRenderingContext2D, worldPos: THREE.Vect
   const cx = w / 2 + Math.cos(angle) * (w / 2 - margin)
   const cy = h / 2 + Math.sin(angle) * (h / 2 - margin)
   ctx.save(); ctx.translate(cx, cy); ctx.rotate(angle)
-  ctx.fillStyle = 'rgba(255,80,80,0.9)'
+  ctx.fillStyle = color
   ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-6, -7); ctx.lineTo(-6, 7); ctx.closePath(); ctx.fill()
   ctx.restore()
 }
@@ -4822,6 +4822,41 @@ function drawEnemyBrackets() {
         ctx.font = inR ? 'bold 12px monospace' : 'bold 11px monospace'
         ctx.textAlign = 'center'
         ctx.fillText(`${Math.round(dist)}m`, sx, sy + 18 + 16)
+      }
+    }
+  }
+
+  // GATE BOOSTフィードバック表示
+  if (spaceGateBoostTimer > 0) {
+    const alpha = Math.min(1.0, spaceGateBoostTimer / 0.5)
+    ctx.save()
+    ctx.fillStyle = `rgba(100, 220, 255, ${alpha * 0.9})`
+    ctx.font = 'bold 28px monospace'
+    ctx.textAlign = 'center'
+    ctx.shadowColor = 'rgba(0, 180, 255, 0.8)'
+    ctx.shadowBlur = 12
+    ctx.fillText('GATE BOOST', w / 2, h / 2 - 80)
+    ctx.restore()
+  }
+
+  // 宇宙MAP：次の航路ゲートへの方向キュー（画面外の場合）
+  if (currentMap === 'space' && spaceGates.length > 0) {
+    // 最も近いゲートを探す
+    let closestGate: { pos: THREE.Vector3; radius: number; cooldown: number } | null = null
+    let minDist = Infinity
+    for (const gate of spaceGates) {
+      const dist = player.position.distanceTo(gate.pos)
+      if (dist < minDist && dist > gate.radius) {
+        minDist = dist
+        closestGate = gate
+      }
+    }
+
+    if (closestGate) {
+      const [_sx, _sy, vis] = projectToScreen(closestGate.pos)
+      // 画面外の場合のみ矢印表示
+      if (!vis) {
+        _drawOffscreenArrow(ctx, closestGate.pos, w, h, 'rgba(100, 220, 255, 0.6)')
       }
     }
   }
