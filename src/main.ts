@@ -811,6 +811,60 @@ function buildWorldStructures() {
 
   // ===== 岩塔・巨岩配置 =====
   createRockFormations()
+
+  // ===== 中央岩山の洞窟（内部飛行可能）=====
+  addMountainCave()
+}
+
+function addMountainCave() {
+  // 洞窟入口（4方向）
+  const caveEntrances = [
+    { x: 0, z: -180, angle: 0 },        // 北入口
+    { x: 180, z: 0, angle: Math.PI/2 }, // 東入口
+    { x: 0, z: 180, angle: Math.PI },   // 南入口
+    { x: -180, z: 0, angle: -Math.PI/2 }, // 西入口
+  ]
+
+  const caveMat = new THREE.MeshStandardMaterial({
+    color: 0x3a3a3a,
+    roughness: 0.95,
+    metalness: 0.05,
+  })
+
+  for (const entrance of caveEntrances) {
+    // 入口アーチ
+    const archGeo = new THREE.TorusGeometry(35, 8, 12, 24, Math.PI)
+    const arch = new THREE.Mesh(archGeo, caveMat)
+    const h = terrainH(entrance.x, entrance.z)
+    arch.position.set(entrance.x, h + 35, entrance.z)
+    arch.rotation.set(0, entrance.angle, 0)
+    originalMapGroup.add(arch)
+
+    // 入口標識（発光）
+    const markerMat = new THREE.MeshStandardMaterial({
+      color: 0xffaa00,
+      emissive: 0xff8800,
+      emissiveIntensity: 1.5,
+    })
+    const marker = new THREE.Mesh(new THREE.BoxGeometry(4, 15, 4), markerMat)
+    marker.position.set(entrance.x + Math.cos(entrance.angle) * 50, h + 20, entrance.z + Math.sin(entrance.angle) * 50)
+    originalMapGroup.add(marker)
+  }
+
+  // 中央洞窟空間（プレイヤーは実際に岩山の中心を飛べる想定）
+  // 視覚的表現のため、中心に発光オーブを配置
+  const coreOrb = new THREE.Mesh(
+    new THREE.SphereGeometry(20, 16, 16),
+    new THREE.MeshStandardMaterial({
+      color: 0x4488ff,
+      emissive: 0x2266ff,
+      emissiveIntensity: 2.0,
+      transparent: true,
+      opacity: 0.6,
+    })
+  )
+  coreOrb.position.set(0, terrainH(0, 0) + 200, 0)
+  originalMapGroup.add(coreOrb)
 }
 
 function _glbSetShadow(g: THREE.Group) {
@@ -3260,17 +3314,24 @@ async function buildSpaceMap() {
 
   const asteroidGeo = new THREE.DodecahedronGeometry(1, 1)
   const asteroidMat = new THREE.MeshStandardMaterial({ color: 0x7b7780, roughness: 0.95, metalness: 0.04, flatShading: true })
-  const asteroidCount = isMobileDevice ? 200 : 480
+  const asteroidCount = isMobileDevice ? 240 : 600
   const asteroids = new THREE.InstancedMesh(asteroidGeo, asteroidMat, asteroidCount)
   const obj = new THREE.Object3D()
 
   for (let i = 0; i < asteroidCount; i++) {
-    // 3レイヤー構造：上層、中層、下層
-    const layer = i % 3
+    // 3レイヤー構造：下層を多く配置（隠密戦エリア）
+    const layer = i % 5  // 下層40%、中層30%、上層30%
     let baseY = 0
-    if (layer === 0) baseY = 220 + Math.random() * 80      // 上層(Y: 200-300)
-    else if (layer === 1) baseY = 80 + Math.random() * 70  // 中層(Y: 50-150)
-    else baseY = -120 + Math.random() * 80                 // 下層(Y: -150-0)
+    if (layer === 0 || layer === 1) {
+      // 下層40%（密集エリア）
+      baseY = -120 + Math.random() * 80
+    } else if (layer === 2 || layer === 3) {
+      // 中層30%
+      baseY = 80 + Math.random() * 70
+    } else {
+      // 上層30%
+      baseY = 220 + Math.random() * 80
+    }
 
     // 中央安全回廊（幅200m、Z方向）を確保
     const angle = (i / asteroidCount) * Math.PI * 2 + Math.random() * 0.5
@@ -3289,11 +3350,18 @@ async function buildSpaceMap() {
     // 左右に壁のように密集配置
     const isWallZone = Math.abs(x) > 250 && Math.abs(x) < 500
     const distFactor = Math.abs(x) / 500
+    const isLowerLayer = baseY < 0
 
-    // サイズ：壁エリアは大型多め
-    const s = (isWallZone && Math.random() < 0.15) || (distFactor > 0.7 && Math.random() < 0.1)
-      ? 28 + Math.random() * 45  // 大型
-      : 4 + Math.random() * 16   // 小型
+    // サイズ：壁エリア + 下層は大型・密集
+    const s = (isWallZone && isLowerLayer && Math.random() < 0.25) || (distFactor > 0.7 && Math.random() < 0.12)
+      ? 26 + Math.random() * 42  // 大型
+      : 4 + Math.random() * 15   // 小型
+
+    // 下層の壁エリアは密度2倍（狭い隙間を作る）
+    if (isLowerLayer && isWallZone && Math.random() < 0.3) {
+      x += (Math.random() - 0.5) * 60  // さらにランダム配置
+      z += (Math.random() - 0.5) * 60
+    }
 
     // 縦穴3箇所（レイヤー間移動用）：小惑星を避ける
     const verticalShafts = [
