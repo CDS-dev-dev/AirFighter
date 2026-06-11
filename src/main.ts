@@ -8,8 +8,10 @@ import { MultiplayerClient } from './multiplayer'
 // ===== VERSION =====
 const VERSION = '5.29.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
-console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
-console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
+if (import.meta.env.DEV) {
+  console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
+  console.log(`%c${APP_URL}`, 'font-size: 12px; color: #888;')
+}
 
 // 縦画面強制横向き: CSS rotate(90deg)で回転するため canvas も landscape サイズで初期化する
 function isPortraitMode() {
@@ -462,15 +464,15 @@ gltfLoader.load(
         }
       })
       scene.add(terrainGLB)
-      console.log('[Terrain] GLB loaded — procedural terrain replaced')
+      if (import.meta.env.DEV) console.log('[Terrain] GLB loaded — procedural terrain replaced')
     } else {
       terrainGLB = gltf.scene
-      console.log('[Terrain] GLB loaded but not added (Tokyo MAP active)')
+      if (import.meta.env.DEV) console.log('[Terrain] GLB loaded but not added (Tokyo MAP active)')
     }
   },
   undefined,
   (err) => {
-    console.warn('[Terrain] GLB not found, using procedural fallback:', err)
+    if (import.meta.env.DEV) console.warn('[Terrain] GLB not found, using procedural fallback:', err)
   }
 )
 
@@ -1043,7 +1045,9 @@ function createMissileModel(mat: THREE.Material): THREE.Group {
       }
     })
     onLoad(group)
-  }, undefined, (err) => console.warn('GLB load failed:', err))
+  }, undefined, (err) => {
+    if (import.meta.env.DEV) console.warn('GLB load failed:', err)
+  })
 }
 
 // ===== CLOUDS (billboard sprites — always face camera, no sphere geometry) =====
@@ -2286,7 +2290,7 @@ function addCityArea(cx: number, cz: number, radius: number, buildingCount: numb
 
 // ===== ROCK FORMATIONS（岩塔・巨岩）戦略的配置 =====
 function createRockFormations(): void {
-  console.log('🪨 岩塔・巨岩の戦略的配置開始')
+  if (import.meta.env.DEV) console.log('🪨 岩塔・巨岩の戦略的配置開始')
 
   // 岩のマテリアル（茶色・灰色・赤褐色の自然な岩）
   const rockMat1 = new THREE.MeshStandardMaterial({
@@ -2406,7 +2410,7 @@ function createRockFormations(): void {
     }
   }
 
-  console.log(`✅ 岩塔${pillarCount}本配置完了`)
+  if (import.meta.env.DEV) console.log(`✅ 岩塔${pillarCount}本配置完了`)
 
   // ===== 巨岩配置 =====
   // 戦略1: 峡谷周辺に集中（150個）
@@ -2459,8 +2463,10 @@ function createRockFormations(): void {
     scene.add(boulder)
   }
 
-  console.log(`✅ 巨岩${boulderCount}個配置完了`)
-  console.log(`🎉 総計: 岩塔${pillarCount}本 + 巨岩${boulderCount}個 = ${pillarCount + boulderCount}オブジェクト`)
+  if (import.meta.env.DEV) {
+    console.log(`✅ 巨岩${boulderCount}個配置完了`)
+    console.log(`🎉 総計: 岩塔${pillarCount}本 + 巨岩${boulderCount}個 = ${pillarCount + boulderCount}オブジェクト`)
+  }
 }
 
 // ===== SMOKE PARTICLE SYSTEM =====
@@ -2826,33 +2832,37 @@ async function startGame(mode: GameMode) {
           spawnEnemyAt(Math.cos(a) * r, Math.sin(a) * r)
         }
       }
-      console.log(`Spawning ${dfAllyCount} allies`)
+      if (import.meta.env.DEV) console.log(`Spawning ${dfAllyCount} allies`)
       for (let i = 0; i < dfAllyCount; i++) {
         if (spaceDogfightSpawn) {
           const a = (Math.random() - 0.5) * 0.9
           const r = 180 + Math.random() * 180
           spawnAlly(Math.cos(a) * r, 260 + Math.sin(a) * r)
-          console.log(`Ally ${i+1} spawned in space sector`)
+          if (import.meta.env.DEV) console.log(`Ally ${i+1} spawned in space sector`)
         } else if (tokyoDogfightSpawn) {
           const side = i % 2 === 0 ? -1 : 1
           const sx = tokyoDogfightSpawn.x + side * (220 + Math.random() * 90)
           const sz = tokyoDogfightSpawn.z + 160 + i * 120
           spawnAlly(sx, sz)
-          console.log(`Ally ${i+1} spawned at position:`, sx, sz)
+          if (import.meta.env.DEV) console.log(`Ally ${i+1} spawned at position:`, sx, sz)
         } else {
           // プレイヤーの近くにスポーン（より視認しやすく）
           const a = (Math.random() - 0.5) * 0.8
           const r = 150 + Math.random() * 150  // 150-300mの範囲に変更（元：550-900m）
           spawnAlly(Math.cos(a) * r, Math.sin(a) * r)
-          console.log(`Ally ${i+1} spawned at position:`, Math.cos(a) * r, Math.sin(a) * r)
+          if (import.meta.env.DEV) console.log(`Ally ${i+1} spawned at position:`, Math.cos(a) * r, Math.sin(a) * r)
         }
       }
-      console.log(`Total allies after spawn: ${allies.length}`)
+      if (import.meta.env.DEV) console.log(`Total allies after spawn: ${allies.length}`)
       // プレイヤーも味方側（北）にスポーン
       if (spaceDogfightSpawn) {
-        dfSpawnX = 0
-        dfSpawnZ = 420
-        player.position.set(0, 130, 420)
+        dfSpawnX = 200
+        dfSpawnZ = 600
+        player.position.set(200, 160, 600)
+        const lookAngle = Math.atan2(-350 - 600, 0 - 200)
+        player.rotation.y = lookAngle
+        player.quaternion.setFromEuler(new THREE.Euler(0, lookAngle, 0, 'YXZ'))
+        camQuat.copy(player.quaternion)
       } else if (tokyoDogfightSpawn) {
         dfSpawnX = tokyoDogfightSpawn.x
         dfSpawnZ = tokyoDogfightSpawn.z
@@ -2888,9 +2898,12 @@ async function startGame(mode: GameMode) {
     case 'free':
       modeObjectiveTotal = 0
       if (currentMap === 'space') {
-        player.position.set(0, 130, 420)
-        player.quaternion.identity()
-        camQuat.identity()
+        // 中央ハブ近くでスポーン、要塞・リング方向を向く
+        player.position.set(200, 160, 600)
+        const lookAngle = Math.atan2(-350 - 600, 0 - 200)
+        player.rotation.y = lookAngle
+        player.quaternion.setFromEuler(new THREE.Euler(0, lookAngle, 0, 'YXZ'))
+        camQuat.copy(player.quaternion)
         speed = 220
         wheelSpeedTarget = 150
         syncFlightReadouts()
@@ -3105,6 +3118,25 @@ const spaceHazards: Array<{ pos: THREE.Vector3; radius: number }> = []
 const spaceGates: Array<{ pos: THREE.Vector3; radius: number; cooldown: number }> = []
 let spaceGateBoostTimer = 0
 
+// ===== SPACE NAVIGATION SYSTEM =====
+interface SpaceZone {
+  zone_id: string
+  position: { x: number; y: number; z: number }
+  name: string
+  description: string
+}
+
+const spaceZones: SpaceZone[] = []
+const spaceBeacons: THREE.Group[] = []
+const ZONE_COLORS: Record<string, number> = {
+  central_hub: 0x00ffff,  // cyan
+  fortress: 0xff4444,      // red
+  mining_colony: 0xff8844, // orange
+  ship_graveyard: 0x888888,// gray
+  orbital_ring: 0x4488ff,  // blue
+  construction: 0xffdd44   // yellow
+}
+
 function clearSpaceMap() {
   if (!spaceMapGroup) return
   scene.remove(spaceMapGroup)
@@ -3121,29 +3153,56 @@ function clearSpaceMap() {
   spaceHazards.length = 0
   spaceGates.length = 0
   spaceGateBoostTimer = 0
+  spaceZones.length = 0
+  spaceBeacons.forEach(b => {
+    scene.remove(b)
+    b.traverse(child => {
+      if (child instanceof THREE.Mesh || child instanceof THREE.Points) {
+        child.geometry?.dispose()
+        const mat = child.material
+        if (Array.isArray(mat)) mat.forEach(m => m.dispose())
+        else mat?.dispose()
+      }
+    })
+  })
+  spaceBeacons.length = 0
 }
 
 async function loadSpaceZones(parentGroup: THREE.Group) {
-  console.log('🌌 宇宙MAPゾーンを読み込み中...')
-
-  // モバイル環境ではGLBを読み込まない（パフォーマンス対策）
-  if (isMobileDevice) {
-    console.log('📱 モバイル環境: GLB読み込みをスキップ（プロシージャル生成のみ）')
-    return
-  }
+  if (import.meta.env.DEV) console.log('🌌 宇宙MAPゾーンを読み込み中...')
 
   try {
     // ゾーン設定をJSON から読み込み
     const response = await fetch(import.meta.env.BASE_URL + 'space_map_zones.json')
     if (!response.ok) {
-      console.warn('⚠️ space_map_zones.json が見つかりません。プロシージャル生成のみ使用します')
+      if (import.meta.env.DEV) console.warn('⚠️ space_map_zones.json が見つかりません。プロシージャル生成のみ使用します')
       return
     }
 
     const config = await response.json()
     const totalZones = Object.keys(config.zones).length
     const glbZones = Object.values(config.zones).filter((z: any) => z.glb_file !== null).length
-    console.log(`📍 全${totalZones}個のゾーン、うちGLBファイルあり: ${glbZones}個`)
+    if (import.meta.env.DEV) console.log(`📍 全${totalZones}個のゾーン、うちGLBファイルあり: ${glbZones}個`)
+
+    // ゾーンデータをグローバル配列に保存（ナビゲーション用）
+    spaceZones.length = 0
+    for (const [, zoneConfig] of Object.entries(config.zones)) {
+      const zone = zoneConfig as any
+      spaceZones.push({
+        zone_id: zone.zone_id,
+        position: zone.position,
+        name: zone.name,
+        description: zone.description
+      })
+    }
+
+    // モバイル環境ではGLBを読み込まない（パフォーマンス対策）
+    if (isMobileDevice) {
+      if (import.meta.env.DEV) console.log('📱 モバイル環境: GLB読み込みをスキップ（プロシージャル生成のみ）')
+      // ナビゲーションビーコンは作成
+      createSpaceBeacons()
+      return
+    }
 
     // 各ゾーンのGLBを読み込み
     const loadPromises: Promise<void>[] = []
@@ -3153,13 +3212,13 @@ async function loadSpaceZones(parentGroup: THREE.Group) {
 
       // central_hubはGLBなし（既存の補給ステーションを使用）
       if (!zone.glb_file) {
-        console.log(`⏭️ ${zone.name}: GLBファイルなし（スキップ）`)
+        if (import.meta.env.DEV) console.log(`⏭️ ${zone.name}: GLBファイルなし（スキップ）`)
         continue
       }
 
       const loadPromise = (async () => {
         try {
-          console.log(`📦 ${zone.name} (${zone.glb_file}) を読み込み中...`)
+          if (import.meta.env.DEV) console.log(`📦 ${zone.name} (${zone.glb_file}) を読み込み中...`)
 
           const gltf = await gltfLoader.loadAsync(import.meta.env.BASE_URL + zone.glb_file)
           const zoneGroup = gltf.scene
@@ -3184,19 +3243,12 @@ async function loadSpaceZones(parentGroup: THREE.Group) {
           const bbox = new THREE.Box3().setFromObject(zoneGroup)
           const size = bbox.getSize(new THREE.Vector3())
           const center = bbox.getCenter(new THREE.Vector3())
-          console.log(`✅ ${zone.name} 読み込み完了`)
-          console.log(`   位置: (${zone.position.x}, ${zone.position.y}, ${zone.position.z})`)
-          console.log(`   サイズ: ${size.x.toFixed(0)}×${size.y.toFixed(0)}×${size.z.toFixed(0)}m`)
-          console.log(`   中心: (${center.x.toFixed(0)}, ${center.y.toFixed(0)}, ${center.z.toFixed(0)})`)
-
-          // デバッグ用: ゾーン位置に赤い立方体を配置
-          const debugMarker = new THREE.Mesh(
-            new THREE.BoxGeometry(50, 50, 50),
-            new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true })
-          )
-          debugMarker.position.copy(center)
-          parentGroup.add(debugMarker)
-          console.log(`🔴 デバッグマーカー設置: ${zone.name}の中心位置`)
+          if (import.meta.env.DEV) {
+            console.log(`✅ ${zone.name} 読み込み完了`)
+            console.log(`   位置: (${zone.position.x}, ${zone.position.y}, ${zone.position.z})`)
+            console.log(`   サイズ: ${size.x.toFixed(0)}×${size.y.toFixed(0)}×${size.z.toFixed(0)}m`)
+            console.log(`   中心: (${center.x.toFixed(0)}, ${center.y.toFixed(0)}, ${center.z.toFixed(0)})`)
+          }
         } catch (error) {
           console.error(`❌ ${zone.name} の読み込みに失敗:`, error)
           // エラーでも処理を続行（プロシージャル生成で代替）
@@ -3208,12 +3260,76 @@ async function loadSpaceZones(parentGroup: THREE.Group) {
 
     // 全てのGLB読み込みを待機
     await Promise.all(loadPromises)
-    console.log('✅ 全ゾーンの読み込み完了')
+    if (import.meta.env.DEV) console.log('✅ 全ゾーンの読み込み完了')
+
+    // ナビゲーションビーコンを作成
+    createSpaceBeacons()
 
   } catch (error) {
     console.error('❌ ゾーン設定の読み込みに失敗:', error)
     // エラーでも処理を続行（プロシージャル生成のみ使用）
   }
+}
+
+// ナビゲーションビーコンを各ゾーンに配置
+function createSpaceBeacons() {
+  spaceZones.forEach(zone => {
+    const beaconGroup = new THREE.Group()
+    beaconGroup.name = `Beacon_${zone.zone_id}`
+    beaconGroup.position.set(zone.position.x, zone.position.y, zone.position.z)
+
+    // パーティクル風のビーコン（小さなポイント群）
+    const particleCount = 20
+    const positions = new Float32Array(particleCount * 3)
+    const colors = new Float32Array(particleCount * 3)
+    const color = new THREE.Color(ZONE_COLORS[zone.zone_id] || 0xffffff)
+
+    for (let i = 0; i < particleCount; i++) {
+      const radius = 15 + Math.random() * 10
+      const theta = Math.random() * Math.PI * 2
+      const phi = Math.random() * Math.PI
+      positions[i * 3] = Math.sin(phi) * Math.cos(theta) * radius
+      positions[i * 3 + 1] = Math.cos(phi) * radius
+      positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * radius
+      colors[i * 3] = color.r
+      colors[i * 3 + 1] = color.g
+      colors[i * 3 + 2] = color.b
+    }
+
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+
+    const mat = new THREE.PointsMaterial({
+      size: 3,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.8,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    })
+
+    const points = new THREE.Points(geo, mat)
+    beaconGroup.add(points)
+
+    // 発光リング（中心マーカー）
+    const ringGeo = new THREE.RingGeometry(8, 12, 16)
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: ZONE_COLORS[zone.zone_id] || 0xffffff,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    })
+    const ring = new THREE.Mesh(ringGeo, ringMat)
+    beaconGroup.add(ring)
+
+    scene.add(beaconGroup)
+    spaceBeacons.push(beaconGroup)
+  })
+
+  if (import.meta.env.DEV) console.log(`🎯 ${spaceBeacons.length}個のナビゲーションビーコンを配置`)
 }
 
 async function buildSpaceMap() {
@@ -3509,14 +3625,14 @@ async function buildSpaceMap() {
 // buildTokyoLandmarks関数は削除 - TokyoMapSystemが完全に独立して管理
 
 async function switchMap(map: GameMap) {
-  console.log(`🗺️ MAP切り替え開始: ${map}`)
+  if (import.meta.env.DEV) console.log(`🗺️ MAP切り替え開始: ${map}`)
 
   // 宇宙MAPオブジェクトを事前にクリア
   clearSpaceMap()
 
   if (map === 'space') {
     // ===== 宇宙MAP (SPACE SECTOR) =====
-    console.log('🪐 SPACE SECTORに切り替え')
+    if (import.meta.env.DEV) console.log('🪐 SPACE SECTORに切り替え')
 
     scene.background = new THREE.Color(0x020513)
     scene.fog = null
@@ -3659,9 +3775,12 @@ async function switchMap(map: GameMap) {
     await buildSpaceMap()
 
     // プレイヤーを宇宙MAP開始位置に配置
-    player.position.set(0, 130, 420)
-    player.quaternion.identity()
-    camQuat.identity()
+    // 中央ハブ近くでスポーン、要塞・リング方向を向く（南西）
+    player.position.set(200, 160, 600)
+    const lookAngle = Math.atan2(-350 - 600, 0 - 200)  // fortress方向
+    player.rotation.y = lookAngle
+    player.quaternion.setFromEuler(new THREE.Euler(0, lookAngle, 0, 'YXZ'))
+    camQuat.copy(player.quaternion)
     speed = 220
 
     // 補給ポイントを宇宙MAP用に再配置
@@ -3670,13 +3789,13 @@ async function switchMap(map: GameMap) {
       supplyMeshes[i].position.copy(SPACE_SUPPLY_POSITIONS[i])
     }
 
-    console.log('✅ SPACE SECTOR切り替え完了')
+    if (import.meta.env.DEV) console.log('✅ SPACE SECTOR切り替え完了')
     return
   }
 
   if (map === 'tokyo') {
     // ===== NEO東京MAP =====
-    console.log('🌃 NEO東京MAPに切り替え（サイバーパンク）')
+    if (import.meta.env.DEV) console.log('🌃 NEO東京MAPに切り替え（サイバーパンク）')
     scene.background = neoTokyoBackgroundTexture
     scene.fog = new THREE.FogExp2(0x214a68, 0.000055)
     sky.visible = false
@@ -3756,7 +3875,7 @@ async function switchMap(map: GameMap) {
     const tokyoSpawn = neoTokyoMapSystem.getSafeSpawnPosition()
     player.position.set(tokyoSpawn.x, tokyoSpawn.y, tokyoSpawn.z)
     player.rotation.set(0, Math.PI, 0)
-    console.log('✈️ プレイヤーをNEO東京・北側進入空域に配置')
+    if (import.meta.env.DEV) console.log('✈️ プレイヤーをNEO東京・北側進入空域に配置')
 
     // ステップ4: 補給ポイントを新地形に合わせて再配置（台地上）
     const tokyoSupplyPositions = [
@@ -3768,13 +3887,13 @@ async function switchMap(map: GameMap) {
       SUPPLY_POSITIONS[i].copy(tokyoSupplyPositions[i])
       supplyMeshes[i].position.copy(tokyoSupplyPositions[i])
     }
-    console.log('✅ 補給ポイントを東京MAP用に再配置')
+    if (import.meta.env.DEV) console.log('✅ 補給ポイントを東京MAP用に再配置')
 
-    console.log('✅ 東京MAP切り替え完了')
+    if (import.meta.env.DEV) console.log('✅ 東京MAP切り替え完了')
 
   } else {
     // ===== オリジナルMAP =====
-    console.log('🏔️ オリジナルMAPに切り替え')
+    if (import.meta.env.DEV) console.log('🏔️ オリジナルMAPに切り替え')
     scene.background = new THREE.Color(0x7da8c8)
     scene.fog = new THREE.FogExp2(0x8db5cc, 0.000075)
     sky.visible = !isMobileDevice
@@ -3806,19 +3925,19 @@ async function switchMap(map: GameMap) {
     // オリジナル地形を再生成
     ground = generateTerrainMesh()
     scene.add(ground)
-    console.log('🗻 オリジナル地形再生成')
+    if (import.meta.env.DEV) console.log('🗻 オリジナル地形再生成')
 
     // terrain.glb（高品質）があれば差し替え
     if (terrainGLB) {
       scene.remove(ground)
       scene.add(terrainGLB)
-      console.log('🗻 terrain.glb 復元')
+      if (import.meta.env.DEV) console.log('🗻 terrain.glb 復元')
     }
 
     // 水面を追加（元々あったものは削除されている）
     scene.add(waterMesh)
     waterMesh.visible = true
-    console.log('💧 水面再追加')
+    if (import.meta.env.DEV) console.log('💧 水面再追加')
 
     // 岩塔・巨岩・木々を復元（名前で検索して再追加）
     const namesToRestore = ['OriginalRockPillar', 'OriginalRockTower', 'OriginalRockArch',
@@ -3835,13 +3954,13 @@ async function switchMap(map: GameMap) {
 
     // オリジナルMAPの構造物を再構築
     buildWorldStructures()
-    console.log('🏗️ オリジナル構造物再構築')
+    if (import.meta.env.DEV) console.log('🏗️ オリジナル構造物再構築')
 
     // プレイヤー位置をオリジナルMAP用に設定（峡谷を避ける）
     const spawnX = 500
     const spawnZ = 500
     player.position.set(spawnX, terrainH(spawnX, spawnZ) + 150, spawnZ)
-    console.log('✈️ プレイヤーをオリジナルMAP上空に配置')
+    if (import.meta.env.DEV) console.log('✈️ プレイヤーをオリジナルMAP上空に配置')
 
     // 補給ポイントをオリジナルMAP用の位置に再配置
     const originalSupplyPositions = [
@@ -3854,9 +3973,9 @@ async function switchMap(map: GameMap) {
       SUPPLY_POSITIONS[i].copy(originalSupplyPositions[i])
       supplyMeshes[i].position.copy(originalSupplyPositions[i])
     }
-    console.log('✅ 補給ポイントをオリジナルMAP用に再配置')
+    if (import.meta.env.DEV) console.log('✅ 補給ポイントをオリジナルMAP用に再配置')
 
-    console.log('✅ オリジナルMAP切り替え完了')
+    if (import.meta.env.DEV) console.log('✅ オリジナルMAP切り替え完了')
   }
 }
 
@@ -3869,22 +3988,22 @@ function getActiveMapFromMenu(): GameMap {
 
 async function switchMapAndTrack(mapType: GameMap) {
   currentMap = mapType
-  console.log(`🗺️ switchMap()呼び出し: ${currentMap}`)
+  if (import.meta.env.DEV) console.log(`🗺️ switchMap()呼び出し: ${currentMap}`)
   const pendingSwitch = switchMap(currentMap)
   mapSwitchPromise = pendingSwitch
   try {
     await pendingSwitch
-    console.log(`✅ switchMap()完了`)
+    if (import.meta.env.DEV) console.log(`✅ switchMap()完了`)
   } finally {
     if (mapSwitchPromise === pendingSwitch) mapSwitchPromise = null
   }
 }
 
 // MAP選択イベント（直接ID指定で確実に登録）
-console.log('🔧 MAP選択イベントを設定中...')
+if (import.meta.env.DEV) console.log('🔧 MAP選択イベントを設定中...')
 
 async function handleMapSwitch(mapType: GameMap) {
-  console.log(`🖱️ MAP切り替え開始: ${mapType}`)
+  if (import.meta.env.DEV) console.log(`🖱️ MAP切り替え開始: ${mapType}`)
 
   // アクティブ状態の切り替え（MAPボタンのみ）
   document.getElementById('map-btn-original')?.classList.remove('active')
@@ -3900,19 +4019,19 @@ async function handleMapSwitch(mapType: GameMap) {
 
   // MAP切り替え
   currentMap = mapType
-  console.log(`🗺️ switchMap()呼び出し: ${currentMap}`)
+  if (import.meta.env.DEV) console.log(`🗺️ switchMap()呼び出し: ${currentMap}`)
   await switchMap(currentMap)
-  console.log(`✅ switchMap()完了`)
+  if (import.meta.env.DEV) console.log(`✅ switchMap()完了`)
 }
 
 // 東京MAPボタン
 const tokyoBtn = document.getElementById('map-btn-tokyo')
 if (tokyoBtn) {
-  console.log('🔧 東京MAPボタン登録成功')
+  if (import.meta.env.DEV) console.log('🔧 東京MAPボタン登録成功')
   tokyoBtn.addEventListener('click', (e) => {
     e.preventDefault()
     e.stopPropagation()
-    console.log('✅ 東京MAPボタンクリック検出！')
+    if (import.meta.env.DEV) console.log('✅ 東京MAPボタンクリック検出！')
     handleMapSwitch('tokyo')
   })
 } else {
@@ -3922,11 +4041,11 @@ if (tokyoBtn) {
 // オリジナルMAPボタン
 const originalBtn = document.getElementById('map-btn-original')
 if (originalBtn) {
-  console.log('🔧 オリジナルMAPボタン登録成功')
+  if (import.meta.env.DEV) console.log('🔧 オリジナルMAPボタン登録成功')
   originalBtn.addEventListener('click', (e) => {
     e.preventDefault()
     e.stopPropagation()
-    console.log('✅ オリジナルMAPボタンクリック検出！')
+    if (import.meta.env.DEV) console.log('✅ オリジナルMAPボタンクリック検出！')
     handleMapSwitch('original')
   })
 } else {
@@ -3936,11 +4055,11 @@ if (originalBtn) {
 // 宇宙MAPボタン
 const spaceBtn = document.getElementById('map-btn-space')
 if (spaceBtn) {
-  console.log('🔧 宇宙MAPボタン登録成功')
+  if (import.meta.env.DEV) console.log('🔧 宇宙MAPボタン登録成功')
   spaceBtn.addEventListener('click', (e) => {
     e.preventDefault()
     e.stopPropagation()
-    console.log('✅ 宇宙MAPボタンクリック検出！')
+    if (import.meta.env.DEV) console.log('✅ 宇宙MAPボタンクリック検出！')
     handleMapSwitch('space')
   })
 } else {
@@ -3956,7 +4075,7 @@ if (audioOffBtn && audioOnBtn) {
     audioEnabled = false
     audioOffBtn.classList.add('active')
     audioOnBtn.classList.remove('active')
-    console.log('🔇 音声OFF')
+    if (import.meta.env.DEV) console.log('🔇 音声OFF')
   })
 
   audioOnBtn.addEventListener('click', () => {
@@ -3977,14 +4096,14 @@ if (flightArcadeBtn && flightRealisticBtn) {
     flightMode = 'arcade'
     flightArcadeBtn.classList.add('active')
     flightRealisticBtn.classList.remove('active')
-    console.log('🎮 操作モード: アーケード（水平旋回）')
+    if (import.meta.env.DEV) console.log('🎮 操作モード: アーケード（水平旋回）')
   })
 
   flightRealisticBtn.addEventListener('click', () => {
     flightMode = 'realistic'
     flightRealisticBtn.classList.add('active')
     flightArcadeBtn.classList.remove('active')
-    console.log('✈️ 操作モード: リアル（バンキング）')
+    if (import.meta.env.DEV) console.log('✈️ 操作モード: リアル（バンキング）')
   })
 }
 
@@ -4599,6 +4718,8 @@ const radarCtx = radarCanvas.getContext('2d')!
 const overlayCanvas = document.getElementById('enemy-overlay') as HTMLCanvasElement
 const overlayCtx = overlayCanvas.getContext('2d')!
 const centerXhairEl = document.getElementById('center-xhair') as HTMLDivElement
+const landmarksHudEl = document.getElementById('hud-landmarks') as HTMLDivElement
+const landmarkListEl = document.getElementById('landmark-list') as HTMLDivElement
 
 // ピップ初期化
 function initPips(el: HTMLElement, count: number, cls: string) {
@@ -5085,6 +5206,125 @@ function updateGunLeadIndicator() {
 function syncFlightReadouts() {
   speedEl.textContent = Math.round(speed * 3.6).toString()
   altEl.textContent = Math.round(player.position.y).toString()
+}
+
+// ===== SPACE NAVIGATION HUD更新 =====
+function updateSpaceNavigationHUD() {
+  if (currentMap !== 'space' || spaceZones.length === 0) {
+    landmarksHudEl.style.display = 'none'
+    return
+  }
+
+  landmarksHudEl.style.display = 'block'
+
+  // プレイヤー位置から各ゾーンまでの距離を計算
+  const distancesWithZones = spaceZones.map(zone => {
+    const zonePos = new THREE.Vector3(zone.position.x, zone.position.y, zone.position.z)
+    const distance = player.position.distanceTo(zonePos)
+    return { zone, distance }
+  })
+
+  // 距離でソート（近い順）
+  distancesWithZones.sort((a, b) => a.distance - b.distance)
+
+  // 最も近い3つを表示
+  const nearest = distancesWithZones.slice(0, 3)
+  landmarkListEl.innerHTML = nearest.map(({ zone, distance }) => {
+    const distKm = (distance / 1000).toFixed(1)
+    return `<div class="lm-item">${zone.name} ${distKm}km</div>`
+  }).join('')
+}
+
+// ビーコンの可視性とフェード処理
+function updateSpaceBeacons() {
+  if (currentMap !== 'space') return
+
+  spaceBeacons.forEach((beacon, index) => {
+    if (index >= spaceZones.length) return
+    const zone = spaceZones[index]
+    const zonePos = new THREE.Vector3(zone.position.x, zone.position.y, zone.position.z)
+    const distance = player.position.distanceTo(zonePos)
+
+    // 1000-3000mの範囲で表示、距離に応じてフェード
+    let opacity = 0
+    if (distance > 1000 && distance < 3000) {
+      // 1000mで0、1500mで1.0、2500mで1.0、3000mで0
+      if (distance < 1500) {
+        opacity = (distance - 1000) / 500
+      } else if (distance < 2500) {
+        opacity = 1.0
+      } else {
+        opacity = (3000 - distance) / 500
+      }
+    }
+
+    beacon.visible = opacity > 0
+    beacon.traverse(child => {
+      if (child instanceof THREE.Points || child instanceof THREE.Mesh) {
+        const mat = child.material as THREE.PointsMaterial | THREE.MeshBasicMaterial
+        mat.opacity = opacity * 0.8
+      }
+    })
+
+    // ビーコンをプレイヤー方向に向ける（常に見やすいように）
+    beacon.lookAt(player.position)
+  })
+}
+
+// ゾーン接近ラベルの更新
+const zoneLabelElements: Map<string, HTMLDivElement> = new Map()
+
+function updateZoneProximityLabels() {
+  if (currentMap !== 'space') {
+    // 全ラベルを削除
+    zoneLabelElements.forEach(el => el.remove())
+    zoneLabelElements.clear()
+    return
+  }
+
+  const activeZones = new Set<string>()
+
+  spaceZones.forEach(zone => {
+    const zonePos = new THREE.Vector3(zone.position.x, zone.position.y, zone.position.z)
+    const distance = player.position.distanceTo(zonePos)
+
+    // 500m以内で表示
+    if (distance < 500) {
+      activeZones.add(zone.zone_id)
+
+      // ラベル要素を取得または作成
+      let labelEl = zoneLabelElements.get(zone.zone_id)
+      if (!labelEl) {
+        labelEl = document.createElement('div')
+        labelEl.className = 'zone-label'
+        document.body.appendChild(labelEl)
+        zoneLabelElements.set(zone.zone_id, labelEl)
+      }
+
+      // 3D座標をスクリーン座標に変換
+      const screenPos = zonePos.clone().project(camera)
+      const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth
+      const y = (-screenPos.y * 0.5 + 0.5) * window.innerHeight
+
+      // ラベルテキストと位置を更新
+      labelEl.textContent = zone.name
+      labelEl.style.left = `${x}px`
+      labelEl.style.top = `${y}px`
+      labelEl.style.transform = 'translate(-50%, -50%)'
+
+      // 距離に応じた不透明度（500mで0、300mで1）
+      const opacity = distance < 300 ? 1.0 : (500 - distance) / 200
+      labelEl.style.opacity = opacity.toString()
+    }
+  })
+
+  // 範囲外のラベルを削除
+  zoneLabelElements.forEach((el, zoneId) => {
+    if (!activeZones.has(zoneId)) {
+      el.remove()
+      zoneLabelElements.delete(zoneId)
+    }
+  })
 }
 
 // ===== RADAR =====
@@ -5679,6 +5919,13 @@ function loop() {
   updateGunLeadIndicator()
   // レーダー描画を3フレームに1回に制限（パフォーマンス改善）
   if (++radarFrame % 3 === 0) drawRadar()
+
+  // 宇宙MAPナビゲーション更新
+  if (currentMap === 'space') {
+    updateSpaceNavigationHUD()
+    updateSpaceBeacons()
+    updateZoneProximityLabels()
+  }
 
   if (!isMobileDevice) waterUniforms.time.value += dt
   radarDishes.forEach(d => { d.rotation.y += dt * 0.65 })

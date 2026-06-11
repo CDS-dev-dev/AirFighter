@@ -62,6 +62,17 @@
       #hud-score .score-lbl { font-size: 9px; letter-spacing: 3px; color: rgba(160,220,255,0.5); margin-bottom: 2px; }
       #hud-score .lives     { font-size: 14px; margin-top: 4px; letter-spacing: 2px; }
 
+      /* ── 右上：ランドマークナビゲーション（スコアの下）── */
+      #hud-landmarks {
+        top: 140px; right: 24px;
+        padding: 8px 12px;
+        text-align: right;
+        min-width: 180px;
+        display: none;
+      }
+      #hud-landmarks .lm-lbl { font-size: 8px; letter-spacing: 2px; color: rgba(160,220,255,0.5); margin-bottom: 4px; }
+      #hud-landmarks .lm-item { font-size: 11px; line-height: 1.8; color: rgba(200,235,255,0.85); letter-spacing: 0.5px; }
+
       /* ── ミサイル警告 ── */
       #warning {
         position: fixed; top: 18%; left: 50%;
@@ -376,6 +387,9 @@
         #hud-flight .val { font-size: 18px; }
         /* ブーストバー：左下飛行データと被らない位置 */
         #boost-bar { bottom: 14px; left: 50%; }
+        /* ランドマークナビ：スコアの下、コンパクト化 */
+        #hud-landmarks { top: 140px; right: 12px; padding: 6px 10px; min-width: 140px; }
+        #hud-landmarks .lm-item { font-size: 10px; line-height: 1.6; }
       }
 
       /* ===== モード選択画面 ===== */
@@ -560,6 +574,25 @@
         position: fixed; inset: 0; pointer-events: none; z-index: 50;
       }
 
+      /* ── ゾーン接近ラベル ── */
+      .zone-label {
+        position: fixed;
+        pointer-events: none;
+        z-index: 60;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        color: rgba(100,220,255,0.9);
+        text-shadow: 0 0 12px rgba(60,160,255,0.8);
+        padding: 4px 12px;
+        border: 1px solid rgba(80,190,255,0.4);
+        border-radius: 6px;
+        background: rgba(5,20,40,0.7);
+        backdrop-filter: blur(4px);
+        white-space: nowrap;
+        transition: opacity 0.3s;
+      }
+
       /* 縦画面：回転促進オーバーレイ */
       #rotate-hint {
         display: none; position: fixed; inset: 0;
@@ -690,6 +723,12 @@
       <div class="score-val" id="score">0</div>
       <div class="hp-bar"><div class="hp-fill" id="hp-fill" style="width:100%"></div></div>
       <div style="font-size:9px;letter-spacing:2px;color:rgba(255,150,100,0.6);margin-top:3px" id="hp-text">HP 3/3</div>
+    </div>
+
+    <!-- ランドマークナビゲーション (右上・スコアの下) -->
+    <div class="hud-panel" id="hud-landmarks">
+      <div class="lm-lbl">LANDMARKS</div>
+      <div id="landmark-list"></div>
     </div>
 
     <!-- ブーストバー (下中央) -->
@@ -869,7 +908,7 @@
 
     <!-- ゲームモード＆MAP選択 -->
     <div id="mode-screen">
-      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v5.33.1</span></div>
+      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v5.33.2</span></div>
       <div class="ms-sub">SELECT MAP & MISSION MODE</div>
 
       <!-- MAP・音声・操作設定 -->

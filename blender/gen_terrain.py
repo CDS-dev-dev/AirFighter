@@ -80,12 +80,17 @@ def terrain_h(x, z):
     h += math.exp(-((x-1000)**2/ 400000 + (z-200)**2  / 800000)) * 450  # 東部
     h += math.exp(-((x+1200)**2/ 500000 + (z+400)**2  / 600000)) * 550  # 西部（最高峰）
 
+    # 中央巨大岩山（高さ600m、直径400m）
+    dist_to_center = math.sqrt(x**2 + z**2)
+    if dist_to_center < 200:
+        h += 600 * math.exp(-((dist_to_center / 120) ** 2))
+
     # 十字峡谷（MAP中央を横断、深さ600m級）
     cross_x = abs(x)
     cross_z = abs(z)
-    if cross_x < 200:
+    if cross_x < 200 and abs(z) > 250:
         h -= 500 * math.exp(-((cross_x / 100) ** 2))
-    if cross_z < 200:
+    if cross_z < 200 and abs(x) > 250:
         h -= 500 * math.exp(-((cross_z / 100) ** 2))
 
     # 放射峡谷（中央から4方向、深さ400m）
