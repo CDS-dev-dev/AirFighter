@@ -1537,12 +1537,13 @@ function spawnEnemyAt(sx: number, sz: number) {
 
 function spawnEnemy() {
   if (currentMap === 'space') {
-    const angle = Math.random() * Math.PI * 2
-    const r = 360 + Math.random() * 380
-    spawnEnemyAt(
-      player.position.x + Math.cos(angle) * r,
-      player.position.z + Math.sin(angle) * r - 180,
-    )
+    // ドッグファイト開始時は前方600m-1200mに散らす
+    const fwdDir = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion)
+    const dist = 600 + Math.random() * 600
+    const spreadX = (Math.random() - 0.5) * 400
+    const spawnX = player.position.x + fwdDir.x * dist + spreadX
+    const spawnZ = player.position.z + fwdDir.z * dist
+    spawnEnemyAt(spawnX, spawnZ)
     return
   }
   if (currentMap === 'tokyo') {
@@ -1562,15 +1563,28 @@ function spawnEnemy() {
 
 function spawnAlly(sx: number, sz: number) {
   const group = createAircraft(0x22cc55, 0x116633)
-  const spawnY = currentMap === 'space'
-    ? THREE.MathUtils.clamp(player.position.y + (Math.random() - 0.5) * 240, -420, 520)
-    : currentMap === 'tokyo'
-    ? Math.max(terrainH(sx, sz) + 220, 660 + Math.random() * 120)
-    : terrainH(sx, sz) + 75 + Math.random() * 55
-  group.position.set(sx, spawnY, sz)
 
-  // 前方が開けた方向を向く（北側にスポーンするので南向き）
-  group.rotation.y = Math.PI  // 南向き（z正方向）
+  // 宇宙MAPでは左右後方に編隊配置
+  if (currentMap === 'space') {
+    const side = allies.length % 2 === 0 ? 1 : -1
+    const offset = (Math.floor(allies.length / 2) + 1) * 80
+    const backDir = new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion)
+    const rightDir = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion)
+    const spawnPos = player.position.clone()
+      .add(backDir.multiplyScalar(120 + Math.random() * 60))
+      .add(rightDir.multiplyScalar(side * offset))
+    group.position.copy(spawnPos)
+    group.position.y = THREE.MathUtils.clamp(player.position.y + (Math.random() - 0.5) * 80, -420, 520)
+    // プレイヤーと同じ方向を向く
+    group.quaternion.copy(player.quaternion)
+  } else {
+    const spawnY = currentMap === 'tokyo'
+      ? Math.max(terrainH(sx, sz) + 220, 660 + Math.random() * 120)
+      : terrainH(sx, sz) + 75 + Math.random() * 55
+    group.position.set(sx, spawnY, sz)
+    // 前方が開けた方向を向く（北側にスポーンするので南向き）
+    group.rotation.y = Math.PI  // 南向き（z正方向）
+  }
 
   scene.add(group)
   allies.push({ group, health: 2, fireCooldown: 3 + Math.random() * 3, missileAmmo: 8 })
@@ -1826,6 +1840,18 @@ function triggerFlareBurst() {
   flareBurstTimer = 0
 }
 
+/**
+ * MAP種別に応じた地形遮蔽判定（宇宙MAPではfalse）
+ */
+function isBlockedByMapGeometry(raycaster: THREE.Raycaster): boolean {
+  if (currentMap === 'space') return false
+  if (currentMap === 'tokyo' && neoTokyoMapSystem) {
+    return raycaster.intersectObjects(neoTokyoMapSystem.getCollisionObjects(), true).length > 0
+  }
+  if (!ground || !ground.parent) return false
+  return raycaster.intersectObject(ground, false).length > 0
+}
+
 function handleRightLock() {
   if (!currentMode || missionComplete) return
   if (lockedTarget) { lockedTarget = null; return }
@@ -1848,8 +1874,7 @@ function handleRightLock() {
     if (dot > minDot) {
       raycaster.set(player.position, toTNorm)
       raycaster.far = dist - 5
-      const intersects = raycaster.intersectObject(ground, false)
-      if (intersects.length > 0) continue
+      if (isBlockedByMapGeometry(raycaster)) continue
 
       const sc = dot - dist / MISSILE_LOCK_RANGE * 0.25
       if (sc > bestScore) { bestScore = sc; best = t }
@@ -1872,8 +1897,7 @@ function handleLeftRelease(holdTime: number) {
       // 地形遮蔽チェック
       raycaster.set(player.position, toE.normalize())
       raycaster.far = dist - 5
-      const intersects = raycaster.intersectObject(ground, false)
-      return intersects.length === 0
+      return !isBlockedByMapGeometry(raycaster)
     }).sort((a, b) => a.group.position.distanceTo(player.position) - b.group.position.distanceTo(player.position))
     multiLockTargets.push(...sorted.slice(0, 4))
     // Sequential fire
@@ -3228,9 +3252,6 @@ async function buildSpaceMap() {
 
   const asteroidGeo = new THREE.DodecahedronGeometry(1, 1)
   const asteroidMat = new THREE.MeshStandardMaterial({ color: 0x7b7780, roughness: 0.95, metalness: 0.04, flatShading: true })
-  const hazardWarnMat = new THREE.MeshBasicMaterial({
-    color: 0xff7448, transparent: true, opacity: 0.30, side: THREE.DoubleSide, depthWrite: false,
-  })
   const asteroidCount = isMobileDevice ? 180 : 420
   const asteroids = new THREE.InstancedMesh(asteroidGeo, asteroidMat, asteroidCount)
   const obj = new THREE.Object3D()
@@ -3239,15 +3260,31 @@ async function buildSpaceMap() {
     const radius = 360 + Math.random() * 1700
     const lane = Math.sin(angle * 1.7)
     const s = Math.random() < 0.08 ? 34 + Math.random() * 48 : 5 + Math.random() * 24
-    obj.position.set(
-      Math.cos(angle) * radius + (Math.random() - 0.5) * 280,
-      lane * 210 + (Math.random() - 0.5) * 460,
-      -760 + Math.sin(angle) * radius + (Math.random() - 0.5) * 420,
-    )
+
+    const x = Math.cos(angle) * radius + (Math.random() - 0.5) * 280
+    const y = lane * 210 + (Math.random() - 0.5) * 460
+    const z = -760 + Math.sin(angle) * radius + (Math.random() - 0.5) * 420
+
+    // 初期正面（Z: 420 → -300～-900）の中央航路を空ける
+    // 大型小惑星は横・上・下に逃がす
+    const distFromStart = Math.abs(z - 420)
+    const isInFrontCorridor = distFromStart > 300 && distFromStart < 900 && Math.abs(x) < 150 && Math.abs(y - 130) < 180
+    if (isInFrontCorridor && s > 30) {
+      // 大型は横に逃がす
+      const escapeX = x + (x > 0 ? 200 : -200)
+      obj.position.set(escapeX, y, z)
+    } else {
+      obj.position.set(x, y, z)
+    }
+
     const hazardRadius = s * 1.15 + 7
     spaceHazards.push({ pos: obj.position.clone(), radius: hazardRadius })
     if (s > 38) {
-      const warn = new THREE.Mesh(new THREE.TorusGeometry(hazardRadius * 1.08, 1.4, 8, 52), hazardWarnMat)
+      // 大型危険物は赤/オレンジ系の警告リング強調
+      const warnMat = new THREE.MeshBasicMaterial({
+        color: 0xff4430, transparent: true, opacity: 0.50, side: THREE.DoubleSide, depthWrite: false,
+      })
+      const warn = new THREE.Mesh(new THREE.TorusGeometry(hazardRadius * 1.08, 1.8, 8, 52), warnMat)
       warn.position.copy(obj.position)
       warn.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
       space.add(warn)
@@ -3269,12 +3306,13 @@ async function buildSpaceMap() {
   const laneMat = new THREE.MeshBasicMaterial({ color: 0x5ce7ff, transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false })
 
   const navPath = [
-    new THREE.Vector3(0, 120, 160),
-    new THREE.Vector3(-120, 100, -120),
-    new THREE.Vector3(-260, 65, -430),
-    new THREE.Vector3(80, 20, -720),
-    new THREE.Vector3(420, -120, -1030),
-    new THREE.Vector3(70, 255, -1540),
+    new THREE.Vector3(0, 130, 420),    // スタート地点
+    new THREE.Vector3(0, 110, -200),   // 初期正面・第一ゲート（必ず見える）
+    new THREE.Vector3(-120, 80, -550), // 左カーブ
+    new THREE.Vector3(-260, 50, -920), // 西方向
+    new THREE.Vector3(80, 0, -1280),   // 右折
+    new THREE.Vector3(420, -80, -1640), // 東方向
+    new THREE.Vector3(70, 200, -2100), // 上昇
   ]
   for (let i = 0; i < navPath.length; i++) {
     const navRing = new THREE.Mesh(new THREE.TorusGeometry(34 + i * 4, 1.6, 8, 56), laneMat)
@@ -3338,6 +3376,13 @@ async function buildSpaceMap() {
     const halo2 = new THREE.Mesh(new THREE.TorusGeometry(60, 1.2, 8, 52), glowCyan)
     halo2.rotation.y = Math.PI / 2
     beacon.add(halo1, halo2)
+    // 遠距離でも見えるパルスリング（大きめ）
+    const pulseMat = new THREE.MeshBasicMaterial({
+      color: 0x00d4ff, transparent: true, opacity: 0.60, side: THREE.DoubleSide, depthWrite: false
+    })
+    const pulseRing = new THREE.Mesh(new THREE.RingGeometry(80, 90, 32), pulseMat)
+    pulseRing.rotation.x = Math.PI / 2
+    beacon.add(pulseRing)
     beacon.position.copy(p)
     space.add(beacon)
     rotatingSpaceObjects.push(beacon)
@@ -4660,11 +4705,7 @@ function drawEnemyBrackets() {
     if (_shouldRaycast) {
       _hudRaycaster.set(player.position, toENorm)
       _hudRaycaster.far = dist - 5
-      if (currentMap === 'tokyo' && neoTokyoMapSystem) {
-        blockedByTerrain = _hudRaycaster.intersectObjects(neoTokyoMapSystem.getCollisionObjects(), true).length > 0
-      } else {
-        blockedByTerrain = _hudRaycaster.intersectObject(ground, false).length > 0
-      }
+      blockedByTerrain = isBlockedByMapGeometry(_hudRaycaster)
       _hudOcclusionCache.set(e.group, blockedByTerrain)
     } else {
       blockedByTerrain = _hudOcclusionCache.get(e.group) ?? false
@@ -4738,8 +4779,7 @@ function drawEnemyBrackets() {
       const toGT = gt.group.position.clone().sub(player.position)
       _hudRaycaster.set(player.position, toGT.normalize())
       _hudRaycaster.far = dist - 5
-      const intersects = _hudRaycaster.intersectObject(ground, false)
-      if (intersects.length > 0 && gt !== lockedTarget) continue
+      if (isBlockedByMapGeometry(_hudRaycaster) && gt !== lockedTarget) continue
 
       const [sx, sy, vis] = projectToScreen(gt.group.position)
       if (!vis) {
