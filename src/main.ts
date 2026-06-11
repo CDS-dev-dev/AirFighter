@@ -3040,6 +3040,12 @@ function clearSpaceMap() {
 async function loadSpaceZones(parentGroup: THREE.Group) {
   console.log('🌌 宇宙MAPゾーンを読み込み中...')
 
+  // モバイル環境ではGLBを読み込まない（パフォーマンス対策）
+  if (isMobileDevice) {
+    console.log('📱 モバイル環境: GLB読み込みをスキップ（プロシージャル生成のみ）')
+    return
+  }
+
   try {
     // ゾーン設定をJSON から読み込み
     const response = await fetch(import.meta.env.BASE_URL + 'space_map_zones.json')
@@ -3085,7 +3091,11 @@ async function loadSpaceZones(parentGroup: THREE.Group) {
           })
 
           parentGroup.add(zoneGroup)
-          console.log(`✅ ${zone.name} 読み込み完了`)
+
+          // デバッグ: バウンディングボックス情報
+          const bbox = new THREE.Box3().setFromObject(zoneGroup)
+          const size = bbox.getSize(new THREE.Vector3())
+          console.log(`✅ ${zone.name} 読み込み完了 (サイズ: ${size.x.toFixed(0)}×${size.y.toFixed(0)}×${size.z.toFixed(0)}m)`)
         } catch (error) {
           console.error(`❌ ${zone.name} の読み込みに失敗:`, error)
           // エラーでも処理を続行（プロシージャル生成で代替）
