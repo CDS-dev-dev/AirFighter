@@ -3055,7 +3055,9 @@ async function loadSpaceZones(parentGroup: THREE.Group) {
     }
 
     const config = await response.json()
-    console.log(`📍 ${Object.keys(config.zones).length}個のゾーンを読み込み中...`)
+    const totalZones = Object.keys(config.zones).length
+    const glbZones = Object.values(config.zones).filter((z: any) => z.glb_file !== null).length
+    console.log(`📍 全${totalZones}個のゾーン、うちGLBファイルあり: ${glbZones}個`)
 
     // 各ゾーンのGLBを読み込み
     const loadPromises: Promise<void>[] = []
@@ -3095,7 +3097,20 @@ async function loadSpaceZones(parentGroup: THREE.Group) {
           // デバッグ: バウンディングボックス情報
           const bbox = new THREE.Box3().setFromObject(zoneGroup)
           const size = bbox.getSize(new THREE.Vector3())
-          console.log(`✅ ${zone.name} 読み込み完了 (サイズ: ${size.x.toFixed(0)}×${size.y.toFixed(0)}×${size.z.toFixed(0)}m)`)
+          const center = bbox.getCenter(new THREE.Vector3())
+          console.log(`✅ ${zone.name} 読み込み完了`)
+          console.log(`   位置: (${zone.position.x}, ${zone.position.y}, ${zone.position.z})`)
+          console.log(`   サイズ: ${size.x.toFixed(0)}×${size.y.toFixed(0)}×${size.z.toFixed(0)}m`)
+          console.log(`   中心: (${center.x.toFixed(0)}, ${center.y.toFixed(0)}, ${center.z.toFixed(0)})`)
+
+          // デバッグ用: ゾーン位置に赤い立方体を配置
+          const debugMarker = new THREE.Mesh(
+            new THREE.BoxGeometry(50, 50, 50),
+            new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true })
+          )
+          debugMarker.position.copy(center)
+          parentGroup.add(debugMarker)
+          console.log(`🔴 デバッグマーカー設置: ${zone.name}の中心位置`)
         } catch (error) {
           console.error(`❌ ${zone.name} の読み込みに失敗:`, error)
           // エラーでも処理を続行（プロシージャル生成で代替）
@@ -3386,6 +3401,15 @@ async function switchMap(map: GameMap) {
         }
       })
       originalMapGroup.clear()
+    }
+
+    // オリジナルMAPの地面を削除
+    if (ground && ground.parent) {
+      scene.remove(ground)
+      ground.geometry?.dispose()
+      const material = ground.material
+      if (Array.isArray(material)) material.forEach(mat => mat.dispose())
+      else material?.dispose()
     }
 
     // 既存のオブジェクトを削除（プレイヤー・カメラ・ライト・敵機・補給ポイントは保護）
