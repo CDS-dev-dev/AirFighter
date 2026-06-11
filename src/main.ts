@@ -3033,9 +3033,9 @@ const originalMapGroup = new THREE.Group()
 originalMapGroup.name = 'OriginalMapStructures'
 scene.add(originalMapGroup)
 const SPACE_SUPPLY_POSITIONS = [
-  new THREE.Vector3(-620, 170, -780),
-  new THREE.Vector3(520, -95, -1080),
-  new THREE.Vector3(60, 310, -1540),
+  new THREE.Vector3(-500, 200, -350),  // 上層・西側（建造現場近く）
+  new THREE.Vector3(600, -120, -650),  // 下層・東側（墓場近く）
+  new THREE.Vector3(0, 120, 50),       // 中央・要塞手前
 ]
 let spaceMapGroup: THREE.Group | null = null
 const rotatingSpaceObjects: THREE.Object3D[] = []
@@ -3252,44 +3252,53 @@ async function buildSpaceMap() {
 
   const asteroidGeo = new THREE.DodecahedronGeometry(1, 1)
   const asteroidMat = new THREE.MeshStandardMaterial({ color: 0x7b7780, roughness: 0.95, metalness: 0.04, flatShading: true })
-  const asteroidCount = isMobileDevice ? 180 : 420
+  const asteroidCount = isMobileDevice ? 200 : 480
   const asteroids = new THREE.InstancedMesh(asteroidGeo, asteroidMat, asteroidCount)
   const obj = new THREE.Object3D()
+
   for (let i = 0; i < asteroidCount; i++) {
-    const angle = i * 0.34 + Math.random() * 0.55
-    const radius = 360 + Math.random() * 1700
-    const lane = Math.sin(angle * 1.7)
-    const s = Math.random() < 0.08 ? 34 + Math.random() * 48 : 5 + Math.random() * 24
+    // 3レイヤー構造：上層(Y: 150-300)、中層(Y: 0-150)、下層(Y: -200-0)
+    const layer = i % 3
+    let baseY = 0
+    if (layer === 0) baseY = 200 + Math.random() * 100  // 上層
+    else if (layer === 1) baseY = 50 + Math.random() * 100  // 中層
+    else baseY = -150 + Math.random() * 100  // 下層
 
-    const x = Math.cos(angle) * radius + (Math.random() - 0.5) * 280
-    const y = lane * 210 + (Math.random() - 0.5) * 460
-    const z = -760 + Math.sin(angle) * radius + (Math.random() - 0.5) * 420
+    // 回廊構造：中心から放射状に配置、中央に空間を確保
+    const angle = (i / asteroidCount) * Math.PI * 2 + Math.random() * 0.5
+    const distFromCenter = 300 + Math.random() * 700  // 300m-1000m圏
 
-    // 初期正面（Z: 420 → -300～-900）の中央航路を空ける
-    // 大型小惑星は横・上・下に逃がす
-    const distFromStart = Math.abs(z - 420)
-    const isInFrontCorridor = distFromStart > 300 && distFromStart < 900 && Math.abs(x) < 150 && Math.abs(y - 130) < 180
-    if (isInFrontCorridor && s > 30) {
-      // 大型は横に逃がす
-      const escapeX = x + (x > 0 ? 200 : -200)
-      obj.position.set(escapeX, y, z)
-    } else {
-      obj.position.set(x, y, z)
-    }
+    // サイズ：外周ほど大きく、危険度アップ
+    const distFactor = (distFromCenter - 300) / 700
+    const s = Math.random() < 0.05 + distFactor * 0.1
+      ? 30 + Math.random() * 50  // 大型
+      : 4 + Math.random() * 18   // 小型
+
+    const x = Math.cos(angle) * distFromCenter + (Math.random() - 0.5) * 150
+    const z = -200 + Math.sin(angle) * distFromCenter + (Math.random() - 0.5) * 150
+    const y = baseY + (Math.random() - 0.5) * 80
+
+    // 中央航路（要塞への直線）を確保
+    const isCentralCorridor = Math.abs(x) < 120 && z > -400 && z < 500
+    if (isCentralCorridor && s > 25) continue  // 大型は配置しない
+
+    obj.position.set(x, y, z)
 
     const hazardRadius = s * 1.15 + 7
     spaceHazards.push({ pos: obj.position.clone(), radius: hazardRadius })
-    if (s > 38) {
-      // 大型危険物は赤/オレンジ系の警告リング強調
+
+    if (s > 35) {
+      // 大型危険物は赤/オレンジ系の警告リング
       const warnMat = new THREE.MeshBasicMaterial({
-        color: 0xff4430, transparent: true, opacity: 0.50, side: THREE.DoubleSide, depthWrite: false,
+        color: 0xff4430, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false,
       })
-      const warn = new THREE.Mesh(new THREE.TorusGeometry(hazardRadius * 1.08, 1.8, 8, 52), warnMat)
+      const warn = new THREE.Mesh(new THREE.TorusGeometry(hazardRadius * 1.1, 2.0, 8, 52), warnMat)
       warn.position.copy(obj.position)
       warn.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
       space.add(warn)
       rotatingSpaceObjects.push(warn)
     }
+
     obj.scale.set(s * (0.75 + Math.random() * 0.8), s * (0.55 + Math.random() * 0.65), s * (0.75 + Math.random() * 0.75))
     obj.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
     obj.updateMatrix()
@@ -3306,13 +3315,13 @@ async function buildSpaceMap() {
   const laneMat = new THREE.MeshBasicMaterial({ color: 0x5ce7ff, transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false })
 
   const navPath = [
-    new THREE.Vector3(0, 130, 420),    // スタート地点
-    new THREE.Vector3(0, 110, -200),   // 初期正面・第一ゲート（必ず見える）
-    new THREE.Vector3(-120, 80, -550), // 左カーブ
-    new THREE.Vector3(-260, 50, -920), // 西方向
-    new THREE.Vector3(80, 0, -1280),   // 右折
-    new THREE.Vector3(420, -80, -1640), // 東方向
-    new THREE.Vector3(70, 200, -2100), // 上昇
+    new THREE.Vector3(0, 130, 420),     // スタート地点
+    new THREE.Vector3(0, 100, 100),     // 第一ゲート（要塞手前）
+    new THREE.Vector3(-400, 50, -400),  // 左下へ（採掘エリア）
+    new THREE.Vector3(500, -50, -600),  // 右下へ（墓場エリア）
+    new THREE.Vector3(600, 180, -300),  // 右上へ（リング都市）
+    new THREE.Vector3(-500, 220, -400), // 左上へ（建造現場）
+    new THREE.Vector3(0, 100, -200),    // 要塞に戻る
   ]
   for (let i = 0; i < navPath.length; i++) {
     const navRing = new THREE.Mesh(new THREE.TorusGeometry(34 + i * 4, 1.6, 8, 56), laneMat)

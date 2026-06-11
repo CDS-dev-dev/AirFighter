@@ -35,19 +35,19 @@
     "fortress": {
       "zone_id": "fortress",
       "position": {
-        "x": -2200,
-        "y": 0,
-        "z": 0
+        "x": 0,
+        "y": 80,
+        "z": -200
       },
       "rotation": {
         "x": 0.15,
-        "y": -0.4,
-        "z": 0.2
+        "y": 0,
+        "z": 0.05
       },
-      "scale": 1.0,
+      "scale": 1.5,
       "name": "破壊された要塞",
       "glb_file": "space_fortress_destroyed.glb",
-      "description": "戦闘の跡が残る巨大要塞の残骸。内部に入れる破損部分あり",
+      "description": "中央ランドマーク。戦闘の跡が残る巨大要塞の残骸",
       "size": "large",
       "features": [
         "内部飛行可能",
@@ -58,19 +58,19 @@
     "mining_colony": {
       "zone_id": "mining_colony",
       "position": {
-        "x": -1600,
-        "y": -100,
-        "z": -1800
+        "x": -600,
+        "y": -150,
+        "z": -700
       },
       "rotation": {
         "x": 0.2,
         "y": 0.8,
         "z": -0.1
       },
-      "scale": 1.0,
+      "scale": 1.2,
       "name": "小惑星採掘コロニー",
       "glb_file": "space_mining_colony.glb",
-      "description": "くり抜かれた小惑星群。採掘ステーション、トンネル、輸送レール",
+      "description": "下層・西側。くり抜かれた小惑星群",
       "size": "large",
       "features": [
         "小惑星内部空洞",
@@ -81,9 +81,9 @@
     "ship_graveyard": {
       "zone_id": "ship_graveyard",
       "position": {
-        "x": 2000,
-        "y": -50,
-        "z": 1500
+        "x": 700,
+        "y": -100,
+        "z": -800
       },
       "rotation": {
         "x": -0.1,
@@ -93,7 +93,7 @@
       "scale": 1.0,
       "name": "宇宙船墓場",
       "glb_file": "space_ship_graveyard.glb",
-      "description": "廃棄宇宙船が漂うスクラップヤード。船体間をすり抜ける",
+      "description": "下層・東側。廃棄宇宙船が漂うスクラップヤード",
       "size": "large",
       "features": [
         "巨大船内部",
@@ -104,19 +104,19 @@
     "orbital_ring": {
       "zone_id": "orbital_ring",
       "position": {
-        "x": 2400,
-        "y": 100,
-        "z": -500
+        "x": 800,
+        "y": 200,
+        "z": -400
       },
       "rotation": {
         "x": 0.3,
         "y": -0.5,
         "z": 0.1
       },
-      "scale": 1.0,
+      "scale": 0.8,
       "name": "軌道リング都市",
       "glb_file": "space_orbital_ring.glb",
-      "description": "巨大リング構造。リング内外、トンネル、ドッキングベイ",
+      "description": "上層・東側。巨大リング構造",
       "size": "xlarge",
       "features": [
         "リング内側飛行",
@@ -127,9 +127,9 @@
     "construction": {
       "zone_id": "construction",
       "position": {
-        "x": 1800,
-        "y": 200,
-        "z": -2000
+        "x": -700,
+        "y": 250,
+        "z": -500
       },
       "rotation": {
         "x": -0.2,
@@ -139,7 +139,7 @@
       "scale": 1.0,
       "name": "建造現場",
       "glb_file": "space_construction.glb",
-      "description": "建造中のコロニー。足場、クレーン、トンネル骨組み",
+      "description": "上層・西側。建造中のコロニー",
       "size": "large",
       "features": [
         "骨組み飛行",
