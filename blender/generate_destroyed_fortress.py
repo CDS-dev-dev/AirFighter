@@ -10,7 +10,7 @@ import bpy
 import bmesh
 import math
 import random
-from mathutils import Vector, Matrix
+from mathutils import Vector, Matrix, Euler
 
 # シーンクリア
 bpy.ops.object.select_all(action='SELECT')
@@ -158,7 +158,7 @@ def create_gun_turret_wreckage(location, rotation, scale=1.0):
 
     # 破壊された砲身
     barrel_offset = Vector((0, 0, 15 * scale))
-    barrel_offset.rotate(rotation)
+    barrel_offset.rotate(Euler(rotation))
     barrel_loc = Vector(location) + barrel_offset
 
     bpy.ops.mesh.primitive_cylinder_add(
