@@ -1,0 +1,459 @@
+{
+  "version": "1.0",
+  "map_type": "space_sector",
+  "bounds": {
+    "minX": -7600,
+    "maxX": 7600,
+    "minZ": -7600,
+    "maxZ": 7600,
+    "minY": -620,
+    "maxY": 720
+  },
+  "zones": {
+    "central_hub": {
+      "zone_id": "central_hub",
+      "position": {
+        "x": 0,
+        "y": 130,
+        "z": 420
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "scale": 1.0,
+      "name": "中央補給ステーション",
+      "glb_file": null,
+      "description": "プレイヤースタート地点、補給ポイント",
+      "size": "medium",
+      "features": [
+        "補給ビーコン",
+        "ナビゲーション"
+      ]
+    },
+    "fortress": {
+      "zone_id": "fortress",
+      "position": {
+        "x": -2200,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0.15,
+        "y": -0.4,
+        "z": 0.2
+      },
+      "scale": 1.0,
+      "name": "破壊された要塞",
+      "glb_file": "space_fortress_destroyed.glb",
+      "description": "戦闘の跡が残る巨大要塞の残骸。内部に入れる破損部分あり",
+      "size": "large",
+      "features": [
+        "内部飛行可能",
+        "多層構造",
+        "破損開口部"
+      ]
+    },
+    "mining_colony": {
+      "zone_id": "mining_colony",
+      "position": {
+        "x": -1600,
+        "y": -100,
+        "z": -1800
+      },
+      "rotation": {
+        "x": 0.2,
+        "y": 0.8,
+        "z": -0.1
+      },
+      "scale": 1.0,
+      "name": "小惑星採掘コロニー",
+      "glb_file": "space_mining_colony.glb",
+      "description": "くり抜かれた小惑星群。採掘ステーション、トンネル、輸送レール",
+      "size": "large",
+      "features": [
+        "小惑星内部空洞",
+        "トンネル飛行",
+        "採掘施設"
+      ]
+    },
+    "ship_graveyard": {
+      "zone_id": "ship_graveyard",
+      "position": {
+        "x": 2000,
+        "y": -50,
+        "z": 1500
+      },
+      "rotation": {
+        "x": -0.1,
+        "y": 0.6,
+        "z": 0.15
+      },
+      "scale": 1.0,
+      "name": "宇宙船墓場",
+      "glb_file": "space_ship_graveyard.glb",
+      "description": "廃棄宇宙船が漂うスクラップヤード。船体間をすり抜ける",
+      "size": "large",
+      "features": [
+        "巨大船内部",
+        "デブリ層",
+        "サルベージ船"
+      ]
+    },
+    "orbital_ring": {
+      "zone_id": "orbital_ring",
+      "position": {
+        "x": 2400,
+        "y": 100,
+        "z": -500
+      },
+      "rotation": {
+        "x": 0.3,
+        "y": -0.5,
+        "z": 0.1
+      },
+      "scale": 1.0,
+      "name": "軌道リング都市",
+      "glb_file": "space_orbital_ring.glb",
+      "description": "巨大リング構造。リング内外、トンネル、ドッキングベイ",
+      "size": "xlarge",
+      "features": [
+        "リング内側飛行",
+        "接続ブリッジ",
+        "トンネル"
+      ]
+    },
+    "construction": {
+      "zone_id": "construction",
+      "position": {
+        "x": 1800,
+        "y": 200,
+        "z": -2000
+      },
+      "rotation": {
+        "x": -0.2,
+        "y": 0.3,
+        "z": 0.05
+      },
+      "scale": 1.0,
+      "name": "建造現場",
+      "glb_file": "space_construction.glb",
+      "description": "建造中のコロニー。足場、クレーン、トンネル骨組み",
+      "size": "large",
+      "features": [
+        "骨組み飛行",
+        "作業船",
+        "トンネルフレーム"
+      ]
+    }
+  },
+  "navigation_routes": [
+    {
+      "from": "central_hub",
+      "to": "fortress",
+      "distance": 2243.5,
+      "direction": {
+        "x": -0.9806098980519375,
+        "y": -0.057945130339432674,
+        "z": -0.18720734417355173
+      },
+      "waypoints": []
+    },
+    {
+      "from": "central_hub",
+      "to": "mining_colony",
+      "distance": 2746.1,
+      "direction": {
+        "x": -0.5826354075578556,
+        "y": -0.08375383983644175,
+        "z": -0.8084066279865246
+      },
+      "waypoints": []
+    },
+    {
+      "from": "central_hub",
+      "to": "ship_graveyard",
+      "distance": 2280.1,
+      "direction": {
+        "x": 0.877159235827838,
+        "y": -0.07894433122450542,
+        "z": 0.47366598734703247
+      },
+      "waypoints": []
+    },
+    {
+      "from": "central_hub",
+      "to": "orbital_ring",
+      "distance": 2570.5,
+      "direction": {
+        "x": 0.9336825209673215,
+        "y": -0.011671031512091519,
+        "z": -0.35791163303747325
+      },
+      "waypoints": []
+    },
+    {
+      "from": "central_hub",
+      "to": "construction",
+      "distance": 3016.8,
+      "direction": {
+        "x": 0.5966515732710586,
+        "y": 0.023203116738318944,
+        "z": -0.8021648929533121
+      },
+      "waypoints": []
+    }
+  ],
+  "spawn_points": {
+    "enemy": [
+      {
+        "zone": "fortress",
+        "position": {
+          "x": -1900.0,
+          "y": -100,
+          "z": 0.0
+        }
+      },
+      {
+        "zone": "fortress",
+        "position": {
+          "x": -2200.0,
+          "y": -50,
+          "z": 300.0
+        }
+      },
+      {
+        "zone": "fortress",
+        "position": {
+          "x": -2500.0,
+          "y": 0,
+          "z": 3.6739403974420595e-14
+        }
+      },
+      {
+        "zone": "fortress",
+        "position": {
+          "x": -2200.0,
+          "y": 50,
+          "z": -300.0
+        }
+      },
+      {
+        "zone": "mining_colony",
+        "position": {
+          "x": -1300.0,
+          "y": -200,
+          "z": -1800.0
+        }
+      },
+      {
+        "zone": "mining_colony",
+        "position": {
+          "x": -1600.0,
+          "y": -150,
+          "z": -1500.0
+        }
+      },
+      {
+        "zone": "mining_colony",
+        "position": {
+          "x": -1900.0,
+          "y": -100,
+          "z": -1800.0
+        }
+      },
+      {
+        "zone": "mining_colony",
+        "position": {
+          "x": -1600.0,
+          "y": -50,
+          "z": -2100.0
+        }
+      },
+      {
+        "zone": "ship_graveyard",
+        "position": {
+          "x": 2300.0,
+          "y": -150,
+          "z": 1500.0
+        }
+      },
+      {
+        "zone": "ship_graveyard",
+        "position": {
+          "x": 2000.0,
+          "y": -100,
+          "z": 1800.0
+        }
+      },
+      {
+        "zone": "ship_graveyard",
+        "position": {
+          "x": 1700.0,
+          "y": -50,
+          "z": 1500.0
+        }
+      },
+      {
+        "zone": "ship_graveyard",
+        "position": {
+          "x": 2000.0,
+          "y": 0,
+          "z": 1200.0
+        }
+      },
+      {
+        "zone": "orbital_ring",
+        "position": {
+          "x": 2700.0,
+          "y": 0,
+          "z": -500.0
+        }
+      },
+      {
+        "zone": "orbital_ring",
+        "position": {
+          "x": 2400.0,
+          "y": 50,
+          "z": -200.0
+        }
+      },
+      {
+        "zone": "orbital_ring",
+        "position": {
+          "x": 2100.0,
+          "y": 100,
+          "z": -499.99999999999994
+        }
+      },
+      {
+        "zone": "orbital_ring",
+        "position": {
+          "x": 2400.0,
+          "y": 150,
+          "z": -800.0
+        }
+      },
+      {
+        "zone": "construction",
+        "position": {
+          "x": 2100.0,
+          "y": 100,
+          "z": -2000.0
+        }
+      },
+      {
+        "zone": "construction",
+        "position": {
+          "x": 1800.0,
+          "y": 150,
+          "z": -1700.0
+        }
+      },
+      {
+        "zone": "construction",
+        "position": {
+          "x": 1500.0,
+          "y": 200,
+          "z": -2000.0
+        }
+      },
+      {
+        "zone": "construction",
+        "position": {
+          "x": 1800.0,
+          "y": 250,
+          "z": -2300.0
+        }
+      }
+    ],
+    "ally": [
+      {
+        "zone": "fortress",
+        "position": {
+          "x": -2023.223304703363,
+          "y": -20.0,
+          "z": 176.77669529663686
+        }
+      },
+      {
+        "zone": "fortress",
+        "position": {
+          "x": -2376.7766952966367,
+          "y": 20.0,
+          "z": -176.77669529663686
+        }
+      },
+      {
+        "zone": "mining_colony",
+        "position": {
+          "x": -1423.223304703363,
+          "y": -120.0,
+          "z": -1623.223304703363
+        }
+      },
+      {
+        "zone": "mining_colony",
+        "position": {
+          "x": -1776.776695296637,
+          "y": -80.0,
+          "z": -1976.776695296637
+        }
+      },
+      {
+        "zone": "ship_graveyard",
+        "position": {
+          "x": 2176.7766952966367,
+          "y": -70.0,
+          "z": 1676.776695296637
+        }
+      },
+      {
+        "zone": "ship_graveyard",
+        "position": {
+          "x": 1823.223304703363,
+          "y": -30.0,
+          "z": 1323.223304703363
+        }
+      },
+      {
+        "zone": "orbital_ring",
+        "position": {
+          "x": 2576.7766952966367,
+          "y": 80.0,
+          "z": -323.22330470336317
+        }
+      },
+      {
+        "zone": "orbital_ring",
+        "position": {
+          "x": 2223.2233047033633,
+          "y": 120.0,
+          "z": -676.7766952966368
+        }
+      },
+      {
+        "zone": "construction",
+        "position": {
+          "x": 1976.776695296637,
+          "y": 180.0,
+          "z": -1823.223304703363
+        }
+      },
+      {
+        "zone": "construction",
+        "position": {
+          "x": 1623.223304703363,
+          "y": 220.0,
+          "z": -2176.7766952966367
+        }
+      }
+    ]
+  },
+  "meta": {
+    "total_zones": 6,
+    "total_area": 231040000,
+    "description": "宇宙MAPの6つのゾーン配置とナビゲーション設定"
+  }
+}

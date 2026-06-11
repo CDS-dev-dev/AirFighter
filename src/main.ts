@@ -3037,12 +3037,83 @@ function clearSpaceMap() {
   spaceGateBoostTimer = 0
 }
 
-function buildSpaceMap() {
+async function loadSpaceZones(parentGroup: THREE.Group) {
+  console.log('🌌 宇宙MAPゾーンを読み込み中...')
+
+  try {
+    // ゾーン設定をJSON から読み込み
+    const response = await fetch(import.meta.env.BASE_URL + 'space_map_zones.json')
+    if (!response.ok) {
+      console.warn('⚠️ space_map_zones.json が見つかりません。プロシージャル生成のみ使用します')
+      return
+    }
+
+    const config = await response.json()
+    console.log(`📍 ${Object.keys(config.zones).length}個のゾーンを読み込み中...`)
+
+    // 各ゾーンのGLBを読み込み
+    const loadPromises: Promise<void>[] = []
+
+    for (const [zoneId, zoneConfig] of Object.entries(config.zones)) {
+      const zone = zoneConfig as any
+
+      // central_hubはGLBなし（既存の補給ステーションを使用）
+      if (!zone.glb_file) {
+        console.log(`⏭️ ${zone.name}: GLBファイルなし（スキップ）`)
+        continue
+      }
+
+      const loadPromise = (async () => {
+        try {
+          console.log(`📦 ${zone.name} (${zone.glb_file}) を読み込み中...`)
+
+          const gltf = await gltfLoader.loadAsync(import.meta.env.BASE_URL + zone.glb_file)
+          const zoneGroup = gltf.scene
+          zoneGroup.name = `Zone_${zoneId}`
+
+          // 位置・回転・スケールを適用
+          zoneGroup.position.set(zone.position.x, zone.position.y, zone.position.z)
+          zoneGroup.rotation.set(zone.rotation.x, zone.rotation.y, zone.rotation.z)
+          zoneGroup.scale.setScalar(zone.scale)
+
+          // シャドウ設定
+          zoneGroup.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              child.castShadow = !isMobileDevice
+              child.receiveShadow = !isMobileDevice
+            }
+          })
+
+          parentGroup.add(zoneGroup)
+          console.log(`✅ ${zone.name} 読み込み完了`)
+        } catch (error) {
+          console.error(`❌ ${zone.name} の読み込みに失敗:`, error)
+          // エラーでも処理を続行（プロシージャル生成で代替）
+        }
+      })()
+
+      loadPromises.push(loadPromise)
+    }
+
+    // 全てのGLB読み込みを待機
+    await Promise.all(loadPromises)
+    console.log('✅ 全ゾーンの読み込み完了')
+
+  } catch (error) {
+    console.error('❌ ゾーン設定の読み込みに失敗:', error)
+    // エラーでも処理を続行（プロシージャル生成のみ使用）
+  }
+}
+
+async function buildSpaceMap() {
   clearSpaceMap()
   const space = new THREE.Group()
   space.name = 'SpaceSectorMap'
   spaceMapGroup = space
   scene.add(space)
+
+  // GLBゾーンを読み込み
+  await loadSpaceZones(space)
 
   const starCount = isMobileDevice ? 1200 : 2600
   const starPos = new Float32Array(starCount * 3)
@@ -3347,8 +3418,8 @@ async function switchMap(map: GameMap) {
       })
     }
 
-    // 宇宙MAPを構築
-    buildSpaceMap()
+    // 宇宙MAPを構築（非同期）
+    await buildSpaceMap()
 
     // プレイヤーを宇宙MAP開始位置に配置
     player.position.set(0, 130, 420)
@@ -4673,22 +4744,21 @@ function respawnPlayer() {
 }
 
 // ===== 宇宙MAP専用：ハザード・ゲート判定 =====
-function updateSpaceHazards() {
+function updateSpaceHazards(_dt: number) {
   if (currentMap !== 'space') return
-  // 小惑星との衝突判定
-  for (const hz of spaceHazards) {
-    const dist = player.position.distanceTo(hz.pos)
-    if (dist < hz.radius + 12) {
-      // 小惑星衝突ダメージ
-      if (invincibleTimer <= 0) {
-        playerHP = Math.max(0, playerHP - 1)
-        updateHPDisplay()
-        invincibleTimer = 0.4
-        if (playerHP <= 0) {
-          respawnPlayer()
-        }
-      }
-    }
+  // 小惑星との衝突判定（押し戻しのみ、ダメージなし）
+  for (const hazard of spaceHazards) {
+    const dist = player.position.distanceTo(hazard.pos)
+    const limit = hazard.radius + 8
+    if (dist >= limit) continue
+
+    // 小惑星から押し戻す（他のMAPの地形と同じ挙動）
+    const away = player.position.clone().sub(hazard.pos)
+    if (away.lengthSq() < 0.001) away.set(0, 1, 0)
+    away.normalize()
+    player.position.addScaledVector(away, (limit - dist) * 0.6 + 3)
+    speed *= 0.85  // 速度も減衰
+    break  // 1フレームに1つの小惑星のみ処理
   }
 }
 
@@ -4998,7 +5068,7 @@ function loop() {
   // 宇宙MAPでは地形衝突判定をスキップ
   if (currentMap === 'space') {
     player.position.copy(newPos)
-    updateSpaceHazards()
+    updateSpaceHazards(dt)
     updateSpaceGates(dt)
   } else {
     // 移動先の地形高度チェック（水平方向の衝突判定）
