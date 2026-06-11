@@ -3364,6 +3364,13 @@ async function switchMap(map: GameMap) {
   if (map === 'space') {
     // ===== 宇宙MAP (SPACE SECTOR) =====
     console.log('🪐 SPACE SECTORに切り替え')
+
+    // デバッグ: 切り替え前のシーン内容を確認
+    console.log('🔍 切り替え前のシーンオブジェクト一覧:')
+    scene.children.forEach(obj => {
+      console.log(`  - ${obj.name || obj.type} (type: ${obj.type})`)
+    })
+
     scene.background = new THREE.Color(0x020513)
     scene.fog = null
     sky.visible = false
@@ -3404,12 +3411,17 @@ async function switchMap(map: GameMap) {
     }
 
     // オリジナルMAPの地面を削除
+    console.log(`🔍 ground変数: ${ground ? 'exists' : 'null'}, parent: ${ground?.parent ? 'yes' : 'no'}, name: ${ground?.name}`)
     if (ground && ground.parent) {
+      console.log('🗑️ groundを削除中...')
       scene.remove(ground)
       ground.geometry?.dispose()
       const material = ground.material
       if (Array.isArray(material)) material.forEach(mat => mat.dispose())
       else material?.dispose()
+      console.log('✅ ground削除完了')
+    } else if (ground) {
+      console.log('⚠️ groundは存在するがparentがない')
     }
 
     // 既存のオブジェクトを削除（プレイヤー・カメラ・ライト・敵機・補給ポイントは保護）
@@ -3440,6 +3452,10 @@ async function switchMap(map: GameMap) {
     }
 
     // すべて削除してメモリ解放
+    console.log(`🗑️ ${to_remove.length}個のオブジェクトを削除中...`)
+    to_remove.forEach(obj => {
+      console.log(`  削除: ${obj.name || obj.type}`)
+    })
     for (const obj of to_remove) {
       scene.remove(obj)
       obj.traverse(child => {
@@ -3451,9 +3467,16 @@ async function switchMap(map: GameMap) {
         }
       })
     }
+    console.log('✅ オブジェクト削除完了')
 
     // 宇宙MAPを構築（非同期）
     await buildSpaceMap()
+
+    // デバッグ: 切り替え後のシーン内容を確認
+    console.log('🔍 切り替え後のシーンオブジェクト一覧:')
+    scene.children.forEach(obj => {
+      console.log(`  - ${obj.name || obj.type} (type: ${obj.type})`)
+    })
 
     // プレイヤーを宇宙MAP開始位置に配置
     player.position.set(0, 130, 420)
