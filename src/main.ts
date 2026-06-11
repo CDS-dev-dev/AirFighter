@@ -117,10 +117,11 @@ const milGreen = new THREE.MeshStandardMaterial({ color: 0x3c4a28, roughness: 0.
 const radarDishes: THREE.Group[] = []  // 回転アニメ用
 
 // ===== MAP SYSTEM =====
-type GameMap = 'original' | 'tokyo'
+type GameMap = 'original' | 'tokyo' | 'space'
 let currentMap: GameMap = 'original' as GameMap  // デフォルトMAP
 let neoTokyoMapSystem: NeoTokyoMapSystem | null = null  // NEO東京MAPシステム
 let terrainGLB: THREE.Group | null = null  // terrain.glbのシーン参照
+let mapSwitchPromise: Promise<void> | null = null
 
 interface MapBounds {
   minX: number
@@ -133,6 +134,7 @@ interface MapBounds {
 const MAP_BOUNDS: Record<GameMap, MapBounds> = {
   original: { minX: -4300, maxX: 4300, minZ: -4300, maxZ: 4300, warningMargin: 550 },
   tokyo: { minX: -6800, maxX: 6800, minZ: -6800, maxZ: 6800, warningMargin: 700 },
+  space: { minX: -7600, maxX: 7600, minZ: -7600, maxZ: 7600, warningMargin: 900 },
 }
 
 // ===== TERRAIN =====
@@ -179,6 +181,7 @@ function fbm(x: number, z: number, octaves = 5): number {
 
 // MAP別地形関数の切り替え
 function terrainH(x: number, z: number): number {
+  if (currentMap === 'space') return 0
   if (currentMap === 'tokyo') {
     // NEO東京MAPシステムを使用
     return neoTokyoMapSystem ? neoTokyoMapSystem.getTerrainHeight(x, z) : 0
@@ -1330,6 +1333,21 @@ function playFlareSound() {
   src.connect(f); f.connect(g); g.connect(audioCtx.destination); src.start()
 }
 
+function playGateBoostSound() {
+  if (!audioCtx) return
+  const ctx = audioCtx
+  const osc = ctx.createOscillator()
+  osc.type = 'triangle'
+  osc.frequency.setValueAtTime(220, ctx.currentTime)
+  osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.16)
+  const g = ctx.createGain()
+  g.gain.setValueAtTime(0.0001, ctx.currentTime)
+  g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.025)
+  g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.38)
+  osc.connect(g); g.connect(ctx.destination)
+  osc.start(); osc.stop(ctx.currentTime + 0.42)
+}
+
 function playExplosionSound(scale = 1.0) {
   if (!audioCtx) return
   const buf = mkNoise(0.8); const d = buf.getChannelData(0)
@@ -1466,7 +1484,9 @@ function cycleLock() {
 // ===== ENEMIES =====
 function spawnEnemyAt(sx: number, sz: number) {
   const group = createAircraft(0xcc2222, 0x661111)
-  const spawnY = currentMap === 'tokyo'
+  const spawnY = currentMap === 'space'
+    ? THREE.MathUtils.clamp(player.position.y + (Math.random() - 0.5) * 360, -520, 620)
+    : currentMap === 'tokyo'
     ? Math.max(terrainH(sx, sz) + 240, 520 + Math.random() * 260)
     : terrainH(sx, sz) + 75 + Math.random() * 55
   group.position.set(sx, spawnY, sz)
@@ -1516,6 +1536,15 @@ function spawnEnemyAt(sx: number, sz: number) {
 }
 
 function spawnEnemy() {
+  if (currentMap === 'space') {
+    const angle = Math.random() * Math.PI * 2
+    const r = 360 + Math.random() * 380
+    spawnEnemyAt(
+      player.position.x + Math.cos(angle) * r,
+      player.position.z + Math.sin(angle) * r - 180,
+    )
+    return
+  }
   if (currentMap === 'tokyo') {
     const anchors = [
       { x: 520, z: -360 },
@@ -1533,7 +1562,9 @@ function spawnEnemy() {
 
 function spawnAlly(sx: number, sz: number) {
   const group = createAircraft(0x22cc55, 0x116633)
-  const spawnY = currentMap === 'tokyo'
+  const spawnY = currentMap === 'space'
+    ? THREE.MathUtils.clamp(player.position.y + (Math.random() - 0.5) * 240, -420, 520)
+    : currentMap === 'tokyo'
     ? Math.max(terrainH(sx, sz) + 220, 660 + Math.random() * 120)
     : terrainH(sx, sz) + 75 + Math.random() * 55
   group.position.set(sx, spawnY, sz)
@@ -2647,7 +2678,10 @@ function stopGame() {
   document.getElementById('objective-hud')!.style.display = 'none'
 }
 
-function startGame(mode: GameMode) {
+async function startGame(mode: GameMode) {
+  if (mapSwitchPromise) await mapSwitchPromise
+  const selectedMap = getActiveMapFromMenu()
+  if (selectedMap !== currentMap) await switchMapAndTrack(selectedMap)
   currentMode = mode
   missionComplete = false
   modeObjectiveKilled = 0
@@ -2684,9 +2718,14 @@ function startGame(mode: GameMode) {
       const tokyoDogfightSpawn = currentMap === 'tokyo' && neoTokyoMapSystem
         ? neoTokyoMapSystem.getSafeSpawnPosition()
         : null
+      const spaceDogfightSpawn = currentMap === 'space'
       // 敵は南側、味方・プレイヤーは北側にスポーン
       for (let i = 0; i < dfEnemyCount; i++) {
-        if (tokyoDogfightSpawn) {
+        if (spaceDogfightSpawn) {
+          const a = Math.PI + (Math.random() - 0.5) * 1.4
+          const r = 520 + Math.random() * 420
+          spawnEnemyAt(Math.cos(a) * r, -260 + Math.sin(a) * r)
+        } else if (tokyoDogfightSpawn) {
           const anchors = [
             { x: 520, z: -360 },
             { x: 940, z: 520 },
@@ -2703,7 +2742,12 @@ function startGame(mode: GameMode) {
       }
       console.log(`Spawning ${dfAllyCount} allies`)
       for (let i = 0; i < dfAllyCount; i++) {
-        if (tokyoDogfightSpawn) {
+        if (spaceDogfightSpawn) {
+          const a = (Math.random() - 0.5) * 0.9
+          const r = 180 + Math.random() * 180
+          spawnAlly(Math.cos(a) * r, 260 + Math.sin(a) * r)
+          console.log(`Ally ${i+1} spawned in space sector`)
+        } else if (tokyoDogfightSpawn) {
           const side = i % 2 === 0 ? -1 : 1
           const sx = tokyoDogfightSpawn.x + side * (220 + Math.random() * 90)
           const sz = tokyoDogfightSpawn.z + 160 + i * 120
@@ -2719,7 +2763,11 @@ function startGame(mode: GameMode) {
       }
       console.log(`Total allies after spawn: ${allies.length}`)
       // プレイヤーも味方側（北）にスポーン
-      if (tokyoDogfightSpawn) {
+      if (spaceDogfightSpawn) {
+        dfSpawnX = 0
+        dfSpawnZ = 420
+        player.position.set(0, 130, 420)
+      } else if (tokyoDogfightSpawn) {
         dfSpawnX = tokyoDogfightSpawn.x
         dfSpawnZ = tokyoDogfightSpawn.z
         player.position.set(tokyoDogfightSpawn.x, tokyoDogfightSpawn.y, tokyoDogfightSpawn.z)
@@ -2740,12 +2788,27 @@ function startGame(mode: GameMode) {
       break
     }
     case 'souryokusen':
+      if (currentMap === 'space') {
+        modeObjectiveTotal = 0
+        setObjective('軌道宙域を制圧せよ — SCORE: 0')
+        for (let i = 0; i < 7; i++) spawnEnemy()
+        speed = 220
+        break
+      }
       modeObjectiveTotal = 17  // 3艦船 + 4戦車 + 2爆撃機 + 4SAM + 3ヘリ + 浮遊空母1
       setObjective(`地上目標を破壊 0 / 17`)
       spawnSouryokusen()
       break
     case 'free':
       modeObjectiveTotal = 0
+      if (currentMap === 'space') {
+        player.position.set(0, 130, 420)
+        player.quaternion.identity()
+        camQuat.identity()
+        speed = 220
+        wheelSpeedTarget = 150
+        syncFlightReadouts()
+      }
       setObjective('フリーフライト')
       break
   }
@@ -2945,6 +3008,251 @@ const tokyoObjects: THREE.Object3D[] = []
 const originalMapGroup = new THREE.Group()
 originalMapGroup.name = 'OriginalMapStructures'
 scene.add(originalMapGroup)
+const SPACE_SUPPLY_POSITIONS = [
+  new THREE.Vector3(-620, 170, -780),
+  new THREE.Vector3(520, -95, -1080),
+  new THREE.Vector3(60, 310, -1540),
+]
+let spaceMapGroup: THREE.Group | null = null
+const rotatingSpaceObjects: THREE.Object3D[] = []
+const spaceHazards: Array<{ pos: THREE.Vector3; radius: number }> = []
+const spaceGates: Array<{ pos: THREE.Vector3; radius: number; cooldown: number }> = []
+let spaceGateBoostTimer = 0
+
+function clearSpaceMap() {
+  if (!spaceMapGroup) return
+  scene.remove(spaceMapGroup)
+  spaceMapGroup.traverse(child => {
+    if (child instanceof THREE.Mesh || child instanceof THREE.Points || child instanceof THREE.Line) {
+      child.geometry?.dispose()
+      const material = child.material
+      if (Array.isArray(material)) material.forEach(mat => mat.dispose())
+      else material?.dispose()
+    }
+  })
+  spaceMapGroup = null
+  rotatingSpaceObjects.length = 0
+  spaceHazards.length = 0
+  spaceGates.length = 0
+  spaceGateBoostTimer = 0
+}
+
+function buildSpaceMap() {
+  clearSpaceMap()
+  const space = new THREE.Group()
+  space.name = 'SpaceSectorMap'
+  spaceMapGroup = space
+  scene.add(space)
+
+  const starCount = isMobileDevice ? 1200 : 2600
+  const starPos = new Float32Array(starCount * 3)
+  const starCol = new Float32Array(starCount * 3)
+  const starPalette = [0xffffff, 0xbcd7ff, 0x88a8ff, 0xffe2aa]
+  for (let i = 0; i < starCount; i++) {
+    const radius = 2300 + Math.random() * 9200
+    const theta = Math.random() * Math.PI * 2
+    const phi = Math.acos(2 * Math.random() - 1)
+    starPos[i * 3] = Math.sin(phi) * Math.cos(theta) * radius
+    starPos[i * 3 + 1] = Math.cos(phi) * radius
+    starPos[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * radius
+    const col = new THREE.Color(starPalette[Math.floor(Math.random() * starPalette.length)])
+    const twinkle = 0.72 + Math.random() * 0.28
+    starCol[i * 3] = col.r * twinkle
+    starCol[i * 3 + 1] = col.g * twinkle
+    starCol[i * 3 + 2] = col.b * twinkle
+  }
+  const starGeo = new THREE.BufferGeometry()
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3))
+  starGeo.setAttribute('color', new THREE.BufferAttribute(starCol, 3))
+  space.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
+    size: 9, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false,
+  })))
+
+  const nebulaCount = isMobileDevice ? 260 : 620
+  const nebulaPos = new Float32Array(nebulaCount * 3)
+  const nebulaCol = new Float32Array(nebulaCount * 3)
+  for (let i = 0; i < nebulaCount; i++) {
+    const t = (i / nebulaCount) * Math.PI * 2
+    const spread = 520 + Math.random() * 1700
+    nebulaPos[i * 3] = Math.cos(t * 0.7) * spread + (Math.random() - 0.5) * 1000
+    nebulaPos[i * 3 + 1] = Math.sin(t * 1.9) * 360 + (Math.random() - 0.5) * 780
+    nebulaPos[i * 3 + 2] = -2600 + Math.sin(t) * 1700 + (Math.random() - 0.5) * 1200
+    const col = new THREE.Color(Math.random() > 0.45 ? 0x49cfff : 0xb264ff)
+    nebulaCol[i * 3] = col.r
+    nebulaCol[i * 3 + 1] = col.g
+    nebulaCol[i * 3 + 2] = col.b
+  }
+  const nebulaGeo = new THREE.BufferGeometry()
+  nebulaGeo.setAttribute('position', new THREE.BufferAttribute(nebulaPos, 3))
+  nebulaGeo.setAttribute('color', new THREE.BufferAttribute(nebulaCol, 3))
+  space.add(new THREE.Points(nebulaGeo, new THREE.PointsMaterial({
+    size: 46, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0.20,
+    depthWrite: false, blending: THREE.AdditiveBlending,
+  })))
+
+  const eclipticMat = new THREE.MeshBasicMaterial({
+    color: 0x5ce7ff, transparent: true, opacity: 0.10, side: THREE.DoubleSide, depthWrite: false,
+  })
+  for (const radius of [520, 920, 1480, 2140]) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(radius - 1.6, radius + 1.6, 180), eclipticMat)
+    ring.rotation.x = -Math.PI / 2
+    space.add(ring)
+  }
+  const axisGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-2400, 0, 0), new THREE.Vector3(2400, 0, 0),
+    new THREE.Vector3(0, 0, -2400), new THREE.Vector3(0, 0, 2400),
+    new THREE.Vector3(0, -560, 0), new THREE.Vector3(0, 560, 0),
+  ])
+  space.add(new THREE.LineSegments(axisGeo, new THREE.LineBasicMaterial({
+    color: 0x6df7ff, transparent: true, opacity: 0.22,
+  })))
+
+  const planet = new THREE.Mesh(
+    new THREE.SphereGeometry(720, 48, 32),
+    new THREE.MeshStandardMaterial({ color: 0x2f68a8, emissive: 0x061b3f, emissiveIntensity: 0.55, roughness: 0.86, metalness: 0 })
+  )
+  planet.position.set(-2550, -780, -4300)
+  space.add(planet)
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(900, 1240, 144),
+    new THREE.MeshBasicMaterial({ color: 0x8fb7ff, transparent: true, opacity: 0.24, side: THREE.DoubleSide, depthWrite: false })
+  )
+  ring.position.copy(planet.position)
+  ring.rotation.set(1.16, 0.24, -0.38)
+  space.add(ring)
+  rotatingSpaceObjects.push(planet, ring)
+
+  const moon = new THREE.Mesh(
+    new THREE.SphereGeometry(170, 28, 18),
+    new THREE.MeshStandardMaterial({ color: 0xa0a9b8, roughness: 0.92, metalness: 0.02 })
+  )
+  moon.position.set(1850, 560, -2900)
+  space.add(moon)
+  rotatingSpaceObjects.push(moon)
+
+  const asteroidGeo = new THREE.DodecahedronGeometry(1, 1)
+  const asteroidMat = new THREE.MeshStandardMaterial({ color: 0x7b7780, roughness: 0.95, metalness: 0.04, flatShading: true })
+  const hazardWarnMat = new THREE.MeshBasicMaterial({
+    color: 0xff7448, transparent: true, opacity: 0.30, side: THREE.DoubleSide, depthWrite: false,
+  })
+  const asteroidCount = isMobileDevice ? 180 : 420
+  const asteroids = new THREE.InstancedMesh(asteroidGeo, asteroidMat, asteroidCount)
+  const obj = new THREE.Object3D()
+  for (let i = 0; i < asteroidCount; i++) {
+    const angle = i * 0.34 + Math.random() * 0.55
+    const radius = 360 + Math.random() * 1700
+    const lane = Math.sin(angle * 1.7)
+    const s = Math.random() < 0.08 ? 34 + Math.random() * 48 : 5 + Math.random() * 24
+    obj.position.set(
+      Math.cos(angle) * radius + (Math.random() - 0.5) * 280,
+      lane * 210 + (Math.random() - 0.5) * 460,
+      -760 + Math.sin(angle) * radius + (Math.random() - 0.5) * 420,
+    )
+    const hazardRadius = s * 1.15 + 7
+    spaceHazards.push({ pos: obj.position.clone(), radius: hazardRadius })
+    if (s > 38) {
+      const warn = new THREE.Mesh(new THREE.TorusGeometry(hazardRadius * 1.08, 1.4, 8, 52), hazardWarnMat)
+      warn.position.copy(obj.position)
+      warn.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+      space.add(warn)
+      rotatingSpaceObjects.push(warn)
+    }
+    obj.scale.set(s * (0.75 + Math.random() * 0.8), s * (0.55 + Math.random() * 0.65), s * (0.75 + Math.random() * 0.75))
+    obj.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+    obj.updateMatrix()
+    asteroids.setMatrixAt(i, obj.matrix)
+  }
+  asteroids.instanceMatrix.needsUpdate = true
+  asteroids.castShadow = !isMobileDevice
+  asteroids.receiveShadow = !isMobileDevice
+  space.add(asteroids)
+
+  const railMat = new THREE.MeshStandardMaterial({ color: 0x9fb6c8, emissive: 0x14355a, emissiveIntensity: 0.9, roughness: 0.44, metalness: 0.72 })
+  const glowCyan = new THREE.MeshStandardMaterial({ color: 0x6df7ff, emissive: 0x00b7ff, emissiveIntensity: 2.9, roughness: 0.25, metalness: 0.25 })
+  const glowViolet = new THREE.MeshBasicMaterial({ color: 0xb05cff, transparent: true, opacity: 0.42, side: THREE.DoubleSide })
+  const laneMat = new THREE.MeshBasicMaterial({ color: 0x5ce7ff, transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false })
+
+  const navPath = [
+    new THREE.Vector3(0, 120, 160),
+    new THREE.Vector3(-120, 100, -120),
+    new THREE.Vector3(-260, 65, -430),
+    new THREE.Vector3(80, 20, -720),
+    new THREE.Vector3(420, -120, -1030),
+    new THREE.Vector3(70, 255, -1540),
+  ]
+  for (let i = 0; i < navPath.length; i++) {
+    const navRing = new THREE.Mesh(new THREE.TorusGeometry(34 + i * 4, 1.6, 8, 56), laneMat)
+    const dir = (navPath[i + 1] ?? navPath[i]).clone().sub(navPath[Math.max(0, i - 1)])
+    navRing.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.lengthSq() > 0 ? dir.normalize() : new THREE.Vector3(0, 0, -1))
+    navRing.position.copy(navPath[i])
+    space.add(navRing)
+    rotatingSpaceObjects.push(navRing)
+  }
+
+  function addGate(pos: THREE.Vector3, radius: number, rot: THREE.Euler) {
+    const gate = new THREE.Group()
+    gate.add(new THREE.Mesh(new THREE.TorusGeometry(radius, 5, 12, 96), glowCyan))
+    for (let i = 0; i < 4; i++) {
+      const p = new THREE.Mesh(new THREE.BoxGeometry(12, 26, 42), railMat)
+      const a = i * Math.PI / 2
+      p.position.set(Math.cos(a) * radius, Math.sin(a) * radius, 0)
+      p.rotation.z = a
+      gate.add(p)
+    }
+    gate.position.copy(pos)
+    gate.rotation.copy(rot)
+    space.add(gate)
+    rotatingSpaceObjects.push(gate)
+    spaceGates.push({ pos: pos.clone(), radius, cooldown: 0 })
+  }
+  addGate(new THREE.Vector3(-260, 65, -430), 86, new THREE.Euler(0.15, -0.7, 0.1))
+  addGate(new THREE.Vector3(420, -120, -1030), 112, new THREE.Euler(0.35, 0.35, 0.05))
+  addGate(new THREE.Vector3(70, 255, -1540), 126, new THREE.Euler(-0.2, 0.95, -0.25))
+
+  const station = new THREE.Group()
+  const railHub = new THREE.Mesh(new THREE.CylinderGeometry(24, 34, 130, 16), railMat)
+  railHub.rotation.z = Math.PI / 2
+  station.add(railHub)
+  for (let i = 0; i < 4; i++) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(170, 10, 12), railMat)
+    arm.rotation.z = i * Math.PI / 2
+    station.add(arm)
+    const pod = new THREE.Mesh(new THREE.BoxGeometry(24, 24, 46), glowCyan)
+    pod.position.set(Math.cos(i * Math.PI / 2) * 100, Math.sin(i * Math.PI / 2) * 100, 0)
+    station.add(pod)
+  }
+  station.position.set(-820, 130, -980)
+  station.rotation.set(0.4, -0.2, 0.7)
+  space.add(station)
+  rotatingSpaceObjects.push(station)
+  const stationLight = new THREE.PointLight(0x60e7ff, 5.8, 900)
+  stationLight.position.copy(station.position)
+  space.add(stationLight)
+
+  const rift = new THREE.Mesh(new THREE.RingGeometry(110, 190, 96), glowViolet)
+  rift.position.set(1240, 110, -1420)
+  rift.rotation.set(0.2, -0.65, 0.2)
+  space.add(rift)
+  rotatingSpaceObjects.push(rift)
+
+  for (const p of SPACE_SUPPLY_POSITIONS) {
+    const beacon = new THREE.Group()
+    beacon.add(new THREE.Mesh(new THREE.OctahedronGeometry(18), glowCyan))
+    const halo1 = new THREE.Mesh(new THREE.TorusGeometry(42, 1.8, 8, 44), glowCyan)
+    const halo2 = new THREE.Mesh(new THREE.TorusGeometry(60, 1.2, 8, 52), glowCyan)
+    halo2.rotation.y = Math.PI / 2
+    beacon.add(halo1, halo2)
+    beacon.position.copy(p)
+    space.add(beacon)
+    rotatingSpaceObjects.push(beacon)
+    const tether = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, -230, 0), new THREE.Vector3(0, 230, 0)]),
+      new THREE.LineBasicMaterial({ color: 0x6df7ff, transparent: true, opacity: 0.44 })
+    )
+    tether.position.copy(p)
+    space.add(tether)
+  }
+}
 
 // Tokyo MAP用のランドマーク配置関数
 // 新宿駅を原点(0,0)として実際の東京を再現
@@ -2953,6 +3261,82 @@ scene.add(originalMapGroup)
 
 async function switchMap(map: GameMap) {
   console.log(`🗺️ MAP切り替え開始: ${map}`)
+
+  // 宇宙MAPオブジェクトを事前にクリア
+  clearSpaceMap()
+
+  if (map === 'space') {
+    // ===== 宇宙MAP (SPACE SECTOR) =====
+    console.log('🪐 SPACE SECTORに切り替え')
+    scene.background = new THREE.Color(0x020513)
+    scene.fog = null
+    sky.visible = false
+    renderer.toneMappingExposure = 0.95
+
+    // NEO東京MAPシステムをクリーンアップ
+    if (neoTokyoMapSystem) {
+      neoTokyoMapSystem.cleanup()
+      neoTokyoMapSystem = null
+    }
+
+    // 既存のオブジェクトを削除（プレイヤー・カメラ・ライト・敵機・補給ポイントは保護）
+    const to_remove: THREE.Object3D[] = []
+    const children_copy = [...scene.children]
+
+    for (const obj of children_copy) {
+      // プレイヤー・カメラは保護
+      if (obj === player || obj === camera) continue
+
+      // ライトは保護
+      if (obj.type.includes('Light')) continue
+
+      // 敵機は保護
+      if (enemies.some(e => e.group === obj)) continue
+
+      // 味方機は保護
+      if (allies.some(a => a.group === obj)) continue
+
+      // 地上目標は保護
+      if (groundTargets.some(gt => gt.group === obj)) continue
+
+      // 補給ポイントは保護
+      if (supplyMeshes.some(sm => sm === obj || obj.parent === sm)) continue
+
+      // それ以外はすべて削除
+      to_remove.push(obj)
+    }
+
+    // すべて削除してメモリ解放
+    for (const obj of to_remove) {
+      scene.remove(obj)
+      obj.traverse(child => {
+        if (child instanceof THREE.Mesh || child instanceof THREE.Points) {
+          child.geometry?.dispose()
+          const material = child.material
+          if (Array.isArray(material)) material.forEach(mat => mat.dispose())
+          else material?.dispose()
+        }
+      })
+    }
+
+    // 宇宙MAPを構築
+    buildSpaceMap()
+
+    // プレイヤーを宇宙MAP開始位置に配置
+    player.position.set(0, 130, 420)
+    player.quaternion.identity()
+    camQuat.identity()
+    speed = 220
+
+    // 補給ポイントを宇宙MAP用に再配置
+    for (let i = 0; i < Math.min(supplyMeshes.length, SPACE_SUPPLY_POSITIONS.length); i++) {
+      SUPPLY_POSITIONS[i].copy(SPACE_SUPPLY_POSITIONS[i])
+      supplyMeshes[i].position.copy(SPACE_SUPPLY_POSITIONS[i])
+    }
+
+    console.log('✅ SPACE SECTOR切り替え完了')
+    return
+  }
 
   if (map === 'tokyo') {
     // ===== NEO東京MAP =====
@@ -3149,6 +3533,26 @@ async function switchMap(map: GameMap) {
   }
 }
 
+// MAP選択ハンドラー関数
+function getActiveMapFromMenu(): GameMap {
+  if (document.getElementById('map-btn-space')?.classList.contains('active')) return 'space'
+  if (document.getElementById('map-btn-tokyo')?.classList.contains('active')) return 'tokyo'
+  return 'original'
+}
+
+async function switchMapAndTrack(mapType: GameMap) {
+  currentMap = mapType
+  console.log(`🗺️ switchMap()呼び出し: ${currentMap}`)
+  const pendingSwitch = switchMap(currentMap)
+  mapSwitchPromise = pendingSwitch
+  try {
+    await pendingSwitch
+    console.log(`✅ switchMap()完了`)
+  } finally {
+    if (mapSwitchPromise === pendingSwitch) mapSwitchPromise = null
+  }
+}
+
 // MAP選択イベント（直接ID指定で確実に登録）
 console.log('🔧 MAP選択イベントを設定中...')
 
@@ -3158,8 +3562,11 @@ async function handleMapSwitch(mapType: GameMap) {
   // アクティブ状態の切り替え（MAPボタンのみ）
   document.getElementById('map-btn-original')?.classList.remove('active')
   document.getElementById('map-btn-tokyo')?.classList.remove('active')
+  document.getElementById('map-btn-space')?.classList.remove('active')
   if (mapType === 'tokyo') {
     document.getElementById('map-btn-tokyo')?.classList.add('active')
+  } else if (mapType === 'space') {
+    document.getElementById('map-btn-space')?.classList.add('active')
   } else {
     document.getElementById('map-btn-original')?.classList.add('active')
   }
@@ -3197,6 +3604,20 @@ if (originalBtn) {
   })
 } else {
   console.error('❌ オリジナルMAPボタンが見つかりません')
+}
+
+// 宇宙MAPボタン
+const spaceBtn = document.getElementById('map-btn-space')
+if (spaceBtn) {
+  console.log('🔧 宇宙MAPボタン登録成功')
+  spaceBtn.addEventListener('click', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    console.log('✅ 宇宙MAPボタンクリック検出！')
+    handleMapSwitch('space')
+  })
+} else {
+  console.error('❌ 宇宙MAPボタンが見つかりません')
 }
 
 // 音声設定ボタン
@@ -3242,7 +3663,7 @@ if (flightArcadeBtn && flightRealisticBtn) {
 
 // モードボタンとbackボタンのイベント
 document.querySelectorAll<HTMLElement>('.ms-start').forEach(btn => {
-  btn.addEventListener('click', () => startGame(btn.dataset.mode as GameMode))
+  btn.addEventListener('click', () => { void startGame(btn.dataset.mode as GameMode) })
 })
 document.getElementById('mc-back')!.addEventListener('click', () => {
   // ミッション完了画面からモード選択に戻る
@@ -3419,8 +3840,8 @@ function updateMissileArr(arr: HomingMissile[], dt: number, onExpire: (m: Homing
     updateHoming(arr[i], dt)
     const m = arr[i]
 
-    // 地形衝突（terrainH は数式計算のみ、無コスト）
-    if (m.mesh.position.y < terrainH(m.mesh.position.x, m.mesh.position.z) + 3) {
+    // 地形衝突（terrainH は数式計算のみ、無コスト）- 宇宙MAP以外のみ
+    if (currentMap !== 'space' && m.mesh.position.y < terrainH(m.mesh.position.x, m.mesh.position.z) + 3) {
       onExpire(m); scene.remove(m.mesh); if (m.light) scene.remove(m.light!); arr.splice(i, 1); continue
     }
 
@@ -3442,10 +3863,13 @@ function updateMissileArr(arr: HomingMissile[], dt: number, onExpire: (m: Homing
 
 function updateFlares(dt: number) {
   for (let i = flares.length - 1; i >= 0; i--) {
-    const f = flares[i]; f.vel.y -= 9 * dt; f.life -= dt
+    const f = flares[i]
+    // 宇宙MAPでは重力なし
+    if (currentMap !== 'space') f.vel.y -= 9 * dt
+    f.life -= dt
     f.mesh.position.addScaledVector(f.vel, dt)
     ;((f.mesh as THREE.Mesh).material as THREE.MeshStandardMaterial).emissiveIntensity = 4.0 + Math.random() * 3.5
-    if (f.life <= 0 || f.mesh.position.y < 1) { scene.remove(f.mesh); flares.splice(i, 1) }
+    if (f.life <= 0 || (currentMap !== 'space' && f.mesh.position.y < 1)) { scene.remove(f.mesh); flares.splice(i, 1) }
   }
 }
 
@@ -3615,21 +4039,23 @@ function updateEnemies(dt: number) {
     const oldPos = enemy.group.position.clone()
     enemy.group.position.addScaledVector(newForward, enemy.currentSpeed * dt)
 
-    // 地形からの高度を保つ（最低20m）
-    const terrainHeight = terrainH(enemy.group.position.x, enemy.group.position.z)
-    const minAlt = 20
+    // 地形からの高度を保つ（最低20m）- 宇宙MAP以外のみ
+    if (currentMap !== 'space') {
+      const terrainHeight = terrainH(enemy.group.position.x, enemy.group.position.z)
+      const minAlt = 20
 
-    if (enemy.group.position.y < terrainHeight + minAlt) {
-      // 地面に近すぎる：上昇
-      enemy.group.position.y = terrainHeight + minAlt
-    } else if (!isEvading && enemy.group.position.y > terrainHeight + 120) {
-      // 高すぎる：徐々に降下
-      enemy.group.position.y -= 30 * dt
-    } else if (!isEvading && !enemy.seekingSupply) {
-      // 通常時：目標高度に近づける
-      const targetAlt = target.position.y + enemy.preferredHeightOffset
-      const heightDiff = targetAlt - enemy.group.position.y
-      enemy.group.position.y += heightDiff * 0.5 * dt
+      if (enemy.group.position.y < terrainHeight + minAlt) {
+        // 地面に近すぎる：上昇
+        enemy.group.position.y = terrainHeight + minAlt
+        } else if (!isEvading && enemy.group.position.y > terrainHeight + 120) {
+        // 高すぎる：徐々に降下
+        enemy.group.position.y -= 30 * dt
+      } else if (!isEvading && !enemy.seekingSupply) {
+        // 通常時：目標高度に近づける
+        const targetAlt = target.position.y + enemy.preferredHeightOffset
+        const heightDiff = targetAlt - enemy.group.position.y
+        enemy.group.position.y += heightDiff * 0.5 * dt
+      }
     }
 
     // 速度ベクトル記録（マシンガン予測用）
@@ -3686,7 +4112,10 @@ function updateExplosions(dt: number) {
   for (let i = explosions.length - 1; i >= 0; i--) {
     const ex = explosions[i]; ex.life -= dt
     for (const p of ex.particles) {
-      p.mesh.position.addScaledVector(p.vel, dt); p.vel.y -= 5 * dt; p.vel.multiplyScalar(0.94)
+      p.mesh.position.addScaledVector(p.vel, dt)
+      // 宇宙MAPでは重力なし
+      if (currentMap !== 'space') p.vel.y -= 5 * dt
+      p.vel.multiplyScalar(0.94)
       const mat = p.mesh.material as THREE.MeshStandardMaterial
       mat.opacity = Math.max(0, ex.life / 1.3); mat.emissiveIntensity = ex.life * 3.5
     }
@@ -4170,8 +4599,14 @@ function respawnPlayer() {
   let rz = currentMode === 'dogfight' ? dfSpawnZ : 500
   let ry = 200
 
+  // 宇宙MAPの場合
+  if (currentMap === 'space') {
+    rx = 0
+    ry = 130
+    rz = 420
+  }
   // 東京MAPの場合は安全なスポーン位置を使用
-  if (currentMap === 'tokyo' && neoTokyoMapSystem) {
+  else if (currentMap === 'tokyo' && neoTokyoMapSystem) {
     const safePos = neoTokyoMapSystem.getSafeSpawnPosition()
     rx = safePos.x
     ry = safePos.y
@@ -4201,6 +4636,40 @@ function respawnPlayer() {
     scene.remove(enemyMissiles[i].mesh); enemyMissiles.splice(i, 1)
   }
   updateHPDisplay()
+}
+
+// ===== 宇宙MAP専用：ハザード・ゲート判定 =====
+function updateSpaceHazards() {
+  if (currentMap !== 'space') return
+  // 小惑星との衝突判定
+  for (const hz of spaceHazards) {
+    const dist = player.position.distanceTo(hz.pos)
+    if (dist < hz.radius + 12) {
+      // 小惑星衝突ダメージ
+      if (invincibleTimer <= 0) {
+        playerHP = Math.max(0, playerHP - 1)
+        updateHPDisplay()
+        invincibleTimer = 0.4
+        if (playerHP <= 0) {
+          respawnPlayer()
+        }
+      }
+    }
+  }
+}
+
+function updateSpaceGates(dt: number) {
+  if (currentMap !== 'space') return
+  for (const gate of spaceGates) {
+    gate.cooldown = Math.max(0, gate.cooldown - dt)
+    const dist = player.position.distanceTo(gate.pos)
+    // ゲートを通過するとブースト効果
+    if (dist < gate.radius && gate.cooldown <= 0) {
+      spaceGateBoostTimer = 3.5
+      playGateBoostSound()
+      gate.cooldown = 4.2
+    }
+  }
 }
 
 // ===== SUPPLY POINTS =====
@@ -4254,6 +4723,12 @@ function updateGunLeadIndicator() {
   } else {
     gunLeadReticleEl.style.display = 'none'
   }
+}
+
+// ===== HUD更新関数 =====
+function syncFlightReadouts() {
+  speedEl.textContent = Math.round(speed * 3.6).toString()
+  altEl.textContent = Math.round(player.position.y).toString()
 }
 
 // ===== RADAR =====
@@ -4357,6 +4832,28 @@ function drawRadar() {
     ctx.beginPath(); ctx.moveTo(px, py-3); ctx.lineTo(px+2.5, py+2); ctx.lineTo(px-2.5, py+2); ctx.closePath(); ctx.fill()
   }
 
+  // 宇宙MAP：垂直キュー表示（ゲートと補給ポイント）
+  if (currentMap === 'space') {
+    for (const gate of spaceGates) {
+      const hdist = Math.sqrt((gate.pos.x - player.position.x) ** 2 + (gate.pos.z - player.position.z) ** 2)
+      if (hdist < RADAR_RANGE) {
+        const [px, py] = worldToRadar(gate.pos)
+        const vdiff = gate.pos.y - player.position.y
+        ctx.strokeStyle = vdiff > 10 ? '#0cf' : (vdiff < -10 ? '#0cf' : '#0af')
+        ctx.lineWidth = 1.2
+        ctx.setLineDash([2, 2])
+        ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.stroke()
+        ctx.setLineDash([])
+        if (Math.abs(vdiff) > 15) {
+          ctx.fillStyle = '#0cf'
+          ctx.font = 'bold 9px monospace'
+          ctx.textAlign = 'center'
+          ctx.fillText(vdiff > 0 ? '↑' : '↓', px, py + 3)
+        }
+      }
+    }
+  }
+
   // 自機（水色矢印）
   ctx.fillStyle = '#4cf'
   ctx.beginPath(); ctx.moveTo(cx, cy-6); ctx.lineTo(cx+4, cy+4); ctx.lineTo(cx, cy+1); ctx.lineTo(cx-4, cy+4); ctx.closePath(); ctx.fill()
@@ -4390,7 +4887,7 @@ function loop() {
     lastSpaceTime = now2
   }
   const brake = touchState.brake || decelerateMode
-  const boost = (!!keys['Space'] || touchState.boost) && !brake
+  const boost = (!!keys['Space'] || touchState.boost || spaceGateBoostTimer > 0) && !brake
   const boostTarget = brake ? 50 : (boost ? 550 : wheelSpeedTarget)  // 減速50m/s、ブースト550m/s（1,980km/h）
   speed += (boostTarget - speed) * dt * 2.2
   if (!boost && !decelerateMode) wheelSpeedTarget += (150 - wheelSpeedTarget) * dt * 0.4  // 巡航速度150に自動復帰
@@ -4403,6 +4900,9 @@ function loop() {
     flareBurstTimer -= dt
     if (flareBurstTimer <= 0) { _dropSingleFlare(); flareBurstLeft--; flareBurstTimer = 0.18 }
   }
+
+  // === SPACE GATE BOOST TIMER ===
+  spaceGateBoostTimer = Math.max(0, spaceGateBoostTimer - dt)
 
   // === FLIGHT INPUT ===
   const DEAD = 0.04
@@ -4448,8 +4948,8 @@ function loop() {
     }
   }
 
-  // 自動水平復帰（ロールのみ・ピッチは補正しない）
-  if (Math.abs(yawInput) < 0.05) {
+  // 自動水平復帰（ロールのみ・ピッチは補正しない）- 宇宙MAP以外のみ
+  if (currentMap !== 'space' && Math.abs(yawInput) < 0.05) {
     _sEuler.setFromQuaternion(player.quaternion, 'YXZ')
     _sEuler.z *= Math.exp(-dt * 3.5)
     player.quaternion.setFromEuler(_sEuler)
@@ -4461,45 +4961,52 @@ function loop() {
   const moveVec = _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(speed * dt)
   const newPos = prevPos.clone().add(moveVec)
 
-  // 移動先の地形高度チェック（水平方向の衝突判定）
-  const newTerrainHeight = terrainH(newPos.x, newPos.z) + 10
-
-  // 移動先が地形より低い場合は、地形に沿って移動
-  if (newPos.y < newTerrainHeight) {
-    // 地形に衝突する場合
-    const oldTerrainHeight = terrainH(prevPos.x, prevPos.z) + 10
-
-    // 現在位置も地形より低い場合は、地形上に押し出す
-    if (prevPos.y < oldTerrainHeight) {
-      player.position.set(prevPos.x, oldTerrainHeight, prevPos.z)
-    } else {
-      // 衝突を避けるため、移動を制限（地形に沿ってスライド）
-      const slidePos = prevPos.clone()
-      slidePos.x = newPos.x
-      slidePos.z = newPos.z
-      const slideTerrainHeight = terrainH(slidePos.x, slidePos.z) + 10
-
-      if (slidePos.y >= slideTerrainHeight) {
-        // 水平方向のみ移動可能
-        player.position.copy(slidePos)
-      } else {
-        // 移動不可、現在位置を維持
-        player.position.copy(prevPos)
-      }
-    }
-
-    // 地形衝突時は視覚フィードバックのみ（リスポーンなし）
-    hitFlashTimer = 0.3
-  } else {
-    // 通常移動
+  // 宇宙MAPでは地形衝突判定をスキップ
+  if (currentMap === 'space') {
     player.position.copy(newPos)
+    updateSpaceHazards()
+    updateSpaceGates(dt)
+  } else {
+    // 移動先の地形高度チェック（水平方向の衝突判定）
+    const newTerrainHeight = terrainH(newPos.x, newPos.z) + 10
 
-    // 移動後の高度チェック（下方への衝突）
-    const minAltitude = terrainH(player.position.x, player.position.z) + 10
-    if (player.position.y < minAltitude) {
-      player.position.y = minAltitude
-      // 地形衝突時は視覚フィードバックのみ
+    // 移動先が地形より低い場合は、地形に沿って移動
+    if (newPos.y < newTerrainHeight) {
+      // 地形に衝突する場合
+      const oldTerrainHeight = terrainH(prevPos.x, prevPos.z) + 10
+
+      // 現在位置も地形より低い場合は、地形上に押し出す
+      if (prevPos.y < oldTerrainHeight) {
+        player.position.set(prevPos.x, oldTerrainHeight, prevPos.z)
+      } else {
+        // 衝突を避けるため、移動を制限（地形に沿ってスライド）
+        const slidePos = prevPos.clone()
+        slidePos.x = newPos.x
+        slidePos.z = newPos.z
+        const slideTerrainHeight = terrainH(slidePos.x, slidePos.z) + 10
+
+        if (slidePos.y >= slideTerrainHeight) {
+          // 水平方向のみ移動可能
+          player.position.copy(slidePos)
+        } else {
+          // 移動不可、現在位置を維持
+          player.position.copy(prevPos)
+        }
+      }
+
+      // 地形衝突時は視覚フィードバックのみ（リスポーンなし）
       hitFlashTimer = 0.3
+    } else {
+      // 通常移動
+      player.position.copy(newPos)
+
+      // 移動後の高度チェック（下方への衝突）
+      const minAltitude = terrainH(player.position.x, player.position.z) + 10
+      if (player.position.y < minAltitude) {
+        player.position.y = minAltitude
+        // 地形衝突時は視覚フィードバックのみ
+        hitFlashTimer = 0.3
+      }
     }
   }
 
@@ -4716,8 +5223,23 @@ function loop() {
   updateMissileTrails(dt)
   updateContrails()
   if (currentMode !== null) updateSupplyPoints(dt)
+
+  // 宇宙MAPオブジェクトの回転アニメーション
+  for (const obj of rotatingSpaceObjects) {
+    obj.rotation.y += dt * 0.12
+  }
+
+  // HUD更新
+  syncFlightReadouts()
+
   if (currentMode === 'dogfight') setObjective(`敵機を撃墜せよ — SCORE: ${score}`)
-  if (currentMode === 'souryokusen') setObjective(`地上目標を破壊 ${modeObjectiveKilled} / ${modeObjectiveTotal} — SCORE: ${score}`)
+  if (currentMode === 'souryokusen') {
+    if (currentMap === 'space') {
+      setObjective(`宙域制圧作戦 — 敵艦隊を殲滅せよ ${modeObjectiveKilled} / ${modeObjectiveTotal} — SCORE: ${score}`)
+    } else {
+      setObjective(`地上目標を破壊 ${modeObjectiveKilled} / ${modeObjectiveTotal} — SCORE: ${score}`)
+    }
+  }
 
   // ── リスポーンカウントダウン ──────────────────────────
   if (respawnTimer > 0) {
