@@ -3279,6 +3279,34 @@ async function switchMap(map: GameMap) {
       neoTokyoMapSystem = null
     }
 
+    // オリジナルMAPの地形を削除
+    if (terrainGLB) {
+      scene.remove(terrainGLB)
+      terrainGLB.traverse(child => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry?.dispose()
+          const material = child.material
+          if (Array.isArray(material)) material.forEach(mat => mat.dispose())
+          else material?.dispose()
+        }
+      })
+      terrainGLB = null
+    }
+
+    // オリジナルMAPの構造物を削除
+    if (originalMapGroup && originalMapGroup.parent) {
+      scene.remove(originalMapGroup)
+      originalMapGroup.traverse(child => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry?.dispose()
+          const material = child.material
+          if (Array.isArray(material)) material.forEach(mat => mat.dispose())
+          else material?.dispose()
+        }
+      })
+      originalMapGroup.clear()
+    }
+
     // 既存のオブジェクトを削除（プレイヤー・カメラ・ライト・敵機・補給ポイントは保護）
     const to_remove: THREE.Object3D[] = []
     const children_copy = [...scene.children]
@@ -3345,6 +3373,9 @@ async function switchMap(map: GameMap) {
     scene.fog = new THREE.FogExp2(0x214a68, 0.000055)
     sky.visible = false
     renderer.toneMappingExposure = 0.7
+
+    // 宇宙MAPを削除
+    clearSpaceMap()
 
     // ステップ1: オリジナルMAPのすべてのオブジェクトを削除
     const to_remove: THREE.Object3D[] = []
@@ -3461,6 +3492,9 @@ async function switchMap(map: GameMap) {
       neoTokyoMapSystem.cleanup()
       neoTokyoMapSystem = null
     }
+
+    // 宇宙MAPを削除
+    clearSpaceMap()
 
     // 東京オブジェクトをクリア（念のため）
     tokyoObjects.forEach(obj => {
@@ -5292,7 +5326,10 @@ function loop() {
     .add(player.position)
     .add(new THREE.Vector3((Math.random() - 0.5) * _sk, (Math.random() - 0.5) * _sk, 0))
   camera.position.lerp(desiredCamPos, 0.12)
-  const playerUp = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion)
+  // バレルロール中はカメラを水平に保つ（機体のロールに追従しない）
+  const playerUp = barrelRollState.active
+    ? new THREE.Vector3(0, 1, 0)
+    : new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion)
   const lookM = new THREE.Matrix4().lookAt(camera.position, player.position, playerUp)
   const tQ = new THREE.Quaternion().setFromRotationMatrix(lookM)
   if (camQuat.dot(tQ) < 0) { tQ.x = -tQ.x; tQ.y = -tQ.y; tQ.z = -tQ.z; tQ.w = -tQ.w }
