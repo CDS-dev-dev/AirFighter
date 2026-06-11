@@ -3410,12 +3410,6 @@ async function switchMap(map: GameMap) {
     // ===== 宇宙MAP (SPACE SECTOR) =====
     console.log('🪐 SPACE SECTORに切り替え')
 
-    // デバッグ: 切り替え前のシーン内容を確認
-    console.log('🔍 切り替え前のシーンオブジェクト一覧:')
-    scene.children.forEach(obj => {
-      console.log(`  - ${obj.name || obj.type} (type: ${obj.type})`)
-    })
-
     scene.background = new THREE.Color(0x020513)
     scene.fog = null
     sky.visible = false
@@ -3456,9 +3450,7 @@ async function switchMap(map: GameMap) {
     }
 
     // オリジナルMAPの地面を削除
-    console.log(`🔍 ground変数: ${ground ? 'exists' : 'null'}, parent: ${ground?.parent ? 'yes' : 'no'}, name: ${ground?.name}`)
     if (ground) {
-      console.log('🗑️ groundを削除中...')
       if (ground.parent) {
         scene.remove(ground)
       }
@@ -3466,15 +3458,13 @@ async function switchMap(map: GameMap) {
       const material = ground.material
       if (Array.isArray(material)) material.forEach(mat => mat.dispose())
       else material?.dispose()
-      ground = null as any  // 参照をクリア
-      console.log('✅ ground削除完了（参照をnullに設定）')
+      ground = null as any
     }
 
     // オリジナルMAPの水面・岩・木を削除
     const originalMapMeshes = [waterMesh, boulderIM, trunkIM, foliIM, foli2IM]
     for (const mesh of originalMapMeshes) {
       if (mesh && mesh.parent) {
-        console.log(`🗑️ オリジナルMAP要素削除: ${mesh.name || mesh.type}`)
         scene.remove(mesh)
       }
     }
@@ -3484,7 +3474,6 @@ async function switchMap(map: GameMap) {
     for (const name of originalNames) {
       const obj = scene.getObjectByName(name)
       if (obj) {
-        console.log(`🗑️ 名前検索で削除: ${name}`)
         scene.remove(obj)
         obj.traverse(child => {
           if (child instanceof THREE.Mesh) {
@@ -3527,7 +3516,6 @@ async function switchMap(map: GameMap) {
       if (obj instanceof THREE.Mesh) {
         const name = obj.name.toLowerCase()
         if (name.includes('ground') || name.includes('terrain') || name.includes('originalground')) {
-          console.log(`🗑️ 地形Mesh検出: ${obj.name} - 強制削除`)
           to_remove.push(obj)
           continue
         }
@@ -3536,7 +3524,6 @@ async function switchMap(map: GameMap) {
           // @ts-ignore
           const params = obj.geometry.parameters
           if (params && (params.width > 1000 || params.height > 1000)) {
-            console.log(`🗑️ 大型Plane検出: サイズ ${params.width}x${params.height} - 強制削除`)
             to_remove.push(obj)
             continue
           }
@@ -3548,10 +3535,6 @@ async function switchMap(map: GameMap) {
     }
 
     // すべて削除してメモリ解放
-    console.log(`🗑️ ${to_remove.length}個のオブジェクトを削除中...`)
-    to_remove.forEach(obj => {
-      console.log(`  削除: ${obj.name || obj.type}`)
-    })
     for (const obj of to_remove) {
       scene.remove(obj)
       obj.traverse(child => {
@@ -3563,16 +3546,9 @@ async function switchMap(map: GameMap) {
         }
       })
     }
-    console.log('✅ オブジェクト削除完了')
 
     // 宇宙MAPを構築（非同期）
     await buildSpaceMap()
-
-    // デバッグ: 切り替え後のシーン内容を確認
-    console.log('🔍 切り替え後のシーンオブジェクト一覧:')
-    scene.children.forEach(obj => {
-      console.log(`  - ${obj.name || obj.type} (type: ${obj.type})`)
-    })
 
     // プレイヤーを宇宙MAP開始位置に配置
     player.position.set(0, 130, 420)
@@ -3641,15 +3617,8 @@ async function switchMap(map: GameMap) {
       to_remove.push(obj)
     }
 
-    console.log(`🗑️ 削除対象オブジェクト数: ${to_remove.length}個`)
-
-    // 削除するオブジェクトの名前をログ出力
-    const objectNames = to_remove.map(o => o.name || o.type).join(', ')
-    console.log(`🗑️ 削除対象: ${objectNames}`)
-
     // すべて削除してメモリ解放
     for (const obj of to_remove) {
-      console.log(`  - 削除: ${obj.name || obj.type}`)
       scene.remove(obj)
 
       // 再帰的にメモリ解放
@@ -3668,14 +3637,6 @@ async function switchMap(map: GameMap) {
         }
       })
     }
-
-    console.log('✅ オリジナルMAP完全削除完了')
-
-    // 削除後のシーン確認
-    console.log('🔍 削除後のシーン内容:')
-    scene.children.forEach(obj => {
-      console.log(`  - 残存: ${obj.name || obj.type}`)
-    })
 
     // ステップ2: NEO東京MAPを初期化
     if (!neoTokyoMapSystem) {
