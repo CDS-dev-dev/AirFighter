@@ -3412,16 +3412,44 @@ async function switchMap(map: GameMap) {
 
     // オリジナルMAPの地面を削除
     console.log(`🔍 ground変数: ${ground ? 'exists' : 'null'}, parent: ${ground?.parent ? 'yes' : 'no'}, name: ${ground?.name}`)
-    if (ground && ground.parent) {
+    if (ground) {
       console.log('🗑️ groundを削除中...')
-      scene.remove(ground)
+      if (ground.parent) {
+        scene.remove(ground)
+      }
       ground.geometry?.dispose()
       const material = ground.material
       if (Array.isArray(material)) material.forEach(mat => mat.dispose())
       else material?.dispose()
-      console.log('✅ ground削除完了')
-    } else if (ground) {
-      console.log('⚠️ groundは存在するがparentがない')
+      ground = null as any  // 参照をクリア
+      console.log('✅ ground削除完了（参照をnullに設定）')
+    }
+
+    // オリジナルMAPの水面・岩・木を削除
+    const originalMapMeshes = [waterMesh, boulderIM, trunkIM, foliIM, foli2IM]
+    for (const mesh of originalMapMeshes) {
+      if (mesh && mesh.parent) {
+        console.log(`🗑️ オリジナルMAP要素削除: ${mesh.name || mesh.type}`)
+        scene.remove(mesh)
+      }
+    }
+
+    // 名前で検索して削除（OriginalGround, OriginalRockPillar等）
+    const originalNames = ['OriginalGround', 'OriginalRockPillar', 'OriginalRockTower', 'OriginalRockArch']
+    for (const name of originalNames) {
+      const obj = scene.getObjectByName(name)
+      if (obj) {
+        console.log(`🗑️ 名前検索で削除: ${name}`)
+        scene.remove(obj)
+        obj.traverse(child => {
+          if (child instanceof THREE.Mesh) {
+            child.geometry?.dispose()
+            const mat = child.material
+            if (Array.isArray(mat)) mat.forEach(m => m.dispose())
+            else mat?.dispose()
+          }
+        })
+      }
     }
 
     // 既存のオブジェクトを削除（プレイヤー・カメラ・ライト・敵機・補給ポイントは保護）
@@ -3446,6 +3474,29 @@ async function switchMap(map: GameMap) {
 
       // 補給ポイントは保護
       if (supplyMeshes.some(sm => sm === obj || obj.parent === sm)) continue
+
+      // 宇宙MAPグループは保護（既にクリア済み）
+      if (obj.name === 'SpaceSectorMap') continue
+
+      // 地形らしきMeshは強制削除（名前やジオメトリで判定）
+      if (obj instanceof THREE.Mesh) {
+        const name = obj.name.toLowerCase()
+        if (name.includes('ground') || name.includes('terrain') || name.includes('originalground')) {
+          console.log(`🗑️ 地形Mesh検出: ${obj.name} - 強制削除`)
+          to_remove.push(obj)
+          continue
+        }
+        // PlaneGeometryで大きなサイズのものは地形の可能性が高い
+        if (obj.geometry instanceof THREE.PlaneGeometry) {
+          // @ts-ignore
+          const params = obj.geometry.parameters
+          if (params && (params.width > 1000 || params.height > 1000)) {
+            console.log(`🗑️ 大型Plane検出: サイズ ${params.width}x${params.height} - 強制削除`)
+            to_remove.push(obj)
+            continue
+          }
+        }
+      }
 
       // それ以外はすべて削除
       to_remove.push(obj)
