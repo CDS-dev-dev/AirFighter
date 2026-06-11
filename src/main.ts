@@ -196,10 +196,18 @@ function terrainH(x: number, z: number): number {
   h += Math.exp(-((x - 1000) ** 2/ 400000 + (z - 200) ** 2  / 800000)) * 450
   h += Math.exp(-((x + 1200) ** 2/ 500000 + (z + 400) ** 2  / 600000)) * 550
 
+  // 中央巨大岩山（高さ600m、直径400m）
+  const distToCenter = Math.sqrt(x ** 2 + z ** 2)
+  if (distToCenter < 200) {
+    h += 600 * Math.exp(-((distToCenter / 120) ** 2))
+  }
+
   const crossX = Math.abs(x)
   const crossZ = Math.abs(z)
-  if (crossX < 200) h -= 500 * Math.exp(-((crossX / 100) ** 2))
-  if (crossZ < 200) h -= 500 * Math.exp(-((crossZ / 100) ** 2))
+  // X軸峡谷
+  if (crossX < 200 && Math.abs(z) > 250) h -= 500 * Math.exp(-((crossX / 100) ** 2))
+  // Z軸峡谷
+  if (crossZ < 200 && Math.abs(x) > 250) h -= 500 * Math.exp(-((crossZ / 100) ** 2))
 
   for (let i = 0; i < 4; i++) {
     const angle = (i / 4) * Math.PI * 2
@@ -3033,9 +3041,9 @@ const originalMapGroup = new THREE.Group()
 originalMapGroup.name = 'OriginalMapStructures'
 scene.add(originalMapGroup)
 const SPACE_SUPPLY_POSITIONS = [
-  new THREE.Vector3(-500, 200, -350),  // 上層・西側（建造現場近く）
-  new THREE.Vector3(600, -120, -650),  // 下層・東側（墓場近く）
-  new THREE.Vector3(0, 120, 50),       // 中央・要塞手前
+  new THREE.Vector3(-320, 240, -400),  // 上層・建造現場内
+  new THREE.Vector3(360, -40, -570),   // 下層・墓場エリア
+  new THREE.Vector3(0, 120, 50),       // 中央回廊・スタート付近
 ]
 let spaceMapGroup: THREE.Group | null = null
 const rotatingSpaceObjects: THREE.Object3D[] = []
@@ -3257,32 +3265,54 @@ async function buildSpaceMap() {
   const obj = new THREE.Object3D()
 
   for (let i = 0; i < asteroidCount; i++) {
-    // 3レイヤー構造：上層(Y: 150-300)、中層(Y: 0-150)、下層(Y: -200-0)
+    // 3レイヤー構造：上層、中層、下層
     const layer = i % 3
     let baseY = 0
-    if (layer === 0) baseY = 200 + Math.random() * 100  // 上層
-    else if (layer === 1) baseY = 50 + Math.random() * 100  // 中層
-    else baseY = -150 + Math.random() * 100  // 下層
+    if (layer === 0) baseY = 220 + Math.random() * 80      // 上層(Y: 200-300)
+    else if (layer === 1) baseY = 80 + Math.random() * 70  // 中層(Y: 50-150)
+    else baseY = -120 + Math.random() * 80                 // 下層(Y: -150-0)
 
-    // 回廊構造：中心から放射状に配置、中央に空間を確保
+    // 中央安全回廊（幅200m、Z方向）を確保
     const angle = (i / asteroidCount) * Math.PI * 2 + Math.random() * 0.5
-    const distFromCenter = 300 + Math.random() * 700  // 300m-1000m圏
+    const distFromCenter = 350 + Math.random() * 650
 
-    // サイズ：外周ほど大きく、危険度アップ
-    const distFactor = (distFromCenter - 300) / 700
-    const s = Math.random() < 0.05 + distFactor * 0.1
-      ? 30 + Math.random() * 50  // 大型
-      : 4 + Math.random() * 18   // 小型
+    let x = Math.cos(angle) * distFromCenter
+    let z = -200 + Math.sin(angle) * distFromCenter
 
-    const x = Math.cos(angle) * distFromCenter + (Math.random() - 0.5) * 150
-    const z = -200 + Math.sin(angle) * distFromCenter + (Math.random() - 0.5) * 150
-    const y = baseY + (Math.random() - 0.5) * 80
+    // 中央回廊（X: -100 to 100、全Z）は小惑星なし
+    const isInCentralCorridor = Math.abs(x) < 100
+    if (isInCentralCorridor) {
+      // 回廊外に押し出す
+      x = x < 0 ? -120 - Math.random() * 200 : 120 + Math.random() * 200
+    }
 
-    // 中央航路（要塞への直線）を確保
-    const isCentralCorridor = Math.abs(x) < 120 && z > -400 && z < 500
-    if (isCentralCorridor && s > 25) continue  // 大型は配置しない
+    // 左右に壁のように密集配置
+    const isWallZone = Math.abs(x) > 250 && Math.abs(x) < 500
+    const distFactor = Math.abs(x) / 500
 
-    obj.position.set(x, y, z)
+    // サイズ：壁エリアは大型多め
+    const s = (isWallZone && Math.random() < 0.15) || (distFactor > 0.7 && Math.random() < 0.1)
+      ? 28 + Math.random() * 45  // 大型
+      : 4 + Math.random() * 16   // 小型
+
+    // 縦穴3箇所（レイヤー間移動用）：小惑星を避ける
+    const verticalShafts = [
+      { x: -350, z: -400, radius: 80 },  // 左奥
+      { x: 350, z: -600, radius: 80 },   // 右奥
+      { x: 0, z: -800, radius: 90 },     // 中央奥
+    ]
+    let inShaft = false
+    for (const shaft of verticalShafts) {
+      const distToShaft = Math.sqrt((x - shaft.x) ** 2 + (z - shaft.z) ** 2)
+      if (distToShaft < shaft.radius && s > 20) {
+        inShaft = true
+        break
+      }
+    }
+    if (inShaft) continue
+
+    const y = baseY + (Math.random() - 0.5) * 60
+    obj.position.set(x + (Math.random() - 0.5) * 80, y, z + (Math.random() - 0.5) * 80)
 
     const hazardRadius = s * 1.15 + 7
     spaceHazards.push({ pos: obj.position.clone(), radius: hazardRadius })
@@ -3315,13 +3345,14 @@ async function buildSpaceMap() {
   const laneMat = new THREE.MeshBasicMaterial({ color: 0x5ce7ff, transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false })
 
   const navPath = [
-    new THREE.Vector3(0, 130, 420),     // スタート地点
-    new THREE.Vector3(0, 100, 100),     // 第一ゲート（要塞手前）
-    new THREE.Vector3(-400, 50, -400),  // 左下へ（採掘エリア）
-    new THREE.Vector3(500, -50, -600),  // 右下へ（墓場エリア）
-    new THREE.Vector3(600, 180, -300),  // 右上へ（リング都市）
-    new THREE.Vector3(-500, 220, -400), // 左上へ（建造現場）
-    new THREE.Vector3(0, 100, -200),    // 要塞に戻る
+    new THREE.Vector3(0, 130, 420),      // スタート地点
+    new THREE.Vector3(0, 100, 100),      // 第一ゲート（要塞手前）
+    new THREE.Vector3(0, 90, -350),      // 要塞中心（トンネル内）
+    new THREE.Vector3(-350, -50, -500),  // 左下・採掘コロニー
+    new THREE.Vector3(0, 0, -600),       // 中央回廊・中層
+    new THREE.Vector3(350, -30, -600),   // 右下・墓場
+    new THREE.Vector3(0, 240, -700),     // 上昇・リング都市内部
+    new THREE.Vector3(-330, 240, -450),  // 左上・建造現場
   ]
   for (let i = 0; i < navPath.length; i++) {
     const navRing = new THREE.Mesh(new THREE.TorusGeometry(34 + i * 4, 1.6, 8, 56), laneMat)
