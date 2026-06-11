@@ -23,7 +23,7 @@ function getEffectiveSize() {
 const { w: initW, h: initH } = getEffectiveSize()
 
 // ===== RENDERER =====
-const isMobileDevice = navigator.maxTouchPoints > 0
+const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 const renderer = new THREE.WebGLRenderer({ antialias: !isMobileDevice, powerPreference: 'high-performance' })
 renderer.setSize(initW, initH)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobileDevice ? 1.5 : 2))
