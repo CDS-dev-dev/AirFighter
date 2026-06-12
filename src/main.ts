@@ -3176,6 +3176,8 @@ const ZONE_COLORS: Record<string, number> = {
   orbital_ring: 0x4488ff,  // blue
   construction: 0xffdd44   // yellow
 }
+let currentZone: string | null = null  // 現在いるゾーン
+let zoneDisplayTimer = 0  // ゾーン名表示タイマー
 
 function clearSpaceMap() {
   if (!spaceMapGroup) return
@@ -3678,14 +3680,18 @@ async function buildSpaceMap() {
   const laneMat = new THREE.MeshBasicMaterial({ color: 0x5ce7ff, transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false })
 
   const navPath = [
-    new THREE.Vector3(0, 130, 420),      // スタート地点
-    new THREE.Vector3(0, 100, 100),      // 第一ゲート（要塞手前）
-    new THREE.Vector3(0, 90, -350),      // 要塞中心（トンネル内）
-    new THREE.Vector3(-350, -50, -500),  // 左下・採掘コロニー
-    new THREE.Vector3(0, 0, -600),       // 中央回廊・中層
-    new THREE.Vector3(350, -30, -600),   // 右下・墓場
-    new THREE.Vector3(0, 240, -700),     // 上昇・リング都市内部
-    new THREE.Vector3(-330, 240, -450),  // 左上・建造現場
+    new THREE.Vector3(0, 50, 0),          // 補給ステーション
+    new THREE.Vector3(0, 30, -600),       // 要塞手前
+    new THREE.Vector3(0, 0, -1800),       // 要塞中心
+    new THREE.Vector3(-1000, -150, -1650), // 採掘コロニーへ
+    new THREE.Vector3(-2000, -250, -1500), // 採掘コロニー
+    new THREE.Vector3(0, -100, -1800),    // 要塞下層経由
+    new THREE.Vector3(1050, -150, -1700), // 船墓場へ
+    new THREE.Vector3(2100, -200, -1600), // 船墓場
+    new THREE.Vector3(0, 100, -2100),     // リング手前上昇
+    new THREE.Vector3(0, 350, -2400),     // 軌道リング
+    new THREE.Vector3(-900, 350, 0),      // 建造現場へ
+    new THREE.Vector3(-1800, 350, 1600),  // 建造現場
   ]
   for (let i = 0; i < navPath.length; i++) {
     const navRing = new THREE.Mesh(new THREE.TorusGeometry(34 + i * 4, 1.6, 8, 56), laneMat)
@@ -3712,9 +3718,12 @@ async function buildSpaceMap() {
     rotatingSpaceObjects.push(gate)
     spaceGates.push({ pos: pos.clone(), radius, cooldown: 0 })
   }
-  addGate(new THREE.Vector3(-260, 65, -430), 86, new THREE.Euler(0.15, -0.7, 0.1))
-  addGate(new THREE.Vector3(420, -120, -1030), 112, new THREE.Euler(0.35, 0.35, 0.05))
-  addGate(new THREE.Vector3(70, 255, -1540), 126, new THREE.Euler(-0.2, 0.95, -0.25))
+  // 主要ルート上のゲート
+  addGate(new THREE.Vector3(0, 30, -900), 80, new THREE.Euler(0, 0, 0))          // 要塞手前
+  addGate(new THREE.Vector3(-1500, -200, -1550), 90, new THREE.Euler(0.2, -0.5, 0.1)) // 採掘コロニー入口
+  addGate(new THREE.Vector3(1500, -150, -1650), 95, new THREE.Euler(-0.15, 0.6, 0)) // 船墓場入口
+  addGate(new THREE.Vector3(0, 250, -2300), 110, new THREE.Euler(0, 0, 0))      // リング手前
+  addGate(new THREE.Vector3(-1300, 350, 800), 85, new THREE.Euler(0.1, 0.8, 0)) // 建造現場入口
 
   const station = new THREE.Group()
   const railHub = new THREE.Mesh(new THREE.CylinderGeometry(24, 34, 130, 16), railMat)
@@ -3728,8 +3737,8 @@ async function buildSpaceMap() {
     pod.position.set(Math.cos(i * Math.PI / 2) * 100, Math.sin(i * Math.PI / 2) * 100, 0)
     station.add(pod)
   }
-  station.position.set(-820, 130, -980)
-  station.rotation.set(0.4, -0.2, 0.7)
+  station.position.set(-1200, 200, 500)  // 建造現場近く
+  station.rotation.set(0.3, -0.4, 0.5)
   space.add(station)
   rotatingSpaceObjects.push(station)
   const stationLight = new THREE.PointLight(0x60e7ff, 5.8, 900)
@@ -3737,8 +3746,8 @@ async function buildSpaceMap() {
   space.add(stationLight)
 
   const rift = new THREE.Mesh(new THREE.RingGeometry(110, 190, 96), glowViolet)
-  rift.position.set(1240, 110, -1420)
-  rift.rotation.set(0.2, -0.65, 0.2)
+  rift.position.set(1400, -150, -1200)  // 船墓場近く
+  rift.rotation.set(0.3, -0.5, 0.2)
   space.add(rift)
   rotatingSpaceObjects.push(rift)
 
@@ -3766,6 +3775,32 @@ async function buildSpaceMap() {
     tether.position.copy(p)
     space.add(tether)
   }
+
+  // ゾーンごとの特徴的ライト
+  // 採掘コロニー: オレンジ色の採掘ライト
+  const miningLight = new THREE.PointLight(0xff8800, 8, 600)
+  miningLight.position.set(-2000, -250, -1500)
+  space.add(miningLight)
+
+  // 船墓場: 赤い警告灯
+  const graveyardLight = new THREE.PointLight(0xff3300, 6, 550)
+  graveyardLight.position.set(2100, -200, -1600)
+  space.add(graveyardLight)
+
+  // 軌道リング: 白い構造ライト
+  const ringLight = new THREE.PointLight(0xffffff, 12, 900)
+  ringLight.position.set(0, 350, -2400)
+  space.add(ringLight)
+
+  // 要塞: 青白い非常灯
+  const fortressLight = new THREE.PointLight(0x88aaff, 7, 650)
+  fortressLight.position.set(0, 0, -1800)
+  space.add(fortressLight)
+
+  // 建造現場: 黄色い作業灯
+  const constructionLight = new THREE.PointLight(0xffdd00, 7, 600)
+  constructionLight.position.set(-1800, 350, 1600)
+  space.add(constructionLight)
 }
 
 // Tokyo MAP用のランドマーク配置関数
@@ -5775,6 +5810,24 @@ function loop() {
     player.position.copy(newPos)
     updateSpaceHazards(dt)
     updateSpaceGates(dt)
+
+    // ゾーン進入検出
+    if (spaceZones.length > 0) {
+      let nearestZone: string | null = null
+      let minDist = Infinity
+      for (const zone of spaceZones) {
+        const dist = player.position.distanceTo(new THREE.Vector3(zone.position.x, zone.position.y, zone.position.z))
+        if (dist < 400 && dist < minDist) {  // 400m以内
+          minDist = dist
+          nearestZone = zone.zone_id
+        }
+      }
+      if (nearestZone !== currentZone) {
+        currentZone = nearestZone
+        zoneDisplayTimer = 3  // 3秒表示
+      }
+    }
+    zoneDisplayTimer = Math.max(0, zoneDisplayTimer - dt)
   } else {
     // 移動先の地形高度チェック（水平方向の衝突判定）
     const newTerrainHeight = terrainH(newPos.x, newPos.z) + 10
