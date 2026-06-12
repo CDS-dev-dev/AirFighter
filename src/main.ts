@@ -5720,14 +5720,12 @@ function loop() {
       barrelRollState.progress = 0
     } else {
       const rollSpeed = (Math.PI * 2) / barrelRollState.duration  // 360度/秒
-      // 現在の機体姿勢の前方軸を使用（進行方向を軸に自転）
-      const currentForward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion)
-      player.quaternion.multiply(_sq1.setFromAxisAngle(currentForward, barrelRollState.direction * rollSpeed * dt))
+      // 開始時に保存した進行方向軸を使用（軸は固定）
+      player.quaternion.multiply(_sq1.setFromAxisAngle(barrelRollState.forwardAxis, barrelRollState.direction * rollSpeed * dt))
 
-      // 現在の機体姿勢の横軸を使用（常に左右方向に移動）
+      // 開始時に保存した横軸を使用（固定方向に移動）
       const lateralDist = 40  // 横移動距離（m）
-      const currentLateral = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion)
-      const lateralMove = currentLateral.multiplyScalar(barrelRollState.direction * lateralDist * dt / barrelRollState.duration)
+      const lateralMove = barrelRollState.lateralAxis.clone().multiplyScalar(barrelRollState.direction * lateralDist * dt / barrelRollState.duration)
       player.position.add(lateralMove)
     }
   }
