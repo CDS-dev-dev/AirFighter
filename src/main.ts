@@ -3529,68 +3529,37 @@ async function buildSpaceMap() {
   const obj = new THREE.Object3D()
 
   for (let i = 0; i < asteroidCount; i++) {
-    // 3レイヤー構造：下層を多く配置（隠密戦エリア）
-    const layer = i % 5  // 下層40%、中層30%、上層30%
-    let baseY = 0
-    if (layer === 0 || layer === 1) {
-      // 下層40%（密集エリア）
-      baseY = -120 + Math.random() * 80
-    } else if (layer === 2 || layer === 3) {
-      // 中層30%
-      baseY = 80 + Math.random() * 70
-    } else {
-      // 上層30%
-      baseY = 220 + Math.random() * 80
-    }
+    // MAP全体に3D的に均等配置
+    // Y座標：全レイヤーに均等分散
+    const y = -300 + Math.random() * 700  // -300〜400の範囲
 
-    // 中央安全回廊（幅200m、Z方向）を確保
-    const angle = (i / asteroidCount) * Math.PI * 2 + Math.random() * 0.5
-    const distFromCenter = 350 + Math.random() * 650
+    // XZ座標：円柱状に配置
+    const angle = Math.random() * Math.PI * 2
+    const distFromCenter = 400 + Math.random() * 2400  // 400〜2800m
 
     let x = Math.cos(angle) * distFromCenter
-    let z = -200 + Math.sin(angle) * distFromCenter
+    let z = -1500 + Math.sin(angle) * distFromCenter  // Z方向中心-1500
 
-    // 中央回廊（X: -250 to 250、全Z）は小惑星なし（幅500m）
-    const isInCentralCorridor = Math.abs(x) < 250
+    // 中央回廊（X: -250 to 250、Z: -500 to 500）は小惑星なし
+    const isInCentralCorridor = Math.abs(x) < 250 && z > -500 && z < 500
     if (isInCentralCorridor) {
       // 回廊外に押し出す
-      x = x < 0 ? -270 - Math.random() * 200 : 270 + Math.random() * 200
-    }
-
-    // 左右に壁のように密集配置
-    const isWallZone = Math.abs(x) > 400 && Math.abs(x) < 700
-    const distFactor = Math.abs(x) / 500
-    const isLowerLayer = baseY < 0
-
-    // サイズ：壁エリア + 下層は大型（カバーとして機能）、それ以外は中型
-    const s = (isWallZone && isLowerLayer && Math.random() < 0.3) || (distFactor > 0.7 && Math.random() < 0.15)
-      ? 30 + Math.random() * 50  // 大型（完全なカバー）
-      : 8 + Math.random() * 20   // 中型（部分的カバー）
-
-    // 下層の壁エリアは密度2倍（狭い隙間を作る）
-    if (isLowerLayer && isWallZone && Math.random() < 0.3) {
-      x += (Math.random() - 0.5) * 60  // さらにランダム配置
-      z += (Math.random() - 0.5) * 60
-    }
-
-    // 縦穴3箇所（レイヤー間移動用）：小惑星を避ける
-    const verticalShafts = [
-      { x: -350, z: -400, radius: 80 },  // 左奥
-      { x: 350, z: -600, radius: 80 },   // 右奥
-      { x: 0, z: -800, radius: 90 },     // 中央奥
-    ]
-    let inShaft = false
-    for (const shaft of verticalShafts) {
-      const distToShaft = Math.sqrt((x - shaft.x) ** 2 + (z - shaft.z) ** 2)
-      if (distToShaft < shaft.radius && s > 20) {
-        inShaft = true
-        break
+      if (Math.random() < 0.5) {
+        x = x < 0 ? -300 - Math.random() * 400 : 300 + Math.random() * 400
+      } else {
+        z = z < 0 ? -600 - Math.random() * 800 : 600 + Math.random() * 800
       }
     }
-    if (inShaft) continue
 
-    const y = baseY + (Math.random() - 0.5) * 60
-    obj.position.set(x + (Math.random() - 0.5) * 80, y, z + (Math.random() - 0.5) * 80)
+    // サイズ：小〜大までランダム（均等分布）
+    const s = 6 + Math.random() * 30  // 6〜36m
+
+    // 位置に多少のランダムオフセットを追加
+    obj.position.set(
+      x + (Math.random() - 0.5) * 100,
+      y + (Math.random() - 0.5) * 80,
+      z + (Math.random() - 0.5) * 100
+    )
 
     const hazardRadius = s * 1.15 + 7
     spaceHazards.push({ pos: obj.position.clone(), radius: hazardRadius })
@@ -5960,7 +5929,7 @@ function loop() {
 
   // 宇宙MAPの小惑星・ゾーン構造物との衝突
   if (currentMap === 'space') {
-    const adjustedCollisionRadius = collisionRadius * 0.75 // 8m -> 6m（より正確な判定）
+    const adjustedCollisionRadius = collisionRadius * 0.5 // 8m -> 4m（より厳密に）
 
     // InstancedMeshの小惑星との衝突判定（レイキャスト）
     if (spaceAsteroids && spaceAsteroids.count > 0) {
@@ -5969,9 +5938,9 @@ function loop() {
       const moveDist = player.position.distanceTo(prevPos)
       if (moveDist > 0.1) {
         raycaster.set(prevPos, moveDir)
-        raycaster.far = moveDist + adjustedCollisionRadius * 0.8 // より厳密に
+        raycaster.far = moveDist + adjustedCollisionRadius
         const hits = raycaster.intersectObject(spaceAsteroids, false)
-        if (hits.length > 0 && hits[0].distance < moveDist + adjustedCollisionRadius) {
+        if (hits.length > 0 && hits[0].distance < moveDist + adjustedCollisionRadius * 0.8) {
           player.position.copy(prevPos)
           hitFlashTimer = 0.3
           camShakeAmt = Math.max(camShakeAmt, 0.6)
@@ -5982,7 +5951,8 @@ function loop() {
     // 個別小惑星との衝突判定（ゾーン周辺）
     for (const asteroid of spaceIndividualAsteroids) {
       const dist = player.position.distanceTo(asteroid.position)
-      const asteroidRadius = Math.max(asteroid.scale.x, asteroid.scale.y, asteroid.scale.z) * 0.5
+      // ジオメトリ半径1に対してスケールをかけるが、衝突判定は0.7倍に縮小
+      const asteroidRadius = Math.max(asteroid.scale.x, asteroid.scale.y, asteroid.scale.z) * 0.35
       if (dist < adjustedCollisionRadius + asteroidRadius) {
         // 衝突：押し出し
         const pushDir = player.position.clone().sub(asteroid.position).normalize()
