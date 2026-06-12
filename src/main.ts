@@ -6,7 +6,7 @@ import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 
 // ===== VERSION =====
-const VERSION = '5.29.0'
+const VERSION = '5.59.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -26,10 +26,21 @@ const { w: initW, h: initH } = getEffectiveSize()
 
 // ===== RENDERER =====
 const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+
+// パフォーマンス設定を一元管理
+const PERF_CONFIG = {
+  terrainSegments: isMobileDevice ? 64 : 256,
+  shadowEnabled: !isMobileDevice,
+  skyEnabled: !isMobileDevice,
+  glbZonesEnabled: !isMobileDevice,
+  pixelRatio: Math.min(window.devicePixelRatio, isMobileDevice ? 1.5 : 2),
+  waterSegments: isMobileDevice ? 10 : 80,
+  shadowMapSize: isMobileDevice ? 512 : 512,  // 両方512で統一済み
+}
 const renderer = new THREE.WebGLRenderer({ antialias: !isMobileDevice, powerPreference: 'high-performance' })
 renderer.setSize(initW, initH)
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobileDevice ? 1.5 : 2))
-renderer.shadowMap.enabled = !isMobileDevice  // モバイルはシャドウ無効（大幅な描画負荷削減）
+renderer.setPixelRatio(PERF_CONFIG.pixelRatio)
+renderer.shadowMap.enabled = PERF_CONFIG.shadowEnabled  // モバイルはシャドウ無効（大幅な描画負荷削減）
 renderer.shadowMap.type = THREE.BasicShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -68,7 +79,7 @@ const sunVec = new THREE.Vector3()
 sunVec.setFromSphericalCoords(1, THREE.MathUtils.degToRad(62), THREE.MathUtils.degToRad(195))
 skyUniforms['sunPosition'].value.copy(sunVec)
 
-if (!isMobileDevice) {
+if (PERF_CONFIG.skyEnabled) {
   scene.add(sky)
 } else {
   // モバイルはスカイシェーダー無効（高コスト）→ 背景色で代替
@@ -206,10 +217,10 @@ function terrainH(x: number, z: number): number {
 
   const crossX = Math.abs(x)
   const crossZ = Math.abs(z)
-  // X軸峡谷
-  if (crossX < 200 && Math.abs(z) > 250) h -= 500 * Math.exp(-((crossX / 100) ** 2))
-  // Z軸峡谷
-  if (crossZ < 200 && Math.abs(x) > 250) h -= 500 * Math.exp(-((crossZ / 100) ** 2))
+  // X軸峡谷（深さ強調: -500 → -700）
+  if (crossX < 200 && Math.abs(z) > 250) h -= 700 * Math.exp(-((crossX / 100) ** 2))
+  // Z軸峡谷（深さ強調: -500 → -700）
+  if (crossZ < 200 && Math.abs(x) > 250) h -= 700 * Math.exp(-((crossZ / 100) ** 2))
 
   for (let i = 0; i < 4; i++) {
     const angle = (i / 4) * Math.PI * 2
@@ -602,8 +613,18 @@ for (let i = 0; i < TREE_COUNT; i++) {
   const tx = (Math.random()-0.5)*5600, tz = (Math.random()-0.5)*5600
   const ty = terrainH(tx, tz)
   const treeSlope = Math.hypot(terrainH(tx + 16, tz) - terrainH(tx - 16, tz), terrainH(tx, tz + 16) - terrainH(tx, tz - 16)) / 32
-  if (ty > 800 || treeSlope > 6.0 || (fbm(tx * 0.0015 + 8, tz * 0.0015 - 4, 3) < 0.34 && Math.random() < 0.75)) { i--; continue }
+
+  // 標高別植生: 高地（500m-）には木を生やさない
+  if (ty > 500) { i--; continue }
   if (ty < 4) { i--; continue }  // 水面下・峡谷底には植樹しない
+  if (treeSlope > 6.0) { i--; continue }
+
+  // 中腹（200-500m）: まばらな木（60%の確率でスキップ）
+  if (ty > 200 && Math.random() < 0.6) { i--; continue }
+
+  // ノイズによる森林パターン
+  if (fbm(tx * 0.0015 + 8, tz * 0.0015 - 4, 3) < 0.34 && Math.random() < 0.75) { i--; continue }
+
   const s = 0.7 + Math.random()*0.7
   _d.position.set(tx, ty+2*s, tz); _d.scale.setScalar(s); _d.rotation.y = Math.random()*Math.PI*2; _d.updateMatrix()
   trunkIM.setMatrixAt(i, _d.matrix)
@@ -627,7 +648,7 @@ const PILLAR_SPECS: Array<{ cx:number; cz:number; n:number }> = [
   { cx: -1080, cz: -720, n: 9 },
   { cx:  -620, cz:  720, n: 7 },
 ]
-const ISOLATED_TOWERS = [[920,300,130,13],[920,-600,115,11],[-1080,-720,125,12]] as const
+const ISOLATED_TOWERS = [[920,300,280,20],[920,-600,250,18],[-1080,-720,320,22]] as const  // 高さ2-3倍、半径1.5-2倍
 
 gltfLoader.load(import.meta.env.BASE_URL + 'models/rock_pillar.glb', (gltf) => {
   const proto = gltf.scene
@@ -638,8 +659,8 @@ gltfLoader.load(import.meta.env.BASE_URL + 'models/rock_pillar.glb', (gltf) => {
       const px = cl.cx + (Math.random()-0.5)*250
       const pz = cl.cz + (Math.random()-0.5)*250
       const ph = terrainH(px, pz)
-      const ht = 50 + Math.random()*90
-      const rb = 9 + Math.random()*16
+      const ht = 150 + Math.random()*150  // 改善: 50-140m → 150-300m
+      const rb = 15 + Math.random()*25    // 改善: 9-25m → 15-40m
       const inst = proto.clone()
       inst.position.set(px, ph, pz)
       inst.scale.set(rb/0.26, ht, rb/0.26)
@@ -664,13 +685,13 @@ gltfLoader.load(import.meta.env.BASE_URL + 'models/rock_pillar.glb', (gltf) => {
 // ===== ARCHES (Blender GLB) =====
 // rock_arch.glb: half-span=1.0, height=0.62 (unit scale)
 const ARCH_SPECS = [
-  [920,   80, 100, 62,  0.0],
-  [905, -200,  92, 58,  0.06],
-  [935, -480,  85, 54, -0.05],
-  [820,  320,  78, 50,  1.4],
-  [1020, -350, 82, 52, -1.5],
-  [-1080,-720, 90, 58,  0.8],
-  [-80,  480,  72, 48,  2.1],
+  [920,   80, 100, 100,  0.0],
+  [905, -200,  92, 95,  0.06],
+  [935, -480,  85, 90, -0.05],
+  [820,  320,  78, 85,  1.4],
+  [1020, -350, 82, 88, -1.5],
+  [-1080,-720, 90, 95,  0.8],
+  [-80,  480,  72, 80,  2.1],
 ] as const
 
 gltfLoader.load(import.meta.env.BASE_URL + 'models/rock_arch.glb', (gltf) => {
@@ -717,11 +738,31 @@ boulderIM.name = 'OriginalBoulders'
 scene.add(boulderIM)
 
 // ===== SUPPLY POINTS =====
+// Original MAP: 基地施設付近に配置（視認しやすい）
+const ORIGINAL_SUPPLY_POSITIONS: THREE.Vector3[] = [
+  new THREE.Vector3(60, 0, -30),       // 中央基地 Alpha
+  new THREE.Vector3(1080, 0, -320),    // 東部高原基地 Bravo
+  new THREE.Vector3(-780, 0, -680),    // 北西高地基地
+  new THREE.Vector3(-200, 0, 480),     // 中央平野（開けた安全地帯）
+]
+
+// Tokyo MAP: ランドマーク付近に配置
+const TOKYO_SUPPLY_POSITIONS: THREE.Vector3[] = [
+  new THREE.Vector3(0, 400, 0),        // 東京タワー
+  new THREE.Vector3(1200, 650, 800),   // スカイツリー
+  new THREE.Vector3(-800, 320, -600),  // 新宿副都心
+  new THREE.Vector3(800, 180, -1200),  // 渋谷
+]
+
+// Space MAP: 既存の補給ステーション（line 3308で定義済み）
+// SPACE_SUPPLY_POSITIONS は後で定義
+
+// 現在のMAPに応じて切り替わるグローバル配列（初期値：Original）
 const SUPPLY_POSITIONS: THREE.Vector3[] = [
-  new THREE.Vector3( 920,  0,  0),     // 東部峡谷内（低高度・危険）
-  new THREE.Vector3(-200,  0,  480),   // 中央平野（開けた安全地帯）
-  new THREE.Vector3(1200,  0, -380),   // 東部プラトー（高地・敵が来やすい）
-  new THREE.Vector3(-1080, 0, -720),   // 北西高地（遠い補給拠点）
+  new THREE.Vector3(60, 0, -30),
+  new THREE.Vector3(1080, 0, -320),
+  new THREE.Vector3(-780, 0, -680),
+  new THREE.Vector3(-200, 0, 480),
 ]
 SUPPLY_POSITIONS.forEach(p => { p.y = terrainH(p.x, p.z) + 18 })
 
@@ -810,6 +851,102 @@ function buildWorldStructures() {
   // ===== 都市エリア =====
   addCityArea( -600,  100, 150, 25)            // 西部都市
   addCityArea(  650,  450, 120, 18)            // 東部都市
+
+  // ===== 峡谷入口ナビゲーションビーコン =====
+  const CANYON_BEACONS = [
+    { x: -1200, z: 0, label: 'West Canyon' },
+    { x: 1200, z: 0, label: 'East Canyon' },
+    { x: 0, z: -1200, label: 'North Canyon' },
+    { x: 0, z: 1200, label: 'South Canyon' },
+  ]
+
+  for (const beacon of CANYON_BEACONS) {
+    const beaconGroup = new THREE.Group()
+    beaconGroup.name = `CanyonBeacon_${beacon.label}`
+    beaconGroup.position.set(beacon.x, terrainH(beacon.x, beacon.z) + 50, beacon.z)
+
+    // 発光マーカー
+    const marker = new THREE.Mesh(
+      new THREE.CylinderGeometry(8, 8, 60, 8),
+      new THREE.MeshStandardMaterial({
+        color: 0x00ff88,
+        emissive: 0x00ff88,
+        emissiveIntensity: 0.8
+      })
+    )
+    beaconGroup.add(marker)
+    scene.add(beaconGroup)
+    navigationBeacons.push(beaconGroup)
+  }
+
+  // ===== 巨大奇岩（Monolith - GLB 3バリエーション） =====
+  const MONOLITHS = [
+    { x: -500, z: -1200, h: 480 },
+    { x: 600, z: 1000, h: 520 },
+    { x: -1000, z: 800, h: 450 },
+    { x: 1100, z: -900, h: 500 },
+    { x: -200, z: 0, h: 600 },
+  ]
+
+  // 3種類のモデルを並列ロード
+  const MONOLITH_MODELS = ['small', 'medium', 'large']
+  Promise.all(MONOLITH_MODELS.map(size =>
+    new Promise((resolve) => {
+      gltfLoader.load(import.meta.env.BASE_URL + `models/rock_monolith_${size}.glb`, resolve)
+    })
+  )).then((gltfs: any[]) => {
+    for (const mono of MONOLITHS) {
+      // 高さに応じてモデルを選択
+      let modelIndex = 0
+      if (mono.h > 550) modelIndex = 2      // large
+      else if (mono.h > 480) modelIndex = 1 // medium
+      else modelIndex = 0                    // small
+
+      const gltf = gltfs[modelIndex]
+      const inst = gltf.scene.clone()
+      inst.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
+
+      const base = terrainH(mono.x, mono.z)
+      inst.position.set(mono.x, base, mono.z)
+      inst.scale.setScalar(mono.h / 500) // 基準高500m
+      inst.rotation.y = Math.random() * Math.PI
+      inst.name = 'OriginalMonolith'
+      scene.add(inst)
+    }
+  })
+
+  // ===== 自然橋（Natural Bridge - GLB 3バリエーション） =====
+  const NATURAL_BRIDGES = [
+    { x: 400, z: -600, span: 120, h: 80 },
+    { x: -700, z: 500, span: 140, h: 90 },
+    { x: 200, z: 800, span: 100, h: 70 },
+  ]
+
+  const BRIDGE_MODELS = ['small', 'medium', 'large']
+  Promise.all(BRIDGE_MODELS.map(size =>
+    new Promise((resolve) => {
+      gltfLoader.load(import.meta.env.BASE_URL + `models/rock_natural_bridge_${size}.glb`, resolve)
+    })
+  )).then((gltfs: any[]) => {
+    for (const bridge of NATURAL_BRIDGES) {
+      // スパンに応じてモデルを選択
+      let modelIndex = 0
+      if (bridge.span > 130) modelIndex = 2      // large
+      else if (bridge.span > 110) modelIndex = 1 // medium
+      else modelIndex = 0                         // small
+
+      const gltf = gltfs[modelIndex]
+      const inst = gltf.scene.clone()
+      inst.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
+
+      const base = terrainH(bridge.x, bridge.z)
+      inst.position.set(bridge.x, base + bridge.h, bridge.z)
+      inst.scale.setScalar(bridge.span / 120) // 基準スパン120m
+      inst.rotation.y = Math.random() * Math.PI
+      inst.name = 'NaturalBridge'
+      scene.add(inst)
+    }
+  })
 
   // ===== 岩塔・巨岩配置 =====
   createRockFormations()
@@ -1394,20 +1531,6 @@ function playFlareSound() {
   src.connect(f); f.connect(g); g.connect(audioCtx.destination); src.start()
 }
 
-function playGateBoostSound() {
-  if (!audioCtx) return
-  const ctx = audioCtx
-  const osc = ctx.createOscillator()
-  osc.type = 'triangle'
-  osc.frequency.setValueAtTime(220, ctx.currentTime)
-  osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.16)
-  const g = ctx.createGain()
-  g.gain.setValueAtTime(0.0001, ctx.currentTime)
-  g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.025)
-  g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.38)
-  osc.connect(g); g.connect(ctx.destination)
-  osc.start(); osc.stop(ctx.currentTime + 0.42)
-}
 
 function playExplosionSound(scale = 1.0) {
   if (!audioCtx) return
@@ -1453,16 +1576,19 @@ interface Enemy {
   tacticType: number;
   preferredDistance: number;
   preferredHeightOffset: number;
+  spawnZone?: string;  // スポーンしたゾーン（戦術に影響）
 }
 interface Ally { group: THREE.Group; health: number; fireCooldown: number; missileAmmo: number }
 interface Explosion { particles: Array<{ mesh: THREE.Mesh; vel: THREE.Vector3 }>; life: number }
 interface GroundTarget {
   group: THREE.Group; health: number; maxHealth: number; vel: THREE.Vector3
-  type?: 'ship'|'tank'|'sam'|'bomber'|'heli'
-  fireCooldown?: number   // SAM専用: 発射クールダウン
+  type?: 'ship'|'tank'|'sam'|'bomber'|'heli'|'battleship'|'turret'
+  fireCooldown?: number   // SAM/砲台専用: 発射クールダウン
   smokeTimer?: number     // 煙エフェクトタイマー
   patrolAngle?: number    // ヘリ専用: 旋回角度
   patrolCenter?: THREE.Vector3  // ヘリ専用: 旋回中心
+  attachedTo?: string     // 砲台専用: どのゾーンに付属しているか
+  turretRotation?: number // 砲台専用: 砲塔の回転角度
 }
 interface SmokeParticle { mesh: THREE.Mesh; vel: THREE.Vector3; life: number; maxLife: number }
 interface MissileTrail { mesh: THREE.Mesh; life: number }
@@ -1483,6 +1609,13 @@ const groundTargets: GroundTarget[] = []
 
 let dfAllyCount = 2
 let dfEnemyCount = 3
+
+// MAP別のDogfight初期敵数
+const DOGFIGHT_INITIAL_ENEMIES: Record<GameMap, number> = {
+  original: 5,
+  tokyo: 7,    // 広いMAPなので多め
+  space: 7
+}
 
 let missileAmmo = 6, flareAmmo = 3, score = 0
 let gunCooldown = 0, pMissileCooldown = 0, flareCooldown = 0
@@ -1585,6 +1718,22 @@ function spawnEnemyAt(sx: number, sz: number) {
       preferredHeightOffset = 0
   }
 
+  // ゾーン情報を取得（宇宙MAPの場合）
+  let spawnZone: string | undefined = undefined
+  if (currentMap === 'space' && spaceZones.length > 0) {
+    // 最も近いゾーンを判定
+    let nearestZone: string | null = null
+    let minDist = Infinity
+    for (const zone of spaceZones) {
+      const dist = group.position.distanceTo(new THREE.Vector3(zone.position.x, zone.position.y, zone.position.z))
+      if (dist < 600 && dist < minDist) {
+        minDist = dist
+        nearestZone = zone.zone_id
+      }
+    }
+    if (nearestZone) spawnZone = nearestZone
+  }
+
   enemies.push({
     group, health: 2, fireCooldown: 8 + Math.random() * 7, gunCooldown: Math.random() * 0.5,
     missileAmmo: 4, seekingSupply: false, evadeDelay: 0,
@@ -1592,7 +1741,8 @@ function spawnEnemyAt(sx: number, sz: number) {
     currentSpeed: 150,
     tacticType,
     preferredDistance,
-    preferredHeightOffset
+    preferredHeightOffset,
+    spawnZone
   })
 }
 
@@ -2831,8 +2981,10 @@ async function startGame(mode: GameMode) {
         ? neoTokyoMapSystem.getSafeSpawnPosition()
         : null
       const spaceDogfightSpawn = currentMap === 'space'
+      // MAP別の初期敵数を設定
+      const initialEnemies = DOGFIGHT_INITIAL_ENEMIES[currentMap]
       // 敵は南側、味方・プレイヤーは北側にスポーン
-      for (let i = 0; i < dfEnemyCount; i++) {
+      for (let i = 0; i < initialEnemies; i++) {
         if (spaceDogfightSpawn) {
           const a = Math.PI + (Math.random() - 0.5) * 1.4
           const r = 520 + Math.random() * 420
@@ -2923,12 +3075,30 @@ async function startGame(mode: GameMode) {
     }
     case 'souryokusen':
       if (currentMap === 'space') {
-        modeObjectiveTotal = 0
-        setObjective('軌道宙域を制圧せよ — SCORE: 0')
+        // 宇宙MAP総力戦: 戦艦・砲台・敵機
+        spawnSpaceTotalWarEnemies()
+        const battleshipCount = groundTargets.filter(gt => gt.type === 'battleship').length
+        const turretCount = groundTargets.filter(gt => gt.type === 'turret').length
+        modeObjectiveTotal = battleshipCount + turretCount
+        setObjective(`敵艦隊を殲滅せよ — 0 / ${modeObjectiveTotal}`)
+
+        // 敵機も追加スポーン
         for (let i = 0; i < 7; i++) spawnEnemy()
+
+        // プレイヤーを中央ステーション付近に配置
+        player.position.set(200, 160, 600)
+        const lookAngle = Math.atan2(-350 - 600, 0 - 200)
+        player.rotation.y = lookAngle
+        player.quaternion.setFromEuler(new THREE.Euler(0, lookAngle, 0, 'YXZ'))
+        camQuat.copy(player.quaternion)
         speed = 220
         break
+      } else if (currentMap === 'tokyo') {
+        // Tokyo MAP総力戦: 都市防衛戦
+        spawnTokyoSouryokusen()
+        break
       }
+      // Original MAP総力戦: 従来の総力戦
       modeObjectiveTotal = 17  // 3艦船 + 4戦車 + 2爆撃機 + 4SAM + 3ヘリ + 浮遊空母1
       setObjective(`地上目標を破壊 0 / 17`)
       spawnSouryokusen()
@@ -2948,6 +3118,48 @@ async function startGame(mode: GameMode) {
       }
       setObjective('フリーフライト')
       break
+  }
+}
+
+// 地上MAP用の固定砲台を生成
+function createGroundTurret(x: number, y: number, z: number): GroundTarget {
+  const group = new THREE.Group()
+
+  // 基部
+  const baseGeo = new THREE.CylinderGeometry(8, 12, 15, 8)
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.7, metalness: 0.6 })
+  const base = new THREE.Mesh(baseGeo, baseMat)
+  group.add(base)
+
+  // 砲塔
+  const turretGeo = new THREE.SphereGeometry(10, 12, 8)
+  const turret = new THREE.Mesh(turretGeo, baseMat)
+  turret.position.y = 10
+  group.add(turret)
+
+  // 砲身
+  const barrelGeo = new THREE.CylinderGeometry(2, 2, 35, 8)
+  const barrel = new THREE.Mesh(barrelGeo, baseMat)
+  barrel.rotation.z = Math.PI / 2
+  barrel.position.set(17, 10, 0)
+  group.add(barrel)
+
+  // 発光（レーダー風）
+  const light = new THREE.PointLight(0xff4444, 1, 60)
+  light.position.y = 15
+  group.add(light)
+
+  group.position.set(x, y, z)
+  scene.add(group)
+
+  return {
+    group,
+    health: 8,
+    maxHealth: 8,
+    vel: new THREE.Vector3(0, 0, 0),
+    type: 'turret',
+    fireCooldown: 2.5,
+    turretRotation: 0
   }
 }
 
@@ -3035,6 +3247,170 @@ function spawnSouryokusen() {
     // GLBロード失敗時は目標数を1減らす
     modeObjectiveTotal = Math.max(1, modeObjectiveTotal - 1)
   })
+
+  // 固定砲台を追加（Original MAP用のみ）
+  // ※Tokyo MAPはspawnTokyoSouryokusen()で独自に配置
+  if (currentMap === 'original') {
+    // Original MAP: 岩柱・アーチの上に砲台配置
+    const turretPositions = [
+      { x: 0, z: -2800 },    // 北部岩柱群
+      { x: 2800, z: 0 },     // 東部アーチ
+      { x: -2800, z: 0 },    // 西部タワー
+      { x: 0, z: 2800 }      // 南部
+    ]
+    turretPositions.forEach(pos => {
+      const y = terrainH(pos.x, pos.z) + 120  // 地形＋120m（構造物の上）
+      const turret = createGroundTurret(pos.x, y, pos.z)
+      groundTargets.push(turret)
+    })
+    modeObjectiveTotal += 4  // 砲台4基を目標に追加
+  }
+
+  // 目標数を更新
+  setObjective(`地上目標を破壊 0 / ${modeObjectiveTotal}`)
+}
+
+// Tokyo MAP専用の総力戦（都市防衛戦）
+function spawnTokyoSouryokusen() {
+  // 空中の敵 x5（リスポーンあり）
+  for (let i = 0; i < 5; i++) spawnEnemy()
+
+  // 地上装甲車両 x6（道路上を移動）
+  const roadPositions = [
+    { x: 0, z: 300 },      // 中央通り
+    { x: 0, z: -300 },     // 青山通り
+    { x: -800, z: 0 },     // 環七
+    { x: 800, z: 0 },      // 山手通り
+    { x: -1200, z: 500 },  // 西部幹線
+    { x: 1200, z: -500 },  // 東部幹線
+  ]
+  for (const pos of roadPositions) {
+    const group = createTankTarget()
+    const y = neoTokyoMapSystem ? neoTokyoMapSystem.getTerrainHeight(pos.x, pos.z) : 0
+    group.position.set(pos.x, y, pos.z)
+    group.rotation.y = Math.random() * Math.PI * 2
+    scene.add(group)
+    groundTargets.push({
+      group,
+      health: 20,
+      maxHealth: 20,
+      vel: new THREE.Vector3(),  // 静止目標
+      type: 'tank'
+    })
+  }
+
+  // ビル屋上SAM x5
+  const samPositions = [
+    { x: 0, y: 400, z: 0 },         // 東京タワー付近
+    { x: 1200, y: 650, z: 800 },    // スカイツリー付近
+    { x: -800, y: 320, z: -600 },   // 新宿副都心
+    { x: 800, y: 180, z: -1200 },   // 渋谷
+    { x: -400, y: 200, z: 800 },    // 上野
+  ]
+  for (const pos of samPositions) {
+    const group = createSAMLauncher()
+    group.position.set(pos.x, pos.y, pos.z)
+    group.rotation.y = Math.random() * Math.PI * 2
+    scene.add(group)
+    groundTargets.push({
+      group,
+      health: 15,
+      maxHealth: 15,
+      vel: new THREE.Vector3(),
+      type: 'sam',
+      fireCooldown: 8 + Math.random() * 6
+    })
+  }
+
+  // 攻撃ヘリ x4（ビル間を低空飛行）
+  const heliPositions = [
+    { x: 400, z: 0 },
+    { x: -600, z: -400 },
+    { x: 800, z: 600 },
+    { x: -400, z: 800 }
+  ]
+  for (const pos of heliPositions) {
+    const group = createHelicopterTarget()
+    const baseY = neoTokyoMapSystem ? neoTokyoMapSystem.getTerrainHeight(pos.x, pos.z) + 80 : 80
+    group.position.set(pos.x, baseY, pos.z)
+    scene.add(group)
+    groundTargets.push({
+      group,
+      health: 30,
+      maxHealth: 30,
+      vel: new THREE.Vector3(),
+      type: 'heli',
+      patrolAngle: Math.random() * Math.PI * 2,
+      patrolCenter: new THREE.Vector3(pos.x, baseY, pos.z)
+    })
+  }
+
+  // 大型輸送機 x2（高度300m、爆撃ルート）
+  for (let i = 0; i < 2; i++) {
+    const group = createBomberModel()
+    group.position.set(-3000, 300 + i * 50, -1000 + i * 500)
+    group.rotation.y = 0  // 東向き
+    scene.add(group)
+    groundTargets.push({
+      group,
+      health: 55,
+      maxHealth: 55,
+      vel: new THREE.Vector3(50, 0, 0),  // 高速で東へ
+      type: 'bomber'
+    })
+  }
+
+  // 司令部ビル（BOSS）x1 - 既存のビルを流用せず、専用マーカーを配置
+  const commandCenterPos = { x: 0, y: 420, z: 0 }  // 東京タワー位置
+  const commandGroup = new THREE.Group()
+  // 赤い光る立方体（司令部マーカー）
+  const markerGeo = new THREE.BoxGeometry(25, 25, 25)
+  const markerMat = new THREE.MeshStandardMaterial({
+    color: 0xff0000,
+    emissive: 0xff3333,
+    emissiveIntensity: 2.0,
+    roughness: 0.3,
+    metalness: 0.8
+  })
+  const marker = new THREE.Mesh(markerGeo, markerMat)
+  commandGroup.add(marker)
+
+  // 回転リング（目立つ演出）
+  const ringGeo = new THREE.TorusGeometry(40, 2, 8, 32)
+  const ringMat = new THREE.MeshStandardMaterial({
+    color: 0xff4444,
+    emissive: 0xff0000,
+    emissiveIntensity: 1.5
+  })
+  const ring = new THREE.Mesh(ringGeo, ringMat)
+  ring.rotation.x = Math.PI / 2
+  commandGroup.add(ring)
+
+  commandGroup.position.set(commandCenterPos.x, commandCenterPos.y, commandCenterPos.z)
+  scene.add(commandGroup)
+  groundTargets.push({
+    group: commandGroup,
+    health: 150,
+    maxHealth: 150,
+    vel: new THREE.Vector3(),
+    type: 'ship'  // BOSSとして扱う
+  })
+
+  // 固定砲台 x4（既存のPhase 3実装）
+  const turretPositions = [
+    { x: 0, y: 380, z: 0 },           // 東京タワー付近
+    { x: 1200, y: 620, z: 800 },      // スカイツリー付近
+    { x: -800, y: 300, z: -600 },     // 新宿高層ビル
+    { x: 800, y: 160, z: -1200 }      // 渋谷ビル
+  ]
+  turretPositions.forEach(pos => {
+    const turret = createGroundTurret(pos.x, pos.y, pos.z)
+    groundTargets.push(turret)
+  })
+
+  // 目標数: 装甲車6 + SAM5 + ヘリ4 + 輸送機2 + 司令部1 + 砲台4 = 22
+  modeObjectiveTotal = 22
+  setObjective(`地上目標を破壊 0 / ${modeObjectiveTotal}`)
 }
 
 function updateGroundTargets(dt: number) {
@@ -3075,6 +3451,72 @@ function updateGroundTargets(dt: number) {
         })
         gt.fireCooldown = 14 + Math.random() * 8
         playMissileSound()
+      }
+    }
+
+    // ── 戦艦: プレイヤー検知 → 主砲発射 ───────────────────
+    if (gt.type === 'battleship' && currentMode !== null) {
+      gt.fireCooldown = (gt.fireCooldown ?? 2.0) - dt
+      const dist = gt.group.position.distanceTo(player.position)
+      if (dist < 1200 && (gt.fireCooldown ?? 0) <= 0 && invincibleTimer <= 0) {
+        // 主砲弾（高速弾丸）を3発同時発射
+        for (let i = 0; i < 3; i++) {
+          const bulletOffset = new THREE.Vector3(-60 + i * 80, 35, 0)
+          bulletOffset.applyQuaternion(gt.group.quaternion)
+          const bulletPos = gt.group.position.clone().add(bulletOffset)
+
+          const mesh = new THREE.Mesh(_enemyBulletGeo, enemyBulletMat)
+          mesh.position.copy(bulletPos)
+          scene.add(mesh)
+
+          const aimDir = player.position.clone().sub(bulletPos).normalize()
+          enemyBullets.push({
+            mesh,
+            vel: aimDir.clone().multiplyScalar(500),  // 高速
+            life: 2.0
+          })
+        }
+        gt.fireCooldown = 2.0 + Math.random() * 1.0
+        playGunSound()
+      }
+    }
+
+    // ── 砲台: プレイヤー検知 → レーザー弾発射 ─────────────
+    if (gt.type === 'turret' && currentMode !== null) {
+      gt.fireCooldown = (gt.fireCooldown ?? 3.0) - dt
+      const dist = gt.group.position.distanceTo(player.position)
+      if (dist < 800 && (gt.fireCooldown ?? 0) <= 0 && invincibleTimer <= 0) {
+        // 砲塔を回転（プレイヤー方向）
+        const toPlayer = player.position.clone().sub(gt.group.position)
+        const targetAngle = Math.atan2(toPlayer.x, toPlayer.z)
+        gt.turretRotation = targetAngle
+
+        // 砲身位置から発射
+        const barrelOffset = new THREE.Vector3(25, 15, 0)
+        barrelOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), targetAngle)
+        const bulletPos = gt.group.position.clone().add(barrelOffset)
+
+        const mesh = new THREE.Mesh(_enemyBulletGeo, enemyBulletMat)
+        mesh.position.copy(bulletPos)
+        scene.add(mesh)
+
+        const aimDir = player.position.clone().sub(bulletPos).normalize()
+        enemyBullets.push({
+          mesh,
+          vel: aimDir.clone().multiplyScalar(600),  // 超高速
+          life: 1.5
+        })
+
+        gt.fireCooldown = 3.0 + Math.random() * 1.5
+        playGunSound()
+      }
+
+      // 砲塔の回転アニメーション
+      if (gt.turretRotation !== undefined) {
+        const turretMesh = gt.group.children[1]  // 砲塔部分（仮定）
+        if (turretMesh) {
+          turretMesh.rotation.y = gt.turretRotation
+        }
       }
     }
 
@@ -3156,8 +3598,6 @@ const spaceZoneGroups: THREE.Group[] = []
 const spaceIndividualAsteroids: THREE.Mesh[] = [] // ゾーン周辺の個別小惑星
 const rotatingSpaceObjects: THREE.Object3D[] = []
 const spaceHazards: Array<{ pos: THREE.Vector3; radius: number }> = []
-const spaceGates: Array<{ pos: THREE.Vector3; radius: number; cooldown: number }> = []
-let spaceGateBoostTimer = 0
 
 // ===== SPACE NAVIGATION SYSTEM =====
 interface SpaceZone {
@@ -3170,6 +3610,7 @@ interface SpaceZone {
 
 const spaceZones: SpaceZone[] = []
 const spaceBeacons: THREE.Group[] = []
+const navigationBeacons: THREE.Group[] = []  // 全MAP共通のナビゲーションビーコン
 let spaceSpawnPoints: { enemy: Array<{ zone: string; offset: { x: number; y: number; z: number } }>; ally: Array<{ zone: string; offset: { x: number; y: number; z: number } }> } | null = null
 let spaceNavigationRoutes: Array<{ from: string; to: string; distance: number; direction: { x: number; y: number; z: number } }> = []
 const ZONE_COLORS: Record<string, number> = {
@@ -3182,6 +3623,42 @@ const ZONE_COLORS: Record<string, number> = {
 }
 let currentZone: string | null = null  // 現在いるゾーン
 let zoneDisplayTimer = 0  // ゾーン名表示タイマー
+
+// MAP境界の格子表示（戦闘エリアの外周）- 全MAP共通
+let mapBoundaryMesh: THREE.LineSegments | null = null
+
+// MAP別の格子設定
+interface GridConfig {
+  spacing: number      // 格子間隔
+  color: number        // 色
+  opacity: number      // 最大透明度
+  fadeInDistance: number   // フェードイン開始距離
+  fadeEndDistance: number  // フェードイン終了距離
+}
+
+const GRID_CONFIG: Record<GameMap, GridConfig> = {
+  original: {
+    spacing: 300,
+    color: 0x88ff44,  // 緑
+    opacity: 0.6,
+    fadeInDistance: 500,
+    fadeEndDistance: 150
+  },
+  tokyo: {
+    spacing: 400,
+    color: 0xff4488,  // ピンク
+    opacity: 0.6,
+    fadeInDistance: 700,
+    fadeEndDistance: 200
+  },
+  space: {
+    spacing: 200,
+    color: 0xff6600,  // オレンジ
+    opacity: 0.7,
+    fadeInDistance: 300,
+    fadeEndDistance: 100
+  }
+}
 
 function clearSpaceMap() {
   if (!spaceMapGroup) return
@@ -3200,8 +3677,6 @@ function clearSpaceMap() {
   spaceIndividualAsteroids.length = 0 // 個別小惑星もクリア
   rotatingSpaceObjects.length = 0
   spaceHazards.length = 0
-  spaceGates.length = 0
-  spaceGateBoostTimer = 0
   spaceZones.length = 0
   spaceSpawnPoints = null
   spaceNavigationRoutes.length = 0
@@ -3217,6 +3692,14 @@ function clearSpaceMap() {
     })
   })
   spaceBeacons.length = 0
+
+  // MAP境界もクリア
+  if (mapBoundaryMesh) {
+    scene.remove(mapBoundaryMesh)
+    mapBoundaryMesh.geometry.dispose()
+    ;(mapBoundaryMesh.material as THREE.Material).dispose()
+    mapBoundaryMesh = null
+  }
 }
 
 async function loadSpaceZones(parentGroup: THREE.Group) {
@@ -3371,6 +3854,95 @@ async function loadSpaceZones(parentGroup: THREE.Group) {
   }
 }
 
+// MAP境界の格子を生成（戦闘エリアの外周、近づくと見える）
+// MAP境界格子を生成（全MAP共通）
+function createMapBoundary(map: GameMap) {
+  const bounds = MAP_BOUNDS[map]
+  const config = GRID_CONFIG[map]
+  const gridSpacing = isMobileDevice ? config.spacing * 2 : config.spacing
+
+  const vertices: number[] = []
+  const { minX, maxX, minZ, maxZ } = bounds
+
+  // 地上MAPは2D境界（上下なし）、宇宙MAPは3D境界
+  if (map === 'space') {
+    const minY = -400, maxY = 500
+
+    // XZ平面の格子（上下2枚）
+    for (let y of [minY, maxY]) {
+      for (let z = minZ; z <= maxZ; z += gridSpacing) {
+        vertices.push(minX, y, z, maxX, y, z)
+      }
+      for (let x = minX; x <= maxX; x += gridSpacing) {
+        vertices.push(x, y, minZ, x, y, maxZ)
+      }
+    }
+
+    // XY平面の格子（前後2枚）
+    for (let z of [minZ, maxZ]) {
+      for (let y = minY; y <= maxY; y += gridSpacing) {
+        vertices.push(minX, y, z, maxX, y, z)
+      }
+      for (let x = minX; x <= maxX; x += gridSpacing) {
+        vertices.push(x, minY, z, x, maxY, z)
+      }
+    }
+
+    // YZ平面の格子（左右2枚）
+    for (let x of [minX, maxX]) {
+      for (let y = minY; y <= maxY; y += gridSpacing) {
+        vertices.push(x, y, minZ, x, y, maxZ)
+      }
+      for (let z = minZ; z <= maxZ; z += gridSpacing) {
+        vertices.push(x, minY, z, x, maxY, z)
+      }
+    }
+  } else {
+    // 地上MAP: 垂直の壁（4面）のみ
+    const groundY = map === 'tokyo' ? 0 : 0
+    const wallHeight = 1500  // 1.5km高さの壁
+
+    // 前後の壁
+    for (let z of [minZ, maxZ]) {
+      for (let y = groundY; y <= groundY + wallHeight; y += gridSpacing) {
+        vertices.push(minX, y, z, maxX, y, z)
+      }
+      for (let x = minX; x <= maxX; x += gridSpacing) {
+        vertices.push(x, groundY, z, x, groundY + wallHeight, z)
+      }
+    }
+
+    // 左右の壁
+    for (let x of [minX, maxX]) {
+      for (let y = groundY; y <= groundY + wallHeight; y += gridSpacing) {
+        vertices.push(x, y, minZ, x, y, maxZ)
+      }
+      for (let z = minZ; z <= maxZ; z += gridSpacing) {
+        vertices.push(x, groundY, z, x, groundY + wallHeight, z)
+      }
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
+
+  const material = new THREE.LineBasicMaterial({
+    color: config.color,
+    transparent: true,
+    opacity: 0,  // 初期状態は完全に透明（近づくとフェードイン）
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  })
+
+  mapBoundaryMesh = new THREE.LineSegments(geometry, material)
+  scene.add(mapBoundaryMesh)
+
+  if (import.meta.env.DEV) {
+    const size = `${(maxX-minX)/1000}×${(maxZ-minZ)/1000}km`
+    console.log(`🔲 ${map.toUpperCase()} MAP境界格子を生成（${size}、格子間隔${gridSpacing}m）`)
+  }
+}
+
 // ナビゲーションビーコンを各ゾーンに配置
 function createSpaceBeacons() {
   spaceZones.forEach(zone => {
@@ -3430,6 +4002,273 @@ function createSpaceBeacons() {
   })
 
   if (import.meta.env.DEV) console.log(`🎯 ${spaceBeacons.length}個のナビゲーションビーコンを配置`)
+}
+
+// 全MAP共通のナビゲーションビーコン生成
+function createNavigationBeacons(map: GameMap) {
+  // 既存のビーコンをクリア
+  navigationBeacons.forEach(b => {
+    scene.remove(b)
+    b.traverse(child => {
+      if (child instanceof THREE.Mesh || child instanceof THREE.Points) {
+        child.geometry?.dispose()
+        const mat = child.material
+        if (Array.isArray(mat)) mat.forEach(m => m.dispose())
+        else mat?.dispose()
+      }
+    })
+  })
+  navigationBeacons.length = 0
+
+  interface BeaconDef {
+    x: number
+    y: number
+    z: number
+    name: string
+    color: number
+  }
+
+  let beacons: BeaconDef[] = []
+
+  if (map === 'original') {
+    // Original MAP: 岩柱・アーチにビーコン
+    beacons = [
+      { x: 0, y: 0, z: -2800, name: '北部岩柱群', color: 0x88ff44 },
+      { x: 2800, y: 0, z: 0, name: '東部アーチ', color: 0x88ff44 },
+      { x: -2800, y: 0, z: 0, name: '西部タワー', color: 0x88ff44 },
+      { x: 0, y: 0, z: 2800, name: '南部平原', color: 0x88ff44 }
+    ]
+  } else if (map === 'tokyo') {
+    // Tokyo MAP: ランドマークにビーコン
+    beacons = [
+      { x: 0, y: 400, z: 0, name: '東京タワー', color: 0xff4488 },
+      { x: 1200, y: 650, z: 800, name: 'スカイツリー', color: 0xff4488 },
+      { x: -800, y: 320, z: -600, name: '新宿副都心', color: 0xff4488 },
+      { x: 800, y: 180, z: -1200, name: '渋谷', color: 0xff4488 }
+    ]
+  }
+
+  // ビーコン生成
+  beacons.forEach(def => {
+    const beaconGroup = new THREE.Group()
+    beaconGroup.name = `NavBeacon_${def.name}`
+
+    // Y座標を地形高度に合わせる（地上MAPのみ）
+    let y = def.y
+    if (map === 'original') {
+      y = terrainH(def.x, def.z) + 180  // 地形＋180m上空
+    } else if (map === 'tokyo') {
+      y = def.y  // Tokyoは既に絶対高度
+    }
+    beaconGroup.position.set(def.x, y, def.z)
+
+    // パーティクル
+    const particleCount = 20
+    const positions = new Float32Array(particleCount * 3)
+    const colors = new Float32Array(particleCount * 3)
+    const color = new THREE.Color(def.color)
+
+    for (let i = 0; i < particleCount; i++) {
+      const radius = 15 + Math.random() * 10
+      const theta = Math.random() * Math.PI * 2
+      const phi = Math.random() * Math.PI
+      positions[i * 3] = Math.sin(phi) * Math.cos(theta) * radius
+      positions[i * 3 + 1] = Math.cos(phi) * radius
+      positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * radius
+      colors[i * 3] = color.r
+      colors[i * 3 + 1] = color.g
+      colors[i * 3 + 2] = color.b
+    }
+
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+
+    const mat = new THREE.PointsMaterial({
+      size: 3,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.8,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    })
+
+    const points = new THREE.Points(geo, mat)
+    beaconGroup.add(points)
+
+    // 発光リング
+    const ringGeo = new THREE.RingGeometry(8, 12, 16)
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: def.color,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    })
+    const ring = new THREE.Mesh(ringGeo, ringMat)
+    beaconGroup.add(ring)
+
+    scene.add(beaconGroup)
+    navigationBeacons.push(beaconGroup)
+  })
+
+  if (import.meta.env.DEV && beacons.length > 0) {
+    console.log(`🎯 ${map.toUpperCase()}: ${beacons.length}個のナビゲーションビーコンを配置`)
+  }
+}
+
+// 宇宙MAP総力戦モード用の戦艦を生成
+function createBattleship(x: number, y: number, z: number): GroundTarget {
+  const group = new THREE.Group()
+
+  // 船体（長さ400m、幅80m、高さ60m）
+  const hullGeo = new THREE.BoxGeometry(400, 60, 80)
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.6, metalness: 0.7 })
+  const hull = new THREE.Mesh(hullGeo, hullMat)
+  group.add(hull)
+
+  // 艦橋（前方）
+  const bridgeGeo = new THREE.BoxGeometry(60, 80, 50)
+  const bridge = new THREE.Mesh(bridgeGeo, hullMat)
+  bridge.position.set(120, 40, 0)
+  group.add(bridge)
+
+  // 主砲塔（3基）
+  for (let i = 0; i < 3; i++) {
+    const turretBase = new THREE.Mesh(new THREE.CylinderGeometry(20, 25, 15, 8), hullMat)
+    turretBase.position.set(-60 + i * 80, 35, 0)
+    group.add(turretBase)
+
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 80, 8), hullMat)
+    barrel.rotation.z = Math.PI / 2
+    barrel.position.set(-60 + i * 80 + 40, 35, 0)
+    group.add(barrel)
+  }
+
+  // 発光エンジン（後方）
+  const engineLight = new THREE.PointLight(0x4488ff, 3, 200)
+  engineLight.position.set(-220, 0, 0)
+  group.add(engineLight)
+
+  group.position.set(x, y, z)
+  group.rotation.y = Math.random() * Math.PI * 2
+  scene.add(group)
+
+  return {
+    group,
+    health: 20,
+    maxHealth: 20,
+    vel: new THREE.Vector3(0, 0, 0),
+    type: 'battleship',
+    fireCooldown: 2.0,
+    turretRotation: 0
+  }
+}
+
+// 構造物に付属する砲台を生成
+function createTurret(attachedZone: string, offsetX: number, offsetY: number, offsetZ: number): GroundTarget {
+  const zone = spaceZones.find(z => z.zone_id === attachedZone)
+  if (!zone) {
+    // フォールバック
+    return createTurret('central_hub', offsetX, offsetY, offsetZ)
+  }
+
+  const group = new THREE.Group()
+
+  // 基部
+  const baseGeo = new THREE.CylinderGeometry(12, 18, 20, 8)
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.7, metalness: 0.6 })
+  const base = new THREE.Mesh(baseGeo, baseMat)
+  group.add(base)
+
+  // 砲塔
+  const turretGeo = new THREE.SphereGeometry(15, 12, 8)
+  const turret = new THREE.Mesh(turretGeo, baseMat)
+  turret.position.y = 15
+  group.add(turret)
+
+  // 砲身
+  const barrelGeo = new THREE.CylinderGeometry(3, 3, 50, 8)
+  const barrel = new THREE.Mesh(barrelGeo, baseMat)
+  barrel.rotation.z = Math.PI / 2
+  barrel.position.set(25, 15, 0)
+  group.add(barrel)
+
+  // 発光（レーダー風）
+  const light = new THREE.PointLight(0xff4444, 1.5, 80)
+  light.position.y = 20
+  group.add(light)
+
+  const x = zone.position.x + offsetX
+  const y = zone.position.y + offsetY
+  const z = zone.position.z + offsetZ
+
+  group.position.set(x, y, z)
+  scene.add(group)
+
+  return {
+    group,
+    health: 5,
+    maxHealth: 5,
+    vel: new THREE.Vector3(0, 0, 0),
+    type: 'turret',
+    fireCooldown: 3.0,
+    attachedTo: attachedZone,
+    turretRotation: 0
+  }
+}
+
+// 宇宙MAP総力戦モードの敵配置
+function spawnSpaceTotalWarEnemies() {
+  if (import.meta.env.DEV) console.log('🚀 宇宙MAP総力戦モード開始')
+
+  // 戦艦を配置（各ゾーン付近に1隻ずつ）
+  const battleshipPositions = [
+    { x: 800, y: -600, z: -2200 },   // 要塞付近
+    { x: -2000, y: -1600, z: -200 }, // 採掘コロニー付近
+    { x: 2000, y: 800, z: 1800 },    // 船墓場付近
+    { x: -400, y: 1800, z: -2000 },  // 軌道リング付近
+  ]
+
+  battleshipPositions.forEach(pos => {
+    const battleship = createBattleship(pos.x, pos.y, pos.z)
+    groundTargets.push(battleship)
+  })
+
+  // 砲台を配置（各主要ゾーンに3-4基）
+  const turretPlacements: Array<{ zone: string; offsets: Array<{ x: number; y: number; z: number }> }> = [
+    { zone: 'fortress', offsets: [
+      { x: 250, y: 0, z: 200 },
+      { x: -250, y: 0, z: 200 },
+      { x: 0, y: 150, z: 0 },
+      { x: 0, y: -150, z: 0 }
+    ]},
+    { zone: 'mining_colony', offsets: [
+      { x: 200, y: 0, z: 200 },
+      { x: -200, y: 0, z: -200 },
+      { x: 0, y: 150, z: 0 }
+    ]},
+    { zone: 'ship_graveyard', offsets: [
+      { x: 250, y: 0, z: 250 },
+      { x: -250, y: 0, z: -250 },
+      { x: 150, y: 100, z: -150 }
+    ]},
+    { zone: 'orbital_ring', offsets: [
+      { x: 0, y: 200, z: 0 },
+      { x: 200, y: 0, z: 200 },
+      { x: -200, y: 0, z: -200 }
+    ]}
+  ]
+
+  turretPlacements.forEach(placement => {
+    placement.offsets.forEach(offset => {
+      const turret = createTurret(placement.zone, offset.x, offset.y, offset.z)
+      groundTargets.push(turret)
+    })
+  })
+
+  if (import.meta.env.DEV) console.log(`⚔️ 総力戦: 戦艦${battleshipPositions.length}隻、砲台${turretPlacements.reduce((sum, p) => sum + p.offsets.length, 0)}基を配置`)
 }
 
 async function buildSpaceMap() {
@@ -3530,7 +4369,7 @@ async function buildSpaceMap() {
 
   const asteroidGeo = new THREE.DodecahedronGeometry(1, 1)
   const asteroidMat = new THREE.MeshStandardMaterial({ color: 0x7b7780, roughness: 0.95, metalness: 0.04, flatShading: true })
-  const asteroidCount = isMobileDevice ? 240 : 600
+  const asteroidCount = isMobileDevice ? 480 : 1200  // デブリ密度2倍
   const asteroids = new THREE.InstancedMesh(asteroidGeo, asteroidMat, asteroidCount)
   const obj = new THREE.Object3D()
 
@@ -3594,6 +4433,50 @@ async function buildSpaceMap() {
   asteroids.receiveShadow = !isMobileDevice
   space.add(asteroids)
   spaceAsteroids = asteroids
+
+  // ===== 小惑星クラスター（密集エリア） =====
+  const ASTEROID_CLUSTERS = [
+    { x: -1500, y: 100, z: -1000, count: 150, radius: 300 },  // 採掘コロニー付近
+    { x: 1000, y: -200, z: 800, count: 120, radius: 250 },    // 南東エリア
+    { x: -800, y: 400, z: 1200, count: 100, radius: 200 },    // 建造現場付近
+  ]
+
+  const clusterAsteroidCount = ASTEROID_CLUSTERS.reduce((sum, c) => sum + c.count, 0)
+  const clusterAsteroids = new THREE.InstancedMesh(asteroidGeo, asteroidMat, clusterAsteroidCount)
+  let clusterIndex = 0
+
+  for (const cluster of ASTEROID_CLUSTERS) {
+    for (let i = 0; i < cluster.count; i++) {
+      // クラスター中心からの球体分布
+      const theta = Math.random() * Math.PI * 2
+      const phi = Math.acos(2 * Math.random() - 1)
+      const r = Math.random() * cluster.radius
+
+      const offsetX = r * Math.sin(phi) * Math.cos(theta)
+      const offsetY = r * Math.sin(phi) * Math.sin(theta)
+      const offsetZ = r * Math.cos(phi)
+
+      obj.position.set(
+        cluster.x + offsetX,
+        cluster.y + offsetY,
+        cluster.z + offsetZ
+      )
+
+      const s = 8 + Math.random() * 25  // サイズ8-33m
+      obj.scale.set(s * (0.75 + Math.random() * 0.8), s * (0.55 + Math.random() * 0.65), s * (0.75 + Math.random() * 0.75))
+      obj.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+      obj.updateMatrix()
+      clusterAsteroids.setMatrixAt(clusterIndex++, obj.matrix)
+
+      const hazardRadius = s * 1.15 + 7
+      spaceHazards.push({ pos: obj.position.clone(), radius: hazardRadius })
+    }
+  }
+
+  clusterAsteroids.instanceMatrix.needsUpdate = true
+  clusterAsteroids.castShadow = !isMobileDevice
+  clusterAsteroids.receiveShadow = !isMobileDevice
+  space.add(clusterAsteroids)
 
   // ゾーン周辺の戦術的障害物配置
   if (spaceZones.length > 0) {
@@ -3706,28 +4589,6 @@ async function buildSpaceMap() {
     rotatingSpaceObjects.push(navRing)
   }
 
-  function addGate(pos: THREE.Vector3, radius: number, rot: THREE.Euler) {
-    const gate = new THREE.Group()
-    gate.add(new THREE.Mesh(new THREE.TorusGeometry(radius, 5, 12, 96), glowCyan))
-    for (let i = 0; i < 4; i++) {
-      const p = new THREE.Mesh(new THREE.BoxGeometry(12, 26, 42), railMat)
-      const a = i * Math.PI / 2
-      p.position.set(Math.cos(a) * radius, Math.sin(a) * radius, 0)
-      p.rotation.z = a
-      gate.add(p)
-    }
-    gate.position.copy(pos)
-    gate.rotation.copy(rot)
-    space.add(gate)
-    rotatingSpaceObjects.push(gate)
-    spaceGates.push({ pos: pos.clone(), radius, cooldown: 0 })
-  }
-  // 主要ルート上のゲート
-  addGate(new THREE.Vector3(0, 30, -900), 80, new THREE.Euler(0, 0, 0))          // 要塞手前
-  addGate(new THREE.Vector3(-1500, -200, -1550), 90, new THREE.Euler(0.2, -0.5, 0.1)) // 採掘コロニー入口
-  addGate(new THREE.Vector3(1500, -150, -1650), 95, new THREE.Euler(-0.15, 0.6, 0)) // 船墓場入口
-  addGate(new THREE.Vector3(0, 250, -2300), 110, new THREE.Euler(0, 0, 0))      // リング手前
-  addGate(new THREE.Vector3(-1300, 350, 800), 85, new THREE.Euler(0.1, 0.8, 0)) // 建造現場入口
 
   const station = new THREE.Group()
   const railHub = new THREE.Mesh(new THREE.CylinderGeometry(24, 34, 130, 16), railMat)
@@ -3805,6 +4666,105 @@ async function buildSpaceMap() {
   const constructionLight = new THREE.PointLight(0xffdd00, 7, 600)
   constructionLight.position.set(-1800, 350, 1600)
   space.add(constructionLight)
+
+  // ===== 巨大回転リングステーション（GLB 3バリエーション - ゾーン別配置） =====
+  // 軌道リング周辺に配置（テーマ性）
+  const RING_STATIONS = [
+    { x: -200, y: 350, z: -2200, radius: 250, rotSpeed: 0.0012 },  // 軌道リング近く
+    { x: 300, y: 400, z: -2600, radius: 200, rotSpeed: 0.001 },    // 軌道リング近く
+    { x: -400, y: 300, z: -2000, radius: 180, rotSpeed: -0.0008 }, // 軌道リング近く
+  ]
+
+  const RING_MODELS = ['small', 'medium', 'large']
+  Promise.all(RING_MODELS.map(size =>
+    new Promise((resolve) => {
+      gltfLoader.load(import.meta.env.BASE_URL + `models/space_ring_station_${size}.glb`, resolve)
+    })
+  )).then((gltfs: any[]) => {
+    for (const ring of RING_STATIONS) {
+      // 半径に応じてモデルを選択
+      let modelIndex = 0
+      if (ring.radius > 220) modelIndex = 2      // large
+      else if (ring.radius > 190) modelIndex = 1 // medium
+      else modelIndex = 0                         // small
+
+      const gltf = gltfs[modelIndex]
+      const inst = gltf.scene.clone()
+      inst.position.set(ring.x, ring.y, ring.z)
+      inst.scale.setScalar(ring.radius / 200) // 基準半径200m
+      inst.rotation.x = Math.random() * Math.PI
+      inst.rotation.z = Math.random() * Math.PI
+      inst.name = 'SpaceRingStation'
+      space.add(inst)
+      rotatingSpaceObjects.push(inst)
+    }
+  })
+
+  // ===== 巨大通信アンテナ（GLB 2バリエーション） =====
+  const ANTENNAS = [
+    { x: -600, y: 200, z: -400, h: 300 },
+    { x: 800, y: -100, z: 700, h: 350 },
+    { x: -400, y: 500, z: 800, h: 280 },
+  ]
+
+  const ANTENNA_MODELS = ['small', 'large']
+  Promise.all(ANTENNA_MODELS.map(size =>
+    new Promise((resolve) => {
+      gltfLoader.load(import.meta.env.BASE_URL + `models/space_antenna_${size}.glb`, resolve)
+    })
+  )).then((gltfs: any[]) => {
+    for (const ant of ANTENNAS) {
+      // 高さに応じてモデルを選択
+      let modelIndex = 0
+      if (ant.h > 320) modelIndex = 1 // large
+      else modelIndex = 0              // small
+
+      const gltf = gltfs[modelIndex]
+      const inst = gltf.scene.clone()
+      inst.position.set(ant.x, ant.y, ant.z)
+      inst.scale.setScalar(ant.h / 350) // 基準高350m
+      inst.name = 'SpaceAntenna'
+      space.add(inst)
+    }
+  })
+
+  // ===== 破損船体（大型・GLB 5バリエーション - 船墓場に集中配置） =====
+  // 船墓場中心: (2100, -200, -1600)
+  const WRECKS = [
+    { x: 2100, y: -200, z: -1600, scale: 100 },  // 船墓場中心
+    { x: 2300, y: -150, z: -1700, scale: 90 },
+    { x: 1900, y: -250, z: -1500, scale: 95 },
+    { x: 2200, y: -180, z: -1400, scale: 85 },
+    { x: 2000, y: -220, z: -1800, scale: 80 },
+    { x: 2400, y: -170, z: -1650, scale: 75 },
+    { x: 1800, y: -230, z: -1550, scale: 70 },
+    { x: 2250, y: -190, z: -1750, scale: 85 },
+    { x: 2050, y: -210, z: -1450, scale: 80 },
+    { x: 2150, y: -200, z: -1700, scale: 90 },
+  ]
+
+  // 5種類の破損船体モデルを並列ロード
+  const wreckTypes = ['type1', 'type2', 'type3', 'type4', 'type5']
+  Promise.all(wreckTypes.map(type =>
+    new Promise((resolve) => {
+      gltfLoader.load(import.meta.env.BASE_URL + `models/space_wreck_${type}.glb`, resolve)
+    })
+  )).then((gltfs: any[]) => {
+    for (const wreck of WRECKS) {
+      // ランダムにバリエーションを選択
+      const gltf = gltfs[Math.floor(Math.random() * gltfs.length)]
+      const inst = gltf.scene.clone()
+      inst.position.set(wreck.x, wreck.y, wreck.z)
+      inst.scale.setScalar(wreck.scale / 80) // 基準スケール80
+      inst.rotation.set(
+        Math.random() * Math.PI / 4,
+        Math.random() * Math.PI * 2,
+        Math.random() * Math.PI / 4
+      )
+      inst.name = 'SpaceWreck'
+      space.add(inst)
+    }
+  })
 }
 
 // Tokyo MAP用のランドマーク配置関数
@@ -3962,6 +4922,11 @@ async function switchMap(map: GameMap) {
     // 宇宙MAPを構築（非同期）
     await buildSpaceMap()
 
+    // MAP境界格子を生成
+    createMapBoundary('space')
+
+    // Space MAPはゾーンビーコンがあるので追加ナビゲーションビーコン不要
+
     // プレイヤーを宇宙MAP開始位置に配置
     // 中央ハブ近くでスポーン、要塞・リング方向を向く（南西）
     player.position.set(200, 160, 600)
@@ -4055,7 +5020,7 @@ async function switchMap(map: GameMap) {
 
     // ステップ2: NEO東京MAPを初期化
     if (!neoTokyoMapSystem) {
-      neoTokyoMapSystem = new NeoTokyoMapSystem(scene, isMobileDevice)
+      neoTokyoMapSystem = new NeoTokyoMapSystem(scene, isMobileDevice, gltfLoader)
     }
     await neoTokyoMapSystem.initialize()
 
@@ -4066,16 +5031,18 @@ async function switchMap(map: GameMap) {
     if (import.meta.env.DEV) console.log('✈️ プレイヤーをNEO東京・北側進入空域に配置')
 
     // ステップ4: 補給ポイントを新地形に合わせて再配置（台地上）
-    const tokyoSupplyPositions = [
-      new THREE.Vector3(0, 280, -500),      // CBD上空・中央スパイア付近
-      new THREE.Vector3(980, 220, -780),    // NE企業街クラスタ上空
-      new THREE.Vector3(-1100, 180, 600),   // 西部住宅街上空
-    ]
+    const tokyoSupplyPositions = TOKYO_SUPPLY_POSITIONS.map(p => p.clone())
     for (let i = 0; i < Math.min(supplyMeshes.length, tokyoSupplyPositions.length); i++) {
       SUPPLY_POSITIONS[i].copy(tokyoSupplyPositions[i])
       supplyMeshes[i].position.copy(tokyoSupplyPositions[i])
     }
     if (import.meta.env.DEV) console.log('✅ 補給ポイントを東京MAP用に再配置')
+
+    // MAP境界格子を生成
+    createMapBoundary('tokyo')
+
+    // ナビゲーションビーコンを生成
+    createNavigationBeacons('tokyo')
 
     if (import.meta.env.DEV) console.log('✅ 東京MAP切り替え完了')
 
@@ -4151,17 +5118,19 @@ async function switchMap(map: GameMap) {
     if (import.meta.env.DEV) console.log('✈️ プレイヤーをオリジナルMAP上空に配置')
 
     // 補給ポイントをオリジナルMAP用の位置に再配置
-    const originalSupplyPositions = [
-      new THREE.Vector3(-200,  0,  480),   // 中央平野
-      new THREE.Vector3(1200,  0, -380),   // 東部プラトー
-      new THREE.Vector3(-1080, 0, -720),   // 北西高地
-    ]
+    const originalSupplyPositions = ORIGINAL_SUPPLY_POSITIONS.map(p => p.clone())
     for (let i = 0; i < Math.min(supplyMeshes.length, originalSupplyPositions.length); i++) {
       originalSupplyPositions[i].y = terrainH(originalSupplyPositions[i].x, originalSupplyPositions[i].z) + 18
       SUPPLY_POSITIONS[i].copy(originalSupplyPositions[i])
       supplyMeshes[i].position.copy(originalSupplyPositions[i])
     }
     if (import.meta.env.DEV) console.log('✅ 補給ポイントをオリジナルMAP用に再配置')
+
+    // MAP境界格子を生成
+    createMapBoundary('original')
+
+    // ナビゲーションビーコンを生成
+    createNavigationBeacons('original')
 
     if (import.meta.env.DEV) console.log('✅ オリジナルMAP切り替え完了')
   }
@@ -4684,12 +5653,58 @@ function updateEnemies(dt: number) {
     // 現在の前方向
     const currentForward = _fwd.clone().applyQuaternion(enemy.group.quaternion)
 
-    // 目標速度の計算
-    let targetSpeed = isEvading ? 200 : 160
+    // ゾーン別の戦術パラメータ調整
+    let zoneSpeedMultiplier = 1.0
+    let zoneDistanceModifier = 0
+    let zoneTurnRateMultiplier = 1.0
+
+    if (currentMap === 'space' && enemy.spawnZone) {
+      switch (enemy.spawnZone) {
+        case 'mining_colony':
+          // 採掘コロニー：密集小惑星 → 低速近接戦
+          zoneSpeedMultiplier = 0.7
+          zoneDistanceModifier = -30  // より近距離を好む
+          zoneTurnRateMultiplier = 1.2  // 旋回性能アップ
+          break
+        case 'ship_graveyard':
+          // 船墓場：峡谷地形 → 中速、待ち伏せ型、垂直移動
+          zoneSpeedMultiplier = 0.85
+          zoneDistanceModifier = 20  // やや中距離
+          break
+        case 'orbital_ring':
+          // 軌道リング：開放空間 → 高速戦闘
+          zoneSpeedMultiplier = 1.5
+          zoneDistanceModifier = 60  // 長距離を好む
+          zoneTurnRateMultiplier = 0.8  // 高速のため旋回は鈍い
+          break
+        case 'fortress':
+          // 要塞：バランス型
+          zoneSpeedMultiplier = 1.0
+          zoneDistanceModifier = 0
+          zoneTurnRateMultiplier = 1.0
+          break
+        case 'construction':
+          // 建造現場：迷路状 → 視界制限、高機動
+          zoneSpeedMultiplier = 0.9
+          zoneDistanceModifier = -20  // やや近距離
+          zoneTurnRateMultiplier = 1.4  // 高い旋回性能
+          break
+        case 'central_hub':
+          // 中央ステーション：標準
+          zoneSpeedMultiplier = 1.0
+          zoneDistanceModifier = 0
+          zoneTurnRateMultiplier = 1.0
+          break
+      }
+    }
+
+    // 目標速度の計算（ゾーン補正を適用）
+    let targetSpeed = isEvading ? 200 : 160 * zoneSpeedMultiplier
 
     if (!isEvading && !enemy.seekingSupply) {
-      // 距離に応じた速度調整
-      if (distToTarget < enemy.preferredDistance * 0.7) {
+      // 距離に応じた速度調整（ゾーン補正を考慮）
+      const adjustedPreferredDistance = enemy.preferredDistance + zoneDistanceModifier
+      if (distToTarget < adjustedPreferredDistance * 0.7) {
         // 近すぎる：減速
         targetSpeed = 120
       } else if (distToTarget > enemy.preferredDistance * 1.5) {
@@ -4706,8 +5721,9 @@ function updateEnemies(dt: number) {
       enemy.currentSpeed = Math.max(targetSpeed, enemy.currentSpeed - accel * dt)
     }
 
-    // 旋回速度の制限（角速度）
-    const turnRate = isEvading ? 0.10 : 0.06
+    // 旋回速度の制限（角速度）- ゾーン補正を適用
+    const baseTurnRate = isEvading ? 0.10 : 0.06
+    const turnRate = baseTurnRate * zoneTurnRateMultiplier
     const newForward = currentForward.clone().lerp(desiredDirection, turnRate)
     newForward.normalize()
 
@@ -4715,8 +5731,22 @@ function updateEnemies(dt: number) {
     const oldPos = enemy.group.position.clone()
     enemy.group.position.addScaledVector(newForward, enemy.currentSpeed * dt)
 
-    // 地形からの高度を保つ（最低20m）- 宇宙MAP以外のみ
+    // MAP境界制限（全MAP共通：敵も戦闘エリアから出られない）
+    const bounds = MAP_BOUNDS[currentMap]
+    if (enemy.group.position.x < bounds.minX) enemy.group.position.x = bounds.minX
+    if (enemy.group.position.x > bounds.maxX) enemy.group.position.x = bounds.maxX
+    if (enemy.group.position.z < bounds.minZ) enemy.group.position.z = bounds.minZ
+    if (enemy.group.position.z > bounds.maxZ) enemy.group.position.z = bounds.maxZ
+
+    // 宇宙MAPは上下の境界も制限
+    if (currentMap === 'space') {
+      if (enemy.group.position.y < -400) enemy.group.position.y = -400
+      if (enemy.group.position.y > 500) enemy.group.position.y = 500
+    }
+
+    // 高度制御
     if (currentMap !== 'space') {
+      // 通常MAP：地形からの高度を保つ（最低20m）
       const terrainHeight = terrainH(enemy.group.position.x, enemy.group.position.z)
       const minAlt = 20
 
@@ -4732,6 +5762,18 @@ function updateEnemies(dt: number) {
         const heightDiff = targetAlt - enemy.group.position.y
         enemy.group.position.y += heightDiff * 0.5 * dt
       }
+    } else if (enemy.spawnZone === 'ship_graveyard' && !isEvading && !enemy.seekingSupply) {
+      // 宇宙MAP・船墓場：垂直振動（峡谷を活かした待ち伏せ）
+      const time = Date.now() * 0.001
+      const verticalOffset = Math.sin(time * 0.5 + i * 0.7) * 40  // ±40mの振動
+      const targetAlt = target.position.y + enemy.preferredHeightOffset + verticalOffset
+      const heightDiff = targetAlt - enemy.group.position.y
+      enemy.group.position.y += heightDiff * 0.8 * dt
+    } else if (currentMap === 'space' && !isEvading && !enemy.seekingSupply) {
+      // 宇宙MAP・その他のゾーン：目標高度に緩やかに追従
+      const targetAlt = target.position.y + enemy.preferredHeightOffset
+      const heightDiff = targetAlt - enemy.group.position.y
+      enemy.group.position.y += heightDiff * 0.5 * dt
     }
 
     // 速度ベクトル記録（マシンガン予測用）
@@ -4755,8 +5797,11 @@ function updateEnemies(dt: number) {
         Math.max(-1, Math.min(1, toTarget.clone().normalize().dot(currentForward)))
       )
 
-      // 距離200-400m、前方30度以内でミサイル発射
-      if (enemy.fireCooldown <= 0 && distToTarget > 200 && distToTarget < 400 && angleToTarget < Math.PI / 6) {
+      // ミサイル発射判定（ゾーン補正を適用）
+      const adjustedPreferredDistance = enemy.preferredDistance + zoneDistanceModifier
+      const missileMinRange = adjustedPreferredDistance * 0.5
+      const missileMaxRange = adjustedPreferredDistance * 3.0
+      if (enemy.fireCooldown <= 0 && distToTarget > missileMinRange && distToTarget < missileMaxRange && angleToTarget < Math.PI / 6) {
         if (enemy.missileAmmo > 0) {
           enemy.fireCooldown = 9 + Math.random() * 7
           fireEnemyMissile(enemy)
@@ -4766,9 +5811,10 @@ function updateEnemies(dt: number) {
         }
       }
 
-      // 距離50-200m、前方20度以内でマシンガン射撃
+      // マシンガン射撃判定（ゾーン補正を適用）
       enemy.gunCooldown -= dt
-      if (enemy.gunCooldown <= 0 && distToTarget < 200 && distToTarget > 30 && angleToTarget < Math.PI / 9) {
+      const gunMaxRange = Math.min(200, adjustedPreferredDistance * 1.5)
+      if (enemy.gunCooldown <= 0 && distToTarget < gunMaxRange && distToTarget > 30 && angleToTarget < Math.PI / 9) {
         enemy.gunCooldown = 0.10 + Math.random() * 0.04
         const aimDir = toTarget.clone().normalize()
         const enemyVel = currentForward.clone().multiplyScalar(enemy.currentSpeed)
@@ -5246,37 +6292,31 @@ function drawEnemyBrackets() {
     }
   }
 
-  // GATE BOOSTフィードバック表示
-  if (spaceGateBoostTimer > 0) {
-    const alpha = Math.min(1.0, spaceGateBoostTimer / 0.5)
-    ctx.save()
-    ctx.fillStyle = `rgba(100, 220, 255, ${alpha * 0.9})`
-    ctx.font = 'bold 28px monospace'
-    ctx.textAlign = 'center'
-    ctx.shadowColor = 'rgba(0, 180, 255, 0.8)'
-    ctx.shadowBlur = 12
-    ctx.fillText('GATE BOOST', w / 2, h / 2 - 80)
-    ctx.restore()
-  }
-
-  // 宇宙MAP：次の航路ゲートへの方向キュー（画面外の場合）
-  if (currentMap === 'space' && spaceGates.length > 0) {
-    // 最も近いゲートを探す
-    let closestGate: { pos: THREE.Vector3; radius: number; cooldown: number } | null = null
+  // 宇宙MAP：次のゾーンへの方向キュー（画面外の場合）
+  if (currentMap === 'space' && spaceZones.length > 0) {
+    // 最も近いゾーンを探す
+    let closestZone: SpaceZone | null = null
     let minDist = Infinity
-    for (const gate of spaceGates) {
-      const dist = player.position.distanceTo(gate.pos)
-      if (dist < minDist && dist > gate.radius) {
+    for (const zone of spaceZones) {
+      if (zone.zone_id === 'central_hub') continue  // 中央ステーションは除外
+      const zonePos = new THREE.Vector3(zone.position.x, zone.position.y, zone.position.z)
+      const dist = player.position.distanceTo(zonePos)
+      if (dist < minDist && dist > 600) {
         minDist = dist
-        closestGate = gate
+        closestZone = zone
       }
     }
 
-    if (closestGate) {
-      const [_sx, _sy, vis] = projectToScreen(closestGate.pos)
+    if (closestZone) {
+      const zonePos = new THREE.Vector3(closestZone.position.x, closestZone.position.y, closestZone.position.z)
+      const [_sx, _sy, vis] = projectToScreen(zonePos)
       // 画面外の場合のみ矢印表示
       if (!vis) {
-        _drawOffscreenArrow(ctx, closestGate.pos, w, h, 'rgba(100, 220, 255, 0.6)')
+        const zoneColor = ZONE_COLORS[closestZone.zone_id] || 0xffffff
+        const r = (zoneColor >> 16) & 0xff
+        const g = (zoneColor >> 8) & 0xff
+        const b = zoneColor & 0xff
+        _drawOffscreenArrow(ctx, zonePos, w, h, `rgba(${r}, ${g}, ${b}, 0.6)`)
       }
     }
   }
@@ -5365,19 +6405,50 @@ function updateSpaceHazards(_dt: number) {
   }
 }
 
-function updateSpaceGates(dt: number) {
-  if (currentMap !== 'space') return
-  for (const gate of spaceGates) {
-    gate.cooldown = Math.max(0, gate.cooldown - dt)
-    const dist = player.position.distanceTo(gate.pos)
-    // ゲートを通過するとブースト効果
-    if (dist < gate.radius && gate.cooldown <= 0) {
-      spaceGateBoostTimer = 3.5
-      playGateBoostSound()
-      gate.cooldown = 4.2
-    }
+// MAP境界の透明度を更新（近づくとフェードイン）
+// MAP境界の透明度を更新（全MAP共通）
+function updateMapBoundary() {
+  if (!mapBoundaryMesh) return
+
+  const bounds = MAP_BOUNDS[currentMap]
+  const config = GRID_CONFIG[currentMap]
+  const pos = player.position
+
+  // 各面からの距離を計算
+  const distToEdges = [
+    bounds.maxX - pos.x,  // 右
+    pos.x - bounds.minX,  // 左
+    bounds.maxZ - pos.z,  // 前
+    pos.z - bounds.minZ   // 後
+  ]
+
+  // 宇宙MAPは上下の面も考慮
+  if (currentMap === 'space') {
+    distToEdges.push(500 - pos.y)    // 上
+    distToEdges.push(pos.y - (-400)) // 下
   }
+
+  const minDistToEdge = Math.min(...distToEdges)
+
+  // フェードイン処理
+  const fadeStartDist = config.fadeInDistance
+  const fadeEndDist = config.fadeEndDistance
+
+  let opacity = 0
+  if (minDistToEdge > fadeStartDist) {
+    opacity = 0  // 遠すぎる：見えない
+  } else if (minDistToEdge < fadeEndDist) {
+    opacity = config.opacity  // 境界近く：最大透明度
+  } else {
+    // フェードイン範囲
+    const t = 1 - (minDistToEdge - fadeEndDist) / (fadeStartDist - fadeEndDist)
+    opacity = t * config.opacity
+  }
+
+  const material = mapBoundaryMesh.material as THREE.LineBasicMaterial
+  material.opacity = opacity
 }
+
 
 // ===== SUPPLY POINTS =====
 let supplyIndicatorTimer = 0
@@ -5672,20 +6743,25 @@ function drawRadar() {
     ctx.beginPath(); ctx.moveTo(px, py-3); ctx.lineTo(px+2.5, py+2); ctx.lineTo(px-2.5, py+2); ctx.closePath(); ctx.fill()
   }
 
-  // 宇宙MAP：垂直キュー表示（ゲートと補給ポイント）
+  // 宇宙MAP：垂直キュー表示（ゾーンと補給ポイント）
   if (currentMap === 'space') {
-    for (const gate of spaceGates) {
-      const hdist = Math.sqrt((gate.pos.x - player.position.x) ** 2 + (gate.pos.z - player.position.z) ** 2)
+    for (const zone of spaceZones) {
+      const zonePos = new THREE.Vector3(zone.position.x, zone.position.y, zone.position.z)
+      const hdist = Math.sqrt((zone.position.x - player.position.x) ** 2 + (zone.position.z - player.position.z) ** 2)
       if (hdist < RADAR_RANGE) {
-        const [px, py] = worldToRadar(gate.pos)
-        const vdiff = gate.pos.y - player.position.y
-        ctx.strokeStyle = vdiff > 10 ? '#0cf' : (vdiff < -10 ? '#0cf' : '#0af')
+        const [px, py] = worldToRadar(zonePos)
+        const vdiff = zone.position.y - player.position.y
+        const zoneColor = ZONE_COLORS[zone.zone_id] || 0xffffff
+        const r = (zoneColor >> 16) & 0xff
+        const g = (zoneColor >> 8) & 0xff
+        const b = zoneColor & 0xff
+        ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`
         ctx.lineWidth = 1.2
         ctx.setLineDash([2, 2])
         ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.stroke()
         ctx.setLineDash([])
         if (Math.abs(vdiff) > 15) {
-          ctx.fillStyle = '#0cf'
+          ctx.fillStyle = `rgb(${r}, ${g}, ${b})`
           ctx.font = 'bold 9px monospace'
           ctx.textAlign = 'center'
           ctx.fillText(vdiff > 0 ? '↑' : '↓', px, py + 3)
@@ -5727,7 +6803,7 @@ function loop() {
     lastSpaceTime = now2
   }
   const brake = touchState.brake || decelerateMode
-  const boost = (!!keys['Space'] || touchState.boost || spaceGateBoostTimer > 0) && !brake
+  const boost = (!!keys['Space'] || touchState.boost) && !brake
   const boostTarget = brake ? 50 : (boost ? 550 : wheelSpeedTarget)  // 減速50m/s、ブースト550m/s（1,980km/h）
   speed += (boostTarget - speed) * dt * 2.2
   if (!boost && !decelerateMode) wheelSpeedTarget += (150 - wheelSpeedTarget) * dt * 0.4  // 巡航速度150に自動復帰
@@ -5740,9 +6816,6 @@ function loop() {
     flareBurstTimer -= dt
     if (flareBurstTimer <= 0) { _dropSingleFlare(); flareBurstLeft--; flareBurstTimer = 0.18 }
   }
-
-  // === SPACE GATE BOOST TIMER ===
-  spaceGateBoostTimer = Math.max(0, spaceGateBoostTimer - dt)
 
   // === FLIGHT INPUT ===
   const DEAD = 0.04
@@ -5810,10 +6883,25 @@ function loop() {
   const newPos = prevPos.clone().add(moveVec)
 
   // 宇宙MAPでは地形衝突判定をスキップ
+  // MAP境界の更新（全MAP共通）
+  updateMapBoundary()
+
+  // MAP境界制限（全MAP共通：プレイヤーが戦闘エリアから出られない）
+  const bounds = MAP_BOUNDS[currentMap]
+  if (player.position.x < bounds.minX) player.position.x = bounds.minX
+  if (player.position.x > bounds.maxX) player.position.x = bounds.maxX
+  if (player.position.z < bounds.minZ) player.position.z = bounds.minZ
+  if (player.position.z > bounds.maxZ) player.position.z = bounds.maxZ
+
+  // 宇宙MAPは上下の境界も制限
+  if (currentMap === 'space') {
+    if (player.position.y < -400) player.position.y = -400
+    if (player.position.y > 500) player.position.y = 500
+  }
+
   if (currentMap === 'space') {
     player.position.copy(newPos)
     updateSpaceHazards(dt)
-    updateSpaceGates(dt)
 
     // ゾーン進入検出
     if (spaceZones.length > 0) {

@@ -19,7 +19,7 @@
       "zone_id": "central_hub",
       "position": {
         "x": 0,
-        "y": 50,
+        "y": 0,
         "z": 0
       },
       "rotation": {
@@ -41,9 +41,9 @@
     "fortress": {
       "zone_id": "fortress",
       "position": {
-        "x": 0,
-        "y": 0,
-        "z": -1800
+        "x": 600,
+        "y": -800,
+        "z": -2400
       },
       "rotation": {
         "x": 0,
@@ -51,10 +51,10 @@
         "z": 0
       },
       "scale": 4.0,
-      "layer": "middle",
+      "layer": "lower",
       "name": "破壊された要塞",
       "glb_file": "space_fortress_destroyed.glb",
-      "description": "中央軸上の巨大防衛拠点。400×300×200m、通路幅50m",
+      "description": "下層深部・右奥の巨大防衛拠点。400×300×200m、通路幅50m",
       "size": "xlarge",
       "features": [
         "内部飛行可能",
@@ -65,9 +65,9 @@
     "mining_colony": {
       "zone_id": "mining_colony",
       "position": {
-        "x": -2000,
-        "y": -250,
-        "z": -1500
+        "x": -2300,
+        "y": -1800,
+        "z": -400
       },
       "rotation": {
         "x": 0,
@@ -78,7 +78,7 @@
       "layer": "lower",
       "name": "小惑星採掘コロニー",
       "glb_file": "space_mining_colony.glb",
-      "description": "下層左。主小惑星300m、密集トンネル幅25-40m",
+      "description": "下層最深部・左。主小惑星300m、密集トンネル幅25-40m",
       "size": "xlarge",
       "features": [
         "小惑星内部空洞",
@@ -89,9 +89,9 @@
     "ship_graveyard": {
       "zone_id": "ship_graveyard",
       "position": {
-        "x": 2100,
-        "y": -200,
-        "z": -1600
+        "x": 2200,
+        "y": 600,
+        "z": 2000
       },
       "rotation": {
         "x": 0,
@@ -99,10 +99,10 @@
         "z": 0
       },
       "scale": 3.5,
-      "layer": "lower",
+      "layer": "middle",
       "name": "宇宙船墓場",
       "glb_file": "space_ship_graveyard.glb",
-      "description": "下層右。廃船3-4隻（各250-400m）、峡谷幅50-100m",
+      "description": "中層上部・右前。廃船3-4隻（各250-400m）、峡谷幅50-100m",
       "size": "xlarge",
       "features": [
         "巨大船内部",
@@ -113,9 +113,9 @@
     "orbital_ring": {
       "zone_id": "orbital_ring",
       "position": {
-        "x": 0,
-        "y": 350,
-        "z": -2400
+        "x": -600,
+        "y": 2000,
+        "z": -2200
       },
       "rotation": {
         "x": 1.57,
@@ -126,7 +126,7 @@
       "layer": "upper",
       "name": "軌道リング都市",
       "glb_file": "space_orbital_ring.glb",
-      "description": "元宇宙港本体。リング直径800m、チューブ幅80m",
+      "description": "上層最上部・左奥。元宇宙港本体。リング直径800m、チューブ幅80m",
       "size": "xlarge",
       "features": [
         "リング内側飛行",
@@ -137,9 +137,9 @@
     "construction": {
       "zone_id": "construction",
       "position": {
-        "x": -1800,
-        "y": 350,
-        "z": 1600
+        "x": 2000,
+        "y": 1600,
+        "z": -100
       },
       "rotation": {
         "x": 0,
@@ -150,7 +150,7 @@
       "layer": "upper",
       "name": "建造現場",
       "glb_file": "space_construction.glb",
-      "description": "放棄された拡張工事。300×200×150m、格子30-50m",
+      "description": "上層高部・右。放棄された拡張工事。300×200×150m、格子30-50m",
       "size": "xlarge",
       "features": [
         "骨組み飛行",

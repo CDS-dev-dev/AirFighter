@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 
 type RGB = [number, number, number]
 
@@ -272,6 +273,7 @@ const YAMANOTE_WP = [
 export class NeoTokyoMapSystem {
   private scene: THREE.Scene
   private mobile: boolean
+  private gltfLoader: GLTFLoader | null = null
   private terrainMesh: THREE.Mesh | null = null
   private instancedMeshes: THREE.InstancedMesh[] = []
   private landmarks: THREE.Object3D[] = []
@@ -281,9 +283,10 @@ export class NeoTokyoMapSystem {
   private ringTubeCorridors: RingTubeCorridor[] = []
   private tubeOpenings: TubeOpening[] = []
 
-  constructor(scene: THREE.Scene, isMobile = false) {
+  constructor(scene: THREE.Scene, isMobile = false, gltfLoader: GLTFLoader | null = null) {
     this.scene = scene
     this.mobile = isMobile
+    this.gltfLoader = gltfLoader
   }
 
   async initialize(): Promise<void> {
@@ -490,7 +493,79 @@ export class NeoTokyoMapSystem {
       mesh.instanceMatrix.needsUpdate = true
       this.scene.add(mesh); this.instancedMeshes.push(mesh)
     }
-    console.log(`[NEO Tokyo] Created ${this.buildingColliders.length} building colliders`)
+
+    // ===== 円筒形ビル（Cylindrical Towers - GLB 3バリエーション） =====
+    const CYLINDRICAL_TOWERS = [
+      { x: -1200, z: 600, h: 420, r: 80 },
+      { x: 800, z: -800, h: 380, r: 70 },
+      { x: -400, z: -1200, h: 450, r: 85 },
+      { x: 1000, z: 1200, h: 400, r: 75 },
+      { x: -1800, z: -1000, h: 360, r: 65 },
+    ]
+
+    if (this.gltfLoader) {
+      const TOWER_MODELS = ['small', 'medium', 'large']
+      Promise.all(TOWER_MODELS.map(size =>
+        new Promise((resolve) => {
+          this.gltfLoader!.load(import.meta.env.BASE_URL + `models/building_cylindrical_${size}.glb`, resolve)
+        })
+      )).then((gltfs: any[]) => {
+        for (const tower of CYLINDRICAL_TOWERS) {
+          // 高さに応じてモデルを選択
+          let modelIndex = 0
+          if (tower.h > 420) modelIndex = 2      // large
+          else if (tower.h > 380) modelIndex = 1 // medium
+          else modelIndex = 0                     // small
+
+          const gltf = gltfs[modelIndex]
+          const inst = gltf.scene.clone()
+          const gy = NeoTokyoMapSystem.heightAt(tower.x, tower.z)
+          inst.position.set(tower.x, gy, tower.z)
+          inst.scale.set(tower.r / 75, tower.h / 400, tower.r / 75) // 基準: 75m半径, 400m高
+          inst.name = 'CylindricalTower'
+
+          inst.traverse((child: any) => {
+            if (child.isMesh) {
+              child.castShadow = !this.mobile
+            }
+          })
+
+          this.scene.add(inst)
+
+          // Collider
+          const collider = new THREE.Mesh(
+            new THREE.CylinderGeometry(tower.r, tower.r, tower.h, 16),
+            new THREE.MeshBasicMaterial({ visible: false })
+          )
+          collider.position.set(tower.x, gy + tower.h / 2, tower.z)
+          collider.name = 'BuildingCollider'
+          this.scene.add(collider)
+          this.buildingColliders.push(collider)
+        }
+      })
+    }
+
+    // ===== 巨大高架道路（Elevated Highway） =====
+    const HIGHWAYS = [
+      { x1: -2000, z1: -1500, x2: 2000, z2: -1500, y: 100, width: 40 },
+      { x1: 1500, z1: -2000, x2: 1500, z2: 2000, y: 120, width: 40 },
+    ]
+
+    for (const hw of HIGHWAYS) {
+      const length = Math.hypot(hw.x2 - hw.x1, hw.z2 - hw.z1)
+      const geo = new THREE.BoxGeometry(hw.width, 8, length)
+      const mesh = new THREE.Mesh(
+        geo,
+        new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8 })
+      )
+      const angle = Math.atan2(hw.z2 - hw.z1, hw.x2 - hw.x1)
+      mesh.position.set((hw.x1 + hw.x2) / 2, hw.y, (hw.z1 + hw.z2) / 2)
+      mesh.rotation.y = angle
+      mesh.name = 'ElevatedHighway'
+      this.scene.add(mesh)
+    }
+
+    console.log(`[NEO Tokyo] Created ${this.buildingColliders.length} building colliders (including cylindrical towers)`)
   }
 
   private collectBuildingSpecs(): BSpec[] {
@@ -528,7 +603,7 @@ export class NeoTokyoMapSystem {
     const corePos = [[820, -520], [-980, -520], [980, 520], [-1080, 620], [0, -1080], [420, 980], [-480, 980]]
     for (const [cx, cz] of corePos) {
       const bs = sr(cx * 0.1 + cz * 0.1)
-      const h = 1700 + bs * 720
+      const h = 400 + bs * 400  // 改善: 1700-2420m → 400-800m
       if (!canPlaceTower(cx, cz, h)) continue
       pushSpec({
         type: 1,
@@ -545,7 +620,7 @@ export class NeoTokyoMapSystem {
     const shinjukuPos = [[-2950, -420], [-2950, 240], [-2600, -980], [-2350, 560], [-3300, -1080], [-3500, 520]]
     for (const [cx, cz] of shinjukuPos) {
       const bs = sr(cx * 0.1 + cz * 0.1)
-      const h = 1150 + bs * 760
+      const h = 300 + bs * 200  // 改善: 1150-1910m → 300-500m
       if (!canPlaceTower(cx, cz, h)) continue
       pushSpec({
         type: 0,
@@ -565,7 +640,7 @@ export class NeoTokyoMapSystem {
       const cx = Math.cos(angle) * dist
       const cz = Math.sin(angle) * dist
       const bs = sr(cx * 0.1 + cz * 0.1)
-      const h = 760 + bs * 520
+      const h = 200 + bs * 200  // 改善: 760-1280m → 200-400m
       if (!canPlaceTower(cx, cz, h)) continue
       pushSpec({
         type: 2,
@@ -582,7 +657,7 @@ export class NeoTokyoMapSystem {
     const odaibaPos = [[1200, 2600], [2800, 2050], [3000, 2500], [1650, 2950], [2700, 1450]]
     for (const [cx, cz] of odaibaPos) {
       const bs = sr(cx * 0.1 + cz * 0.1)
-      const h = 520 + bs * 460
+      const h = 150 + bs * 150  // 改善: 520-980m → 150-300m
       if (!canPlaceTower(cx, cz, h)) continue
       pushSpec({
         type: 3,
@@ -608,7 +683,7 @@ export class NeoTokyoMapSystem {
         else if (cx < 0 && cz > 500) type = 2  // Shibuya area
         else if (cx > 1000 && cz > 1000) type = 3  // Odaiba area
 
-        const h = 520 + bs * 780
+        const h = 100 + bs * 150  // 改善: 520-1300m → 100-250m (一般ビル)
         if (!canPlaceTower(cx, cz, h)) continue
         pushSpec({
           type,
@@ -622,7 +697,45 @@ export class NeoTokyoMapSystem {
       }
     }
 
-    console.log(`[NEO Tokyo 2077] Generated ${specs.length} dense skyline towers`)
+    // ===== URBAN CANYON WALL BUILDINGS =====
+    // Urban Canyonの両側に壁ビルを配置して視覚的な飛行回廊を形成
+    for (const canyon of URBAN_CANYONS) {
+      if (canyon.width < 400) continue  // 狭すぎる峡谷はスキップ
+
+      const length = Math.hypot(canyon.x2 - canyon.x1, canyon.z2 - canyon.z1)
+      const steps = Math.floor(length / 180)  // 180m間隔
+
+      for (let i = 0; i < steps; i++) {
+        const t = i / steps
+        const cx = canyon.x1 + (canyon.x2 - canyon.x1) * t
+        const cz = canyon.z1 + (canyon.z2 - canyon.z1) * t
+
+        // 両側に壁ビル配置
+        const wallOffset = canyon.width / 2 + 60
+        const angle = Math.atan2(canyon.z2 - canyon.z1, canyon.x2 - canyon.x1) + Math.PI / 2
+
+        for (const side of [-1, 1]) {
+          const x = cx + Math.cos(angle) * wallOffset * side
+          const z = cz + Math.sin(angle) * wallOffset * side
+
+          // 水域・ランドマーク・スポーンエリアを避ける
+          if (isInWaterArea(x, z) || isInLandmarkZone(x, z, 200) || isInSpawnApproach(x, z, 180)) continue
+
+          const h = 300 + Math.random() * 100  // 統一された高さ300-400m
+
+          pushSpec({
+            type: 0,
+            x, z,
+            w: 160 + Math.random() * 40,
+            d: 160 + Math.random() * 40,
+            h,
+            ry: angle + Math.PI / 2
+          })
+        }
+      }
+    }
+
+    console.log(`[NEO Tokyo 2077] Generated ${specs.length} dense skyline towers (including Urban Canyon walls)`)
     return specs
   }
 
@@ -630,12 +743,12 @@ export class NeoTokyoMapSystem {
 
   private createChunkyMegaBlocks(): void {
     const blocks: Array<{ x: number; z: number; w: number; d: number; h: number; c: number }> = [
-      { x: -520, z: -1420, w: 560, d: 420, h: 820, c: 0x3ddcff },
-      { x: 1180, z: -1120, w: 520, d: 480, h: 960, c: 0xff3aa8 },
-      { x: -1760, z: 1180, w: 620, d: 380, h: 720, c: 0xff8a26 },
-      { x: 2580, z: 1600, w: 680, d: 520, h: 620, c: 0x3ddcff },
-      { x: -3300, z: -760, w: 580, d: 520, h: 760, c: 0xff3aa8 },
-      { x: 2900, z: -760, w: 470, d: 580, h: 840, c: 0x6ce8ff },
+      { x: -520, z: -1420, w: 560, d: 420, h: 350, c: 0x3ddcff },  // 820→350m
+      { x: 1180, z: -1120, w: 520, d: 480, h: 400, c: 0xff3aa8 },  // 960→400m
+      { x: -1760, z: 1180, w: 620, d: 380, h: 300, c: 0xff8a26 },  // 720→300m
+      { x: 2580, z: 1600, w: 680, d: 520, h: 280, c: 0x3ddcff },   // 620→280m
+      { x: -3300, z: -760, w: 580, d: 520, h: 320, c: 0xff3aa8 },  // 760→320m
+      { x: 2900, z: -760, w: 470, d: 580, h: 350, c: 0x6ce8ff },   // 840→350m
     ]
 
     for (const b of blocks) {
