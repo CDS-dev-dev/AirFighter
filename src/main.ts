@@ -149,9 +149,9 @@ interface MapBounds {
 }
 
 const MAP_BOUNDS: Record<GameMap, MapBounds> = {
-  original: { minX: -4300, maxX: 4300, minZ: -4300, maxZ: 4300, warningMargin: 550 },
-  tokyo: { minX: -6800, maxX: 6800, minZ: -6800, maxZ: 6800, warningMargin: 700 },
-  space: { minX: -3000, maxX: 3000, minZ: -3000, maxZ: 3000, warningMargin: 400 },
+  original: { minX: -8600, maxX: 8600, minZ: -8600, maxZ: 8600, warningMargin: 1100 },
+  tokyo: { minX: -8600, maxX: 8600, minZ: -8600, maxZ: 8600, warningMargin: 1100 },
+  space: { minX: -6000, maxX: 6000, minZ: -6000, maxZ: 6000, warningMargin: 800 },
 }
 
 // ===== TERRAIN =====
@@ -1415,6 +1415,227 @@ function addUndergroundCaveNetwork() {
   }
 
   console.log('✅ Underground cave network created (3 layers, 30 chambers, 50+ tunnels)')
+
+  // ===== 隠しエリア（Hidden Areas - 10箇所） =====
+  const hiddenMat = new THREE.MeshStandardMaterial({
+    color: 0xffaa00,
+    emissive: 0xff8800,
+    emissiveIntensity: 0.6,
+    metalness: 0.3,
+    roughness: 0.4
+  })
+
+  const HIDDEN_AREAS_ORIGINAL = [
+    { name: '滝の裏の空間', x: -800, y: 150, z: 600, type: 'sphere', size: 15 },
+    { name: 'クレバス底部', x: 50, y: -50, z: -250, type: 'sphere', size: 12 },
+    { name: '巨大樹の樹洞', x: 2500, y: 100, z: 300, type: 'sphere', size: 18 },
+    { name: '雪山頂上の祠', x: 0, y: 1500, z: -2800, type: 'box', size: 20 },
+    { name: '砂漠オアシスの地下', x: 300, y: -20, z: 2500, type: 'sphere', size: 14 },
+    { name: '洞窟の最深部', x: 0, y: -200, z: 0, type: 'sphere', size: 16 },
+    { name: '自然橋の下の空間', x: 400, y: 40, z: -600, type: 'sphere', size: 13 },
+    { name: '峡谷の隠し横穴', x: 80, y: 10, z: -200, type: 'sphere', size: 11 },
+    { name: '温泉', x: -1500, y: 50, z: 500, type: 'cylinder', size: 20 },
+    { name: '古代の天文台跡', x: 1200, y: 900, z: -800, type: 'box', size: 25 },
+  ]
+
+  for (const area of HIDDEN_AREAS_ORIGINAL) {
+    let marker: THREE.Mesh
+    if (area.type === 'sphere') {
+      marker = new THREE.Mesh(
+        new THREE.SphereGeometry(area.size, 12, 12),
+        hiddenMat
+      )
+    } else if (area.type === 'cylinder') {
+      marker = new THREE.Mesh(
+        new THREE.CylinderGeometry(area.size, area.size, 5, 16),
+        hiddenMat
+      )
+    } else {
+      marker = new THREE.Mesh(
+        new THREE.BoxGeometry(area.size, area.size, area.size),
+        hiddenMat
+      )
+    }
+    marker.position.set(area.x, area.y, area.z)
+    marker.name = `HiddenArea_${area.name}`
+    originalMapGroup.add(marker)
+  }
+
+  console.log('✅ Hidden areas created (10 locations in Original MAP)')
+
+  // ===== 細部ディテール（Natural Details） =====
+  const flowerMat = new THREE.MeshLambertMaterial({ color: 0xff88cc })
+  const mushroomMat = new THREE.MeshLambertMaterial({ color: 0xddaa88 })
+  const logMat = new THREE.MeshLambertMaterial({ color: 0x6b4423 })
+  const rockPileMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.9 })
+
+  // 花（群生）1000本
+  const flowerCount = isMobileDevice ? 400 : 1000
+  for (let i = 0; i < flowerCount; i++) {
+    const sx = (Math.random() - 0.5) * 8000
+    const sz = (Math.random() - 0.5) * 8000
+    const sy = terrainH(sx, sz)
+    if (sy < WATER_LEVEL || sy > 600) continue  // 水中・高山を除外
+
+    const flower = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3, 4, 4),
+      flowerMat
+    )
+    flower.position.set(sx, sy + 0.5, sz)
+    originalMapGroup.add(flower)
+  }
+
+  // キノコ500本
+  const mushroomCount = isMobileDevice ? 200 : 500
+  for (let i = 0; i < mushroomCount; i++) {
+    const sx = (Math.random() - 0.5) * 8000
+    const sz = (Math.random() - 0.5) * 8000
+    const sy = terrainH(sx, sz)
+    if (sy < WATER_LEVEL || sy > 500) continue
+
+    const stem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.15, 0.2, 1, 6),
+      mushroomMat
+    )
+    stem.position.set(sx, sy + 0.5, sz)
+    originalMapGroup.add(stem)
+
+    const cap = new THREE.Mesh(
+      new THREE.ConeGeometry(0.5, 0.4, 8),
+      mushroomMat
+    )
+    cap.position.set(sx, sy + 1.2, sz)
+    originalMapGroup.add(cap)
+  }
+
+  // 倒木200本
+  const fallenLogCount = isMobileDevice ? 80 : 200
+  for (let i = 0; i < fallenLogCount; i++) {
+    const sx = (Math.random() - 0.5) * 8000
+    const sz = (Math.random() - 0.5) * 8000
+    const sy = terrainH(sx, sz)
+    if (sy < WATER_LEVEL || sy > 700) continue
+
+    const log = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.8, 0.6, 12, 8),
+      logMat
+    )
+    log.position.set(sx, sy + 0.5, sz)
+    log.rotation.set(0, Math.random() * Math.PI * 2, Math.PI / 2)
+    originalMapGroup.add(log)
+  }
+
+  // 岩の堆積300個
+  const rockPileCount = isMobileDevice ? 120 : 300
+  for (let i = 0; i < rockPileCount; i++) {
+    const sx = (Math.random() - 0.5) * 8000
+    const sz = (Math.random() - 0.5) * 8000
+    const sy = terrainH(sx, sz)
+    if (sy < WATER_LEVEL) continue
+
+    const rockPile = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(2 + Math.random() * 2, 0),
+      rockPileMat
+    )
+    rockPile.position.set(sx, sy + 1, sz)
+    rockPile.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+    originalMapGroup.add(rockPile)
+  }
+
+  // 小川20本（SimpleLine）
+  const streamMat = new THREE.LineBasicMaterial({ color: 0x4488ff, opacity: 0.6, transparent: true })
+  for (let i = 0; i < 20; i++) {
+    const startX = (Math.random() - 0.5) * 7000
+    const startZ = (Math.random() - 0.5) * 7000
+    const points: THREE.Vector3[] = []
+    let x = startX, z = startZ
+    for (let j = 0; j < 20; j++) {
+      const y = terrainH(x, z)
+      if (y > WATER_LEVEL) points.push(new THREE.Vector3(x, y + 0.2, z))
+      x += (Math.random() - 0.5) * 30
+      z += (Math.random() - 0.5) * 30
+    }
+    if (points.length > 1) {
+      const streamGeo = new THREE.BufferGeometry().setFromPoints(points)
+      const stream = new THREE.Line(streamGeo, streamMat)
+      originalMapGroup.add(stream)
+    }
+  }
+
+  // 池10箇所
+  const pondMat = new THREE.MeshBasicMaterial({ color: 0x2266aa, transparent: true, opacity: 0.7 })
+  for (let i = 0; i < 10; i++) {
+    const px = (Math.random() - 0.5) * 7000
+    const pz = (Math.random() - 0.5) * 7000
+    const py = terrainH(px, pz)
+    if (py < WATER_LEVEL + 5 || py > 400) continue
+
+    const pond = new THREE.Mesh(
+      new THREE.CircleGeometry(15 + Math.random() * 20, 16),
+      pondMat
+    )
+    pond.position.set(px, py + 0.5, pz)
+    pond.rotation.x = -Math.PI / 2
+    originalMapGroup.add(pond)
+  }
+
+  // 人工物の残骸: 焚き火跡30個
+  const campfireMat = new THREE.MeshLambertMaterial({ color: 0x333333 })
+  for (let i = 0; i < 30; i++) {
+    const cx = (Math.random() - 0.5) * 6000
+    const cz = (Math.random() - 0.5) * 6000
+    const cy = terrainH(cx, cz)
+    if (cy < WATER_LEVEL || cy > 500) continue
+
+    const campfire = new THREE.Mesh(
+      new THREE.CylinderGeometry(2, 2, 0.3, 16),
+      campfireMat
+    )
+    campfire.position.set(cx, cy + 0.15, cz)
+    originalMapGroup.add(campfire)
+  }
+
+  // テント（廃）20個
+  const tentMat = new THREE.MeshLambertMaterial({ color: 0x665544 })
+  for (let i = 0; i < 20; i++) {
+    const tx = (Math.random() - 0.5) * 6000
+    const tz = (Math.random() - 0.5) * 6000
+    const ty = terrainH(tx, tz)
+    if (ty < WATER_LEVEL || ty > 500) continue
+
+    const tent = new THREE.Mesh(
+      new THREE.ConeGeometry(2, 3, 4),
+      tentMat
+    )
+    tent.position.set(tx, ty + 1.5, tz)
+    tent.rotation.y = Math.random() * Math.PI * 2
+    originalMapGroup.add(tent)
+  }
+
+  // 石像15体
+  const statueMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.8 })
+  for (let i = 0; i < 15; i++) {
+    const stx = (Math.random() - 0.5) * 7000
+    const stz = (Math.random() - 0.5) * 7000
+    const sty = terrainH(stx, stz)
+    if (sty < WATER_LEVEL || sty > 600) continue
+
+    const statue = new THREE.Mesh(
+      new THREE.CylinderGeometry(1, 1.5, 5, 8),
+      statueMat
+    )
+    statue.position.set(stx, sty + 2.5, stz)
+    originalMapGroup.add(statue)
+
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(1.2, 8, 8),
+      statueMat
+    )
+    head.position.set(stx, sty + 5.5, stz)
+    originalMapGroup.add(head)
+  }
+
+  console.log('✅ Natural details added (1000 flowers, 500 mushrooms, 200 logs, 300 rock piles, 20 streams, 10 ponds, 65 artifacts)')
 }
 
 function _glbSetShadow(g: THREE.Group) {
@@ -5673,6 +5894,161 @@ async function buildSpaceMap() {
     }
   }
   console.log('✅ Orbital path created (50 beacons along 5 routes)')
+
+  // ===== 隠しエリア（Hidden Areas - 10箇所） =====
+  const hiddenMat = new THREE.MeshStandardMaterial({
+    color: 0xffaa00,
+    emissive: 0xff8800,
+    emissiveIntensity: 0.8,
+    metalness: 0.5,
+    roughness: 0.3
+  })
+
+  const HIDDEN_AREAS_SPACE = [
+    { name: 'Mothership艦橋の隠し部屋', x: 0, y: -400, z: -3000, size: 20 },
+    { name: '要塞コア制御室', x: 600, y: -1000, z: -2400, size: 18 },
+    { name: '小惑星内部の採掘施設', x: -1500, y: 100, z: -1000, size: 25 },
+    { name: '廃棄戦艦のブラックボックス', x: 2400, y: -300, z: -1800, size: 15 },
+    { name: '宇宙ステーションの秘密ドック', x: -1000, y: 500, z: 1500, size: 22 },
+    { name: 'リングステーションの中枢', x: -200, y: 350, z: -2200, size: 17 },
+    { name: 'デブリフィールドの隠し船', x: 800, y: -200, z: 600, size: 16 },
+    { name: '小惑星の内部神殿', x: -1600, y: 50, z: -1100, size: 28 },
+    { name: '凍結した宇宙船', x: 1500, y: 300, z: 1200, size: 19 },
+    { name: 'ワームホールの痕跡', x: 0, y: 0, z: 0, size: 30 },
+  ]
+
+  for (const area of HIDDEN_AREAS_SPACE) {
+    const marker = new THREE.Mesh(
+      new THREE.SphereGeometry(area.size, 16, 16),
+      hiddenMat
+    )
+    marker.position.set(area.x, area.y, area.z)
+    marker.name = `HiddenArea_${area.name}`
+    space.add(marker)
+  }
+
+  console.log('✅ Hidden areas created (10 locations in Space MAP)')
+
+  // ===== 細部ディテール（Space Details） =====
+  const smallDebrisMat = new THREE.MeshStandardMaterial({ color: 0x7a7a7a, roughness: 0.9, metalness: 0.2 })
+  const cableMat = new THREE.MeshBasicMaterial({ color: 0x555555 })
+  const debrisPanelMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.7, metalness: 0.5 })
+  const containerMat = new THREE.MeshLambertMaterial({ color: 0x4a4a5a })
+  const smallSatMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.5, metalness: 0.6 })
+
+  // 小型デブリ2000個（1m以下）
+  const smallDebrisCount = isMobileDevice ? 800 : 2000
+  for (let i = 0; i < smallDebrisCount; i++) {
+    const dx = (Math.random() - 0.5) * 11000
+    const dy = (Math.random() - 0.5) * 1000
+    const dz = (Math.random() - 0.5) * 11000
+
+    const debris = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.3 + Math.random() * 0.7, 0),
+      smallDebrisMat
+    )
+    debris.position.set(dx, dy, dz)
+    debris.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+    space.add(debris)
+  }
+
+  // 浮遊ケーブル300本
+  const cableCount = isMobileDevice ? 120 : 300
+  for (let i = 0; i < cableCount; i++) {
+    const startX = (Math.random() - 0.5) * 10000
+    const startY = (Math.random() - 0.5) * 800
+    const startZ = (Math.random() - 0.5) * 10000
+
+    const points: THREE.Vector3[] = []
+    let x = startX, y = startY, z = startZ
+    for (let j = 0; j < 10; j++) {
+      points.push(new THREE.Vector3(x, y, z))
+      x += (Math.random() - 0.5) * 20
+      y += (Math.random() - 0.5) * 20
+      z += (Math.random() - 0.5) * 20
+    }
+    const cableGeo = new THREE.BufferGeometry().setFromPoints(points)
+    const cable = new THREE.Line(cableGeo, cableMat)
+    space.add(cable)
+  }
+
+  // パネル破片400個
+  const panelCount = isMobileDevice ? 160 : 400
+  for (let i = 0; i < panelCount; i++) {
+    const px = (Math.random() - 0.5) * 10000
+    const py = (Math.random() - 0.5) * 800
+    const pz = (Math.random() - 0.5) * 10000
+
+    const panel = new THREE.Mesh(
+      new THREE.BoxGeometry(3 + Math.random() * 4, 0.1, 2 + Math.random() * 3),
+      debrisPanelMat
+    )
+    panel.position.set(px, py, pz)
+    panel.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+    space.add(panel)
+  }
+
+  // 貨物コンテナ200個
+  const containerCount = isMobileDevice ? 80 : 200
+  for (let i = 0; i < containerCount; i++) {
+    const cx = (Math.random() - 0.5) * 10000
+    const cy = (Math.random() - 0.5) * 800
+    const cz = (Math.random() - 0.5) * 10000
+
+    const container = new THREE.Mesh(
+      new THREE.BoxGeometry(8, 3, 3),
+      containerMat
+    )
+    container.position.set(cx, cy, cz)
+    container.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+    space.add(container)
+  }
+
+  // 小型衛星50個
+  const smallSatCount = isMobileDevice ? 20 : 50
+  for (let i = 0; i < smallSatCount; i++) {
+    const sx = (Math.random() - 0.5) * 11000
+    const sy = (Math.random() - 0.5) * 900
+    const sz = (Math.random() - 0.5) * 11000
+
+    // 本体
+    const satBody = new THREE.Mesh(
+      new THREE.BoxGeometry(2, 2, 2),
+      smallSatMat
+    )
+    satBody.position.set(sx, sy, sz)
+    satBody.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+    space.add(satBody)
+
+    // ソーラーパネル×2
+    for (let j = 0; j < 2; j++) {
+      const panel = new THREE.Mesh(
+        new THREE.BoxGeometry(4, 0.1, 2),
+        new THREE.MeshStandardMaterial({ color: 0x1a2a4a, metalness: 0.9, roughness: 0.1 })
+      )
+      panel.position.set(sx + (j === 0 ? -3 : 3), sy, sz)
+      panel.rotation.copy(satBody.rotation)
+      space.add(panel)
+    }
+  }
+
+  // 浮遊工具100個
+  const toolCount = isMobileDevice ? 40 : 100
+  for (let i = 0; i < toolCount; i++) {
+    const tx = (Math.random() - 0.5) * 10000
+    const ty = (Math.random() - 0.5) * 800
+    const tz = (Math.random() - 0.5) * 10000
+
+    const tool = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.2, 0.2, 1.5, 8),
+      new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.7, roughness: 0.4 })
+    )
+    tool.position.set(tx, ty, tz)
+    tool.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+    space.add(tool)
+  }
+
+  console.log('✅ Space details added (2000 small debris, 300 cables, 400 panels, 200 containers, 50 satellites, 100 tools)')
 }
 
 // Tokyo MAP用のランドマーク配置関数

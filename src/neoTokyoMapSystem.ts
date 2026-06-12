@@ -3136,6 +3136,242 @@ export class NeoTokyoMapSystem {
     this.deco.push(accessShaft)
 
     console.log('✅ Tokyo underground structure created (5 layers, B1-B5)')
+
+    // ===== 隠しエリア（Hidden Areas - 10箇所） =====
+    const hiddenMat = new THREE.MeshStandardMaterial({
+      color: 0xffaa00,
+      emissive: 0xff8800,
+      emissiveIntensity: 0.6,
+      metalness: 0.3,
+      roughness: 0.4
+    })
+
+    const HIDDEN_AREAS_TOKYO = [
+      { name: 'Mega Tower最上階の秘密ルーム', x: 0, y: 780, z: 0, size: 20 },
+      { name: '地下B5の秘密施設', x: -500, y: -50, z: 300, size: 15 },
+      { name: '高架道路下の隠し空間', x: 0, y: 50, z: -1500, size: 18 },
+      { name: '廃ビルの屋上庭園', x: -800, y: 250, z: 600, size: 16 },
+      { name: '地下鉄の封鎖区間', x: 600, y: -20, z: -800, size: 14 },
+      { name: '工場の秘密倉庫', x: 2000, y: 20, z: 2000, size: 17 },
+      { name: 'Rainbow Bridge中空構造', x: 1500, y: 100, z: 0, size: 13 },
+      { name: '下水道の拡張部', x: -1200, y: -30, z: -600, size: 12 },
+      { name: '放棄されたヘリポート', x: 1000, y: 400, z: -1000, size: 15 },
+      { name: '皇居の地下', x: 800, y: -40, z: -200, size: 19 },
+    ]
+
+    for (const area of HIDDEN_AREAS_TOKYO) {
+      const marker = new THREE.Mesh(
+        new THREE.SphereGeometry(area.size, 12, 12),
+        hiddenMat
+      )
+      marker.position.set(area.x, area.y, area.z)
+      marker.name = `HiddenArea_${area.name}`
+      this.scene.add(marker)
+      this.deco.push(marker)
+    }
+
+    console.log('✅ Hidden areas created (10 locations in Tokyo MAP)')
+
+    // ===== 細部ディテール（Urban Details） =====
+    const signMat = new THREE.MeshLambertMaterial({ color: 0x666666 })
+    const trafficLightMat = new THREE.MeshLambertMaterial({ color: 0x222222 })
+    const benchMat = new THREE.MeshLambertMaterial({ color: 0x885533 })
+    const vendingMat = new THREE.MeshStandardMaterial({ color: 0xff4444, emissive: 0x440000, emissiveIntensity: 0.2 })
+    const lampMat = new THREE.MeshStandardMaterial({ color: 0x888888, emissive: 0x444444, emissiveIntensity: 0.3 })
+
+    // 道路標識500個
+    const signCount = this.mobile ? 200 : 500
+    for (let i = 0; i < signCount; i++) {
+      const sx = (Math.random() - 0.5) * 8000
+      const sz = (Math.random() - 0.5) * 8000
+      if (isInWaterArea(sx, sz)) continue
+
+      const gy = NeoTokyoMapSystem.heightAt(sx, sz)
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 0.1, 5, 6),
+        signMat
+      )
+      pole.position.set(sx, gy + 2.5, sz)
+      this.scene.add(pole)
+      this.deco.push(pole)
+
+      const sign = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 1, 0.1),
+        signMat
+      )
+      sign.position.set(sx, gy + 5, sz)
+      sign.rotation.y = Math.random() * Math.PI * 2
+      this.scene.add(sign)
+      this.deco.push(sign)
+    }
+
+    // 信号機300個
+    const trafficLightCount = this.mobile ? 120 : 300
+    for (let i = 0; i < trafficLightCount; i++) {
+      const tx = (Math.random() - 0.5) * 8000
+      const tz = (Math.random() - 0.5) * 8000
+      if (isInWaterArea(tx, tz)) continue
+
+      const gy = NeoTokyoMapSystem.heightAt(tx, tz)
+      const trafficLight = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 2, 0.4),
+        trafficLightMat
+      )
+      trafficLight.position.set(tx, gy + 6, tz)
+      this.scene.add(trafficLight)
+      this.deco.push(trafficLight)
+    }
+
+    // ベンチ200個
+    const benchCount = this.mobile ? 80 : 200
+    for (let i = 0; i < benchCount; i++) {
+      const bx = (Math.random() - 0.5) * 7000
+      const bz = (Math.random() - 0.5) * 7000
+      if (isInWaterArea(bx, bz)) continue
+
+      const gy = NeoTokyoMapSystem.heightAt(bx, bz)
+      const bench = new THREE.Mesh(
+        new THREE.BoxGeometry(3, 0.5, 1),
+        benchMat
+      )
+      bench.position.set(bx, gy + 0.5, bz)
+      bench.rotation.y = Math.random() * Math.PI * 2
+      this.scene.add(bench)
+      this.deco.push(bench)
+    }
+
+    // ゴミ箱400個
+    const trashCount = this.mobile ? 160 : 400
+    for (let i = 0; i < trashCount; i++) {
+      const gx = (Math.random() - 0.5) * 8000
+      const gz = (Math.random() - 0.5) * 8000
+      if (isInWaterArea(gx, gz)) continue
+
+      const gy = NeoTokyoMapSystem.heightAt(gx, gz)
+      const trash = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.4, 0.4, 1, 8),
+        new THREE.MeshLambertMaterial({ color: 0x444444 })
+      )
+      trash.position.set(gx, gy + 0.5, gz)
+      this.scene.add(trash)
+      this.deco.push(trash)
+    }
+
+    // 自動販売機150台
+    const vendingCount = this.mobile ? 60 : 150
+    for (let i = 0; i < vendingCount; i++) {
+      const vx = (Math.random() - 0.5) * 7000
+      const vz = (Math.random() - 0.5) * 7000
+      if (isInWaterArea(vx, vz)) continue
+
+      const gy = NeoTokyoMapSystem.heightAt(vx, vz)
+      const vending = new THREE.Mesh(
+        new THREE.BoxGeometry(1.2, 2, 0.8),
+        vendingMat
+      )
+      vending.position.set(vx, gy + 1, vz)
+      vending.rotation.y = Math.random() * Math.PI * 2
+      this.scene.add(vending)
+      this.deco.push(vending)
+    }
+
+    // 自転車100台
+    const bicycleCount = this.mobile ? 40 : 100
+    for (let i = 0; i < bicycleCount; i++) {
+      const bcx = (Math.random() - 0.5) * 7000
+      const bcz = (Math.random() - 0.5) * 7000
+      if (isInWaterArea(bcx, bcz)) continue
+
+      const gy = NeoTokyoMapSystem.heightAt(bcx, bcz)
+      const bicycle = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 1, 0.3),
+        new THREE.MeshLambertMaterial({ color: 0x4488ff })
+      )
+      bicycle.position.set(bcx, gy + 0.5, bcz)
+      bicycle.rotation.y = Math.random() * Math.PI * 2
+      this.scene.add(bicycle)
+      this.deco.push(bicycle)
+    }
+
+    // 駐車車両500台
+    const parkedCarCount = this.mobile ? 200 : 500
+    for (let i = 0; i < parkedCarCount; i++) {
+      const pcx = (Math.random() - 0.5) * 8000
+      const pcz = (Math.random() - 0.5) * 8000
+      if (isInWaterArea(pcx, pcz)) continue
+
+      const gy = NeoTokyoMapSystem.heightAt(pcx, pcz)
+      const car = new THREE.Mesh(
+        new THREE.BoxGeometry(4, 1.5, 2),
+        new THREE.MeshLambertMaterial({ color: Math.random() > 0.5 ? 0x333333 : 0x666666 })
+      )
+      car.position.set(pcx, gy + 0.75, pcz)
+      car.rotation.y = Math.random() * Math.PI * 2
+      this.scene.add(car)
+      this.deco.push(car)
+    }
+
+    // 街灯800本
+    const streetLampCount = this.mobile ? 320 : 800
+    for (let i = 0; i < streetLampCount; i++) {
+      const lx = (Math.random() - 0.5) * 8000
+      const lz = (Math.random() - 0.5) * 8000
+      if (isInWaterArea(lx, lz)) continue
+
+      const gy = NeoTokyoMapSystem.heightAt(lx, lz)
+      const lampPole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.15, 0.15, 8, 8),
+        lampMat
+      )
+      lampPole.position.set(lx, gy + 4, lz)
+      this.scene.add(lampPole)
+      this.deco.push(lampPole)
+
+      const lampHead = new THREE.Mesh(
+        new THREE.SphereGeometry(0.5, 8, 8),
+        lampMat
+      )
+      lampHead.position.set(lx, gy + 8, lz)
+      this.scene.add(lampHead)
+      this.deco.push(lampHead)
+    }
+
+    // 電柱600本
+    const poleCount = this.mobile ? 240 : 600
+    for (let i = 0; i < poleCount; i++) {
+      const px = (Math.random() - 0.5) * 8000
+      const pz = (Math.random() - 0.5) * 8000
+      if (isInWaterArea(px, pz)) continue
+
+      const gy = NeoTokyoMapSystem.heightAt(px, pz)
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.25, 0.3, 10, 8),
+        new THREE.MeshLambertMaterial({ color: 0x5a4a3a })
+      )
+      pole.position.set(px, gy + 5, pz)
+      this.scene.add(pole)
+      this.deco.push(pole)
+    }
+
+    // 瓦礫の山200個
+    const rubbleCount = this.mobile ? 80 : 200
+    for (let i = 0; i < rubbleCount; i++) {
+      const rx = (Math.random() - 0.5) * 8000
+      const rz = (Math.random() - 0.5) * 8000
+      if (isInWaterArea(rx, rz)) continue
+
+      const gy = NeoTokyoMapSystem.heightAt(rx, rz)
+      const rubble = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(3 + Math.random() * 3, 0),
+        new THREE.MeshLambertMaterial({ color: 0x666666 })
+      )
+      rubble.position.set(rx, gy + 2, rz)
+      rubble.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+      this.scene.add(rubble)
+      this.deco.push(rubble)
+    }
+
+    console.log('✅ Urban details added (500 signs, 300 traffic lights, 200 benches, 400 trash cans, 150 vending machines, 100 bicycles, 500 cars, 800 lamps, 600 poles, 200 rubble)')
   }
 
 }
