@@ -4,9 +4,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
+import { CollectibleSystem } from './collectibleSystem'
 
 // ===== VERSION =====
-const VERSION = '5.59.0'
+const VERSION = '5.60.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -135,6 +136,9 @@ let currentMap: GameMap = 'original' as GameMap  // デフォルトMAP
 let neoTokyoMapSystem: NeoTokyoMapSystem | null = null  // NEO東京MAPシステム
 let terrainGLB: THREE.Group | null = null  // terrain.glbのシーン参照
 let mapSwitchPromise: Promise<void> | null = null
+
+// コレクティブルシステム
+const collectibleSystem = new CollectibleSystem(scene)
 
 interface MapBounds {
   minX: number
@@ -878,6 +882,17 @@ function buildWorldStructures() {
     scene.add(beaconGroup)
     navigationBeacons.push(beaconGroup)
   }
+
+  // ===== ランドマーク: Titan Peak（タイタンピーク - 高さ1200m） =====
+  gltfLoader.load(import.meta.env.BASE_URL + 'models/landmark_titan_peak.glb', (gltf) => {
+    const titanPeak = gltf.scene
+    titanPeak.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
+    const base = terrainH(0, 0)
+    titanPeak.position.set(0, base, 0)
+    titanPeak.name = 'TitanPeak'
+    scene.add(titanPeak)
+    console.log('✅ Titan Peak loaded (1200m landmark)')
+  })
 
   // ===== 巨大奇岩（Monolith - GLB 3バリエーション） =====
   const MONOLITHS = [
@@ -4667,6 +4682,17 @@ async function buildSpaceMap() {
   constructionLight.position.set(-1800, 350, 1600)
   space.add(constructionLight)
 
+  // ===== ランドマーク: Mothership Wreck（マザーシップ残骸 - 全長1500m） =====
+  gltfLoader.load(import.meta.env.BASE_URL + 'models/landmark_mothership_wreck.glb', (gltf) => {
+    const mothership = gltf.scene
+    mothership.position.set(0, -500, -3000) // MAP奥深く
+    mothership.rotation.y = Math.PI / 4
+    mothership.rotation.x = Math.PI / 12
+    mothership.name = 'MothershipWreck'
+    space.add(mothership)
+    console.log('✅ Mothership Wreck loaded (1500m landmark)')
+  })
+
   // ===== 巨大回転リングステーション（GLB 3バリエーション - ゾーン別配置） =====
   // 軌道リング周辺に配置（テーマ性）
   const RING_STATIONS = [
@@ -5024,6 +5050,16 @@ async function switchMap(map: GameMap) {
     }
     await neoTokyoMapSystem.initialize()
 
+    // ランドマーク: Mega Tower（メガタワー - 高さ800m）
+    gltfLoader.load(import.meta.env.BASE_URL + 'models/landmark_mega_tower.glb', (gltf) => {
+      const megaTower = gltf.scene
+      megaTower.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
+      megaTower.position.set(0, 0, 0) // Tokyo MAP中央
+      megaTower.name = 'MegaTower'
+      scene.add(megaTower)
+      console.log('✅ Mega Tower loaded (800m landmark)')
+    })
+
     // Step 3: place the player in a clear northern approach corridor
     const tokyoSpawn = neoTokyoMapSystem.getSafeSpawnPosition()
     player.position.set(tokyoSpawn.x, tokyoSpawn.y, tokyoSpawn.z)
@@ -5179,6 +5215,10 @@ async function handleMapSwitch(mapType: GameMap) {
   if (import.meta.env.DEV) console.log(`🗺️ switchMap()呼び出し: ${currentMap}`)
   await switchMap(currentMap)
   if (import.meta.env.DEV) console.log(`✅ switchMap()完了`)
+
+  // コレクティブルシステムを初期化
+  collectibleSystem.initialize(currentMap)
+  if (import.meta.env.DEV) console.log(`🎯 コレクティブル初期化完了: ${currentMap}`)
 }
 
 // 東京MAPボタン
@@ -7369,6 +7409,14 @@ function loop() {
       hp: playerHP,
       score,
     }, dt)
+  }
+
+  // コレクティブルシステム更新
+  collectibleSystem.update(dt)
+  const collected = collectibleSystem.checkCollection(player.position)
+  if (collected) {
+    // TODO: サウンド・エフェクト追加
+    if (import.meta.env.DEV) console.log(`✨ Collected: ${collected.id}`)
   }
 
   if (composer) {
