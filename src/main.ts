@@ -3154,6 +3154,7 @@ const SPACE_SUPPLY_POSITIONS = [
 let spaceMapGroup: THREE.Group | null = null
 let spaceAsteroids: THREE.InstancedMesh | null = null
 const spaceZoneGroups: THREE.Group[] = []
+const spaceIndividualAsteroids: THREE.Mesh[] = [] // ゾーン周辺の個別小惑星
 const rotatingSpaceObjects: THREE.Object3D[] = []
 const spaceHazards: Array<{ pos: THREE.Vector3; radius: number }> = []
 const spaceGates: Array<{ pos: THREE.Vector3; radius: number; cooldown: number }> = []
@@ -3195,6 +3196,7 @@ function clearSpaceMap() {
   spaceMapGroup = null
   spaceAsteroids = null
   spaceZoneGroups.length = 0
+  spaceIndividualAsteroids.length = 0 // 個別小惑星もクリア
   rotatingSpaceObjects.length = 0
   spaceHazards.length = 0
   spaceGates.length = 0
@@ -3598,18 +3600,6 @@ async function buildSpaceMap() {
     const hazardRadius = s * 1.15 + 7
     spaceHazards.push({ pos: obj.position.clone(), radius: hazardRadius })
 
-    if (s > 35) {
-      // 大型危険物は赤/オレンジ系の警告リング
-      const warnMat = new THREE.MeshBasicMaterial({
-        color: 0xff4430, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false,
-      })
-      const warn = new THREE.Mesh(new THREE.TorusGeometry(hazardRadius * 1.1, 2.0, 8, 52), warnMat)
-      warn.position.copy(obj.position)
-      warn.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
-      space.add(warn)
-      rotatingSpaceObjects.push(warn)
-    }
-
     obj.scale.set(s * (0.75 + Math.random() * 0.8), s * (0.55 + Math.random() * 0.65), s * (0.75 + Math.random() * 0.75))
     obj.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
     obj.updateMatrix()
@@ -3656,6 +3646,7 @@ async function buildSpaceMap() {
         asteroid.castShadow = !isMobileDevice
         asteroid.receiveShadow = !isMobileDevice
         space.add(asteroid)
+        spaceIndividualAsteroids.push(asteroid) // 衝突判定用に登録
       }
     }
   }
@@ -5729,11 +5720,14 @@ function loop() {
       barrelRollState.progress = 0
     } else {
       const rollSpeed = (Math.PI * 2) / barrelRollState.duration  // 360度/秒
-      // 開始時に保存した前方軸を使用（進行方向を維持）
-      player.quaternion.multiply(_sq1.setFromAxisAngle(barrelRollState.forwardAxis, barrelRollState.direction * rollSpeed * dt))
+      // 現在の機体姿勢の前方軸を使用（進行方向を軸に自転）
+      const currentForward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion)
+      player.quaternion.multiply(_sq1.setFromAxisAngle(currentForward, barrelRollState.direction * rollSpeed * dt))
 
+      // 現在の機体姿勢の横軸を使用（常に左右方向に移動）
       const lateralDist = 40  // 横移動距離（m）
-      const lateralMove = barrelRollState.lateralAxis.clone().multiplyScalar(barrelRollState.direction * lateralDist * dt / barrelRollState.duration)
+      const currentLateral = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion)
+      const lateralMove = currentLateral.multiplyScalar(barrelRollState.direction * lateralDist * dt / barrelRollState.duration)
       player.position.add(lateralMove)
     }
   }
@@ -5973,36 +5967,54 @@ function loop() {
 
   // 宇宙MAPの小惑星・ゾーン構造物との衝突
   if (currentMap === 'space') {
-    // 小惑星との衝突判定（簡易版：レイキャスト）
+    const adjustedCollisionRadius = collisionRadius * 0.75 // 8m -> 6m（より正確な判定）
+
+    // InstancedMeshの小惑星との衝突判定（レイキャスト）
     if (spaceAsteroids && spaceAsteroids.count > 0) {
       const raycaster = new THREE.Raycaster()
       const moveDir = player.position.clone().sub(prevPos).normalize()
       const moveDist = player.position.distanceTo(prevPos)
       if (moveDist > 0.1) {
         raycaster.set(prevPos, moveDir)
-        raycaster.far = moveDist + collisionRadius
+        raycaster.far = moveDist + adjustedCollisionRadius * 0.8 // より厳密に
         const hits = raycaster.intersectObject(spaceAsteroids, false)
-        if (hits.length > 0 && hits[0].distance < moveDist + collisionRadius) {
-          // 衝突：元の位置に戻す
+        if (hits.length > 0 && hits[0].distance < moveDist + adjustedCollisionRadius) {
           player.position.copy(prevPos)
           hitFlashTimer = 0.3
           camShakeAmt = Math.max(camShakeAmt, 0.6)
         }
       }
     }
-    // ゾーン構造物との衝突判定
+
+    // 個別小惑星との衝突判定（ゾーン周辺）
+    for (const asteroid of spaceIndividualAsteroids) {
+      const dist = player.position.distanceTo(asteroid.position)
+      const asteroidRadius = Math.max(asteroid.scale.x, asteroid.scale.y, asteroid.scale.z) * 0.5
+      if (dist < adjustedCollisionRadius + asteroidRadius) {
+        // 衝突：押し出し
+        const pushDir = player.position.clone().sub(asteroid.position).normalize()
+        if (pushDir.length() < 0.1) pushDir.set(0, 1, 0)
+        player.position.copy(asteroid.position).add(pushDir.multiplyScalar(adjustedCollisionRadius + asteroidRadius + 2))
+        hitFlashTimer = 0.3
+        camShakeAmt = Math.max(camShakeAmt, 0.6)
+        break
+      }
+    }
+
+    // ゾーン構造物との衝突判定（より緩めに：外装のみ）
     if (spaceZoneGroups.length > 0) {
       for (const zoneGroup of spaceZoneGroups) {
+        // Bounding Boxを使うが、余裕を持たせる
         const bbox = new THREE.Box3().setFromObject(zoneGroup)
         const closest = bbox.clampPoint(player.position, new THREE.Vector3())
         const dist = closest.distanceTo(player.position)
-        if (dist < collisionRadius) {
-          // 衝突：押し出し
+        if (dist < adjustedCollisionRadius * 1.2) { // より緩く（内部飛行可能に）
           const pushDir = player.position.clone().sub(closest).normalize()
           if (pushDir.length() < 0.1) pushDir.set(0, 1, 0)
-          player.position.copy(closest).add(pushDir.multiplyScalar(collisionRadius + 1))
+          player.position.copy(closest).add(pushDir.multiplyScalar(adjustedCollisionRadius * 1.2 + 1))
           hitFlashTimer = 0.3
           camShakeAmt = Math.max(camShakeAmt, 0.5)
+          break
         }
       }
     }
