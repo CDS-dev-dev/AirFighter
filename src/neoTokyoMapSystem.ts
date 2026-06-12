@@ -301,6 +301,7 @@ export class NeoTokyoMapSystem {
     this.createCentralCombatDistrict()
     this.createRouteSideDensity()
     this.createDistantSkyline()
+    this.createPeripheralBuildings()
     this.createLandmarks()
     this.createNeoLandmarkExtensions()
     this.createImperialPalace()
@@ -564,6 +565,40 @@ export class NeoTokyoMapSystem {
       mesh.name = 'ElevatedHighway'
       this.scene.add(mesh)
     }
+
+    // ===== 環状高架道路（Ring Highway） =====
+    const RING_HIGHWAY = {
+      radius: 2500,
+      y: 180,
+      width: 40,
+      segments: 32,
+    }
+
+    const highwayMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8 })
+
+    for (let i = 0; i < RING_HIGHWAY.segments; i++) {
+      const angle1 = (i / RING_HIGHWAY.segments) * Math.PI * 2
+      const angle2 = ((i + 1) / RING_HIGHWAY.segments) * Math.PI * 2
+
+      const x1 = Math.cos(angle1) * RING_HIGHWAY.radius
+      const z1 = Math.sin(angle1) * RING_HIGHWAY.radius
+      const x2 = Math.cos(angle2) * RING_HIGHWAY.radius
+      const z2 = Math.sin(angle2) * RING_HIGHWAY.radius
+
+      const length = Math.hypot(x2 - x1, z2 - z1)
+      const geo = new THREE.BoxGeometry(RING_HIGHWAY.width, 8, length)
+      const mesh = new THREE.Mesh(geo, highwayMat)
+
+      const midX = (x1 + x2) / 2
+      const midZ = (z1 + z2) / 2
+      const segmentAngle = Math.atan2(z2 - z1, x2 - x1)
+
+      mesh.position.set(midX, RING_HIGHWAY.y, midZ)
+      mesh.rotation.y = segmentAngle
+      mesh.name = 'RingHighway'
+      this.scene.add(mesh)
+    }
+    console.log('✅ Ring Highway created (32 segments, radius 2500m)')
 
     console.log(`[NEO Tokyo] Created ${this.buildingColliders.length} building colliders (including cylindrical towers)`)
   }
@@ -1349,6 +1384,43 @@ export class NeoTokyoMapSystem {
         this.deco.push(cap)
       }
     }
+  }
+
+  private createPeripheralBuildings(): void {
+    // 周辺部ビル（低層・中層、80-200m）
+    const mat = new THREE.MeshLambertMaterial({
+      color: 0x1a2838,
+      emissive: 0x1f3a50,
+      emissiveIntensity: 0.5
+    })
+    const geo = new THREE.BoxGeometry(1, 1, 1)
+
+    let count = 0
+    for (let x = -4000; x < 4000; x += 150) {
+      for (let z = -4000; z < 4000; z += 150) {
+        const dist = Math.hypot(x, z)
+        // 中心部（2000m以内）をスキップ
+        if (dist < 2000) continue
+        // 外周部（3500m以上）もスキップ
+        if (dist > 3500) continue
+        // 水域をスキップ
+        if (isInWaterArea(x, z)) continue
+
+        const gy = NeoTokyoMapSystem.heightAt(x, z)
+        const h = 80 + sr(x * 0.1 + z * 0.2) * 120  // 80-200m
+        const w = 25 + sr(x * 0.15 + z * 0.25) * 20  // 25-45m
+        const d = 25 + sr(x * 0.2 + z * 0.3) * 20   // 25-45m
+
+        const building = new THREE.Mesh(geo, mat)
+        building.position.set(x, gy + h / 2, z)
+        building.scale.set(w, h, d)
+        building.rotation.y = sr(x + z) * Math.PI
+        this.scene.add(building)
+        this.deco.push(building)
+        count++
+      }
+    }
+    console.log(`✅ Peripheral buildings created: ${count}`)
   }
 
   buildSkyRing(R: number, Y: number, roadW: number, N: number, _deckMat: THREE.Material, railMat: THREE.Material): void {

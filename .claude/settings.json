@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(src/main.ts)",
+      "Read(package.json)",
+      "Read(.steering/**)",
+      "Read(.claude/settings.json)",
+      "Read(src/neoTokyoMapSystem.ts)",
+      "Read(index.html)",
+      "Read(public/**)",
+      "Read(blender_scripts/**)",
+      "Edit(src/main.ts)",
+      "Edit(package.json)",
+      "Edit(.claude/settings.json)",
+      "Edit(src/neoTokyoMapSystem.ts)",
+      "Edit(index.html)",
+      "Write(.steering/**)",
+      "Write(.claude/settings.json)",
+      "Write(public/models/**)",
+      "Write(blender_scripts/**)",
+      "Bash(mkdir *)",
+      "Bash(npm run build)",
+      "Bash(wc *)",
+      "Bash(grep *)",
+      "Bash(git status)",
+      "Bash(git diff)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git tag *)",
+      "Bash(git push *)",
+      "Bash(blender *)"
+    ],
+    "defaultMode": "acceptEdits"
+  }
+}

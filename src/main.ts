@@ -7,7 +7,7 @@ import { MultiplayerClient } from './multiplayer'
 import { CollectibleSystem } from './collectibleSystem'
 
 // ===== VERSION =====
-const VERSION = '5.60.0'
+const VERSION = '5.61.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -643,6 +643,34 @@ foliIM.name = 'OriginalTrees_Foliage1'
 foli2IM.name = 'OriginalTrees_Foliage2'
 scene.add(trunkIM); scene.add(foliIM); scene.add(foli2IM)
 
+// ===== 高地植生（灌木・草地、500-800m） =====
+const HIGH_ALTITUDE_SHRUB_COUNT = isMobileDevice ? 200 : 500
+const shrubMat = _treeMat(0x4a6b3f)
+const shrubIM = new THREE.InstancedMesh(new THREE.SphereGeometry(1.5, 6, 4), shrubMat, HIGH_ALTITUDE_SHRUB_COUNT)
+shrubIM.castShadow = shrubIM.receiveShadow = !isMobileDevice
+for (let i = 0; i < HIGH_ALTITUDE_SHRUB_COUNT; i++) {
+  const sx = (Math.random() - 0.5) * 5600
+  const sz = (Math.random() - 0.5) * 5600
+  const sy = terrainH(sx, sz)
+
+  // 高地（500-800m）のみ
+  if (sy < 500 || sy > 800) { i--; continue }
+
+  const slope = Math.hypot(terrainH(sx + 16, sz) - terrainH(sx - 16, sz), terrainH(sx, sz + 16) - terrainH(sx, sz - 16)) / 32
+  if (slope > 8.0) { i--; continue }
+
+  const s = 0.8 + Math.random() * 0.6
+  _d.position.set(sx, sy + s, sz)
+  _d.scale.setScalar(s)
+  _d.rotation.y = Math.random() * Math.PI * 2
+  _d.updateMatrix()
+  shrubIM.setMatrixAt(i, _d.matrix)
+}
+shrubIM.instanceMatrix.needsUpdate = true
+shrubIM.name = 'HighAltitudeShrubs'
+scene.add(shrubIM)
+console.log(`✅ High altitude vegetation created: ${HIGH_ALTITUDE_SHRUB_COUNT} shrubs`)
+
 // ===== ROCK PILLARS (Blender GLB) =====
 // rock_pillar.glb: height=1.0, base_r≈0.26 (unit scale). Loaded async, placed at cluster positions.
 const PILLAR_SPECS: Array<{ cx:number; cz:number; n:number }> = [
@@ -932,9 +960,14 @@ function buildWorldStructures() {
 
   // ===== 自然橋（Natural Bridge - GLB 3バリエーション） =====
   const NATURAL_BRIDGES = [
+    // 既存3本
     { x: 400, z: -600, span: 120, h: 80 },
     { x: -700, z: 500, span: 140, h: 90 },
     { x: 200, z: 800, span: 100, h: 70 },
+    // 追加3本（主要地点を結ぶ）
+    { x: -450, z: -350, span: 110, h: 75 },  // 西側ルート
+    { x: 750, z: 550, span: 130, h: 85 },    // 東側ルート
+    { x: -100, z: 950, span: 105, h: 72 },   // 南側ルート
   ]
 
   const BRIDGE_MODELS = ['small', 'medium', 'large']
@@ -968,6 +1001,29 @@ function buildWorldStructures() {
 
   // ===== 中央岩山の洞窟（内部飛行可能）=====
   addMountainCave()
+
+  // ===== ストーリー要素: 古代遺跡 =====
+  const ANCIENT_RUINS_POSITIONS = [
+    { x: -800, z: -600, scale: 1.0, rotation: 0 },
+    { x: 300, z: 400, scale: 0.8, rotation: Math.PI / 3 },
+    { x: -200, z: 800, scale: 1.2, rotation: -Math.PI / 4 },
+    { x: 900, z: -300, scale: 0.9, rotation: Math.PI / 2 },
+    { x: -600, z: 500, scale: 1.1, rotation: Math.PI },
+  ]
+
+  gltfLoader.load(import.meta.env.BASE_URL + 'models/story_ancient_ruins.glb', (gltf) => {
+    for (const pos of ANCIENT_RUINS_POSITIONS) {
+      const ruins = gltf.scene.clone()
+      ruins.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
+      const base = terrainH(pos.x, pos.z)
+      ruins.position.set(pos.x, base, pos.z)
+      ruins.scale.setScalar(pos.scale)
+      ruins.rotation.y = pos.rotation
+      ruins.name = 'AncientRuins'
+      scene.add(ruins)
+    }
+    console.log('✅ Ancient Ruins loaded (5 locations)')
+  })
 }
 
 function addMountainCave() {
@@ -4693,6 +4749,71 @@ async function buildSpaceMap() {
     console.log('✅ Mothership Wreck loaded (1500m landmark)')
   })
 
+  // ===== ストーリー要素: 戦闘デブリ =====
+  const BATTLE_DEBRIS_POSITIONS = [
+    // 脱出ポッド（12個）
+    { x: -1000, y: 200, z: -500, scale: 1.0, rotation: 0, type: 'pod' },
+    { x: 800, y: -300, z: 600, scale: 1.1, rotation: Math.PI / 3, type: 'pod' },
+    { x: -1200, y: 400, z: 1000, scale: 0.9, rotation: -Math.PI / 4, type: 'pod' },
+    { x: 1400, y: -500, z: -400, scale: 1.0, rotation: Math.PI / 2, type: 'pod' },
+    { x: -700, y: 300, z: -800, scale: 1.2, rotation: Math.PI, type: 'pod' },
+    { x: 600, y: -200, z: 900, scale: 0.8, rotation: -Math.PI / 6, type: 'pod' },
+    { x: -1400, y: 150, z: 400, scale: 1.1, rotation: Math.PI / 4, type: 'pod' },
+    { x: 1000, y: 350, z: -1000, scale: 0.9, rotation: -Math.PI / 3, type: 'pod' },
+    { x: -500, y: -400, z: 700, scale: 1.0, rotation: Math.PI / 6, type: 'pod' },
+    { x: 900, y: 250, z: -700, scale: 1.1, rotation: -Math.PI / 2, type: 'pod' },
+    { x: -1100, y: -100, z: -600, scale: 0.95, rotation: Math.PI / 3, type: 'pod' },
+    { x: 1200, y: 400, z: 500, scale: 1.05, rotation: -Math.PI / 4, type: 'pod' },
+
+    // 戦闘機残骸（8個）
+    { x: 1500, y: -300, z: 800, scale: 1.5, rotation: Math.PI / 4, type: 'fighter' },
+    { x: -1300, y: 200, z: -900, scale: 1.4, rotation: -Math.PI / 3, type: 'fighter' },
+    { x: 700, y: 400, z: -1100, scale: 1.6, rotation: Math.PI / 2, type: 'fighter' },
+    { x: -900, y: -250, z: 1200, scale: 1.3, rotation: Math.PI, type: 'fighter' },
+    { x: 1100, y: 300, z: -500, scale: 1.5, rotation: -Math.PI / 6, type: 'fighter' },
+    { x: -1400, y: -400, z: 600, scale: 1.4, rotation: Math.PI / 3, type: 'fighter' },
+    { x: 500, y: 150, z: 1000, scale: 1.6, rotation: -Math.PI / 4, type: 'fighter' },
+    { x: -600, y: -350, z: -800, scale: 1.3, rotation: Math.PI / 6, type: 'fighter' },
+
+    // ミサイル残骸（20個、広範囲に散布）
+    { x: -400, y: 100, z: -300, scale: 0.8, rotation: 0, type: 'missile' },
+    { x: 300, y: -150, z: 400, scale: 0.9, rotation: Math.PI / 3, type: 'missile' },
+    { x: -700, y: 250, z: 600, scale: 0.7, rotation: -Math.PI / 4, type: 'missile' },
+    { x: 900, y: -200, z: -500, scale: 0.85, rotation: Math.PI / 2, type: 'missile' },
+    { x: -1000, y: 350, z: 200, scale: 0.75, rotation: Math.PI, type: 'missile' },
+    { x: 600, y: -300, z: -700, scale: 0.9, rotation: -Math.PI / 6, type: 'missile' },
+    { x: -500, y: 200, z: 900, scale: 0.8, rotation: Math.PI / 4, type: 'missile' },
+    { x: 1100, y: -100, z: 300, scale: 0.85, rotation: -Math.PI / 3, type: 'missile' },
+    { x: -800, y: 400, z: -400, scale: 0.7, rotation: Math.PI / 6, type: 'missile' },
+    { x: 400, y: -250, z: 800, scale: 0.9, rotation: -Math.PI / 2, type: 'missile' },
+    { x: -1200, y: 150, z: -100, scale: 0.75, rotation: Math.PI / 3, type: 'missile' },
+    { x: 800, y: 300, z: -900, scale: 0.85, rotation: -Math.PI / 4, type: 'missile' },
+    { x: -300, y: -350, z: 500, scale: 0.8, rotation: Math.PI / 2, type: 'missile' },
+    { x: 1000, y: 250, z: -200, scale: 0.9, rotation: Math.PI, type: 'missile' },
+    { x: -900, y: -150, z: 700, scale: 0.7, rotation: -Math.PI / 6, type: 'missile' },
+    { x: 500, y: 350, z: -600, scale: 0.85, rotation: Math.PI / 4, type: 'missile' },
+    { x: -600, y: 100, z: 1100, scale: 0.75, rotation: -Math.PI / 3, type: 'missile' },
+    { x: 1300, y: -200, z: 100, scale: 0.9, rotation: Math.PI / 6, type: 'missile' },
+    { x: -1100, y: 400, z: -700, scale: 0.8, rotation: -Math.PI / 2, type: 'missile' },
+    { x: 700, y: -300, z: 600, scale: 0.85, rotation: Math.PI / 3, type: 'missile' },
+  ]
+
+  gltfLoader.load(import.meta.env.BASE_URL + 'models/story_battle_debris.glb', (gltf) => {
+    for (const pos of BATTLE_DEBRIS_POSITIONS) {
+      const debris = gltf.scene.clone()
+      debris.position.set(pos.x, pos.y, pos.z)
+      debris.scale.setScalar(pos.scale)
+      debris.rotation.set(
+        Math.random() * Math.PI,
+        pos.rotation,
+        Math.random() * Math.PI
+      )
+      debris.name = 'BattleDebris'
+      space.add(debris)
+    }
+    console.log('✅ Battle Debris loaded (40 objects: 12 pods, 8 fighters, 20 missiles)')
+  })
+
   // ===== 巨大回転リングステーション（GLB 3バリエーション - ゾーン別配置） =====
   // 軌道リング周辺に配置（テーマ性）
   const RING_STATIONS = [
@@ -4756,6 +4877,72 @@ async function buildSpaceMap() {
 
   // ===== 破損船体（大型・GLB 5バリエーション - 船墓場に集中配置） =====
   // 船墓場中心: (2100, -200, -1600)
+  // ===== 外周構造物（通信衛星・観測ステーション） =====
+  const OUTER_STRUCTURES = [
+    { x: -3000, y: 500, z: -2000, type: 'satellite', scale: 30 },
+    { x: 2800, y: -400, z: 2500, type: 'observatory', scale: 40 },
+    { x: -2500, y: 300, z: 3000, type: 'relay', scale: 35 },
+    { x: 3200, y: 200, z: -1500, type: 'satellite', scale: 28 },
+    { x: -2800, y: -300, z: -2500, type: 'observatory', scale: 38 },
+    { x: 2600, y: 450, z: 2200, type: 'relay', scale: 32 },
+    { x: -3100, y: -200, z: 1800, type: 'satellite', scale: 30 },
+    { x: 2900, y: 350, z: -2300, type: 'observatory', scale: 42 },
+    { x: -2400, y: -450, z: 2800, type: 'relay', scale: 36 },
+    { x: 3300, y: 100, z: 1600, type: 'satellite', scale: 29 },
+    { x: -2700, y: 400, z: -1900, type: 'observatory', scale: 39 },
+    { x: 2500, y: -350, z: 2900, type: 'relay', scale: 33 },
+    { x: -3200, y: 250, z: 2200, type: 'satellite', scale: 31 },
+    { x: 3000, y: -100, z: -2600, type: 'observatory', scale: 41 },
+    { x: -2600, y: 500, z: -2700, type: 'relay', scale: 34 },
+  ]
+
+  // 簡易な構造物（Box + Sphere）
+  const satelliteMat = new THREE.MeshStandardMaterial({ color: 0x444466, metalness: 0.8, roughness: 0.3 })
+  const observatoryMat = new THREE.MeshStandardMaterial({ color: 0x556677, metalness: 0.7, roughness: 0.4 })
+  const relayMat = new THREE.MeshStandardMaterial({ color: 0x665544, metalness: 0.6, roughness: 0.5 })
+
+  for (const struct of OUTER_STRUCTURES) {
+    const group = new THREE.Group()
+
+    if (struct.type === 'satellite') {
+      // 衛星: 球体 + パネル
+      const core = new THREE.Mesh(new THREE.SphereGeometry(struct.scale * 0.3, 8, 8), satelliteMat)
+      group.add(core)
+
+      // ソーラーパネル×2
+      for (let i = 0; i < 2; i++) {
+        const panel = new THREE.Mesh(
+          new THREE.BoxGeometry(struct.scale * 0.8, struct.scale * 0.1, struct.scale * 1.5),
+          satelliteMat
+        )
+        panel.position.x = (i === 0 ? -1 : 1) * struct.scale * 0.6
+        group.add(panel)
+      }
+    } else if (struct.type === 'observatory') {
+      // 観測ステーション: 円柱 + ドーム
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(struct.scale * 0.4, struct.scale * 0.4, struct.scale, 8), observatoryMat)
+      group.add(body)
+
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(struct.scale * 0.5, 8, 8), observatoryMat)
+      dome.position.y = struct.scale * 0.7
+      group.add(dome)
+    } else {
+      // 中継ステーション: Box + アンテナ
+      const body = new THREE.Mesh(new THREE.BoxGeometry(struct.scale, struct.scale * 0.6, struct.scale * 0.8), relayMat)
+      group.add(body)
+
+      const antenna = new THREE.Mesh(new THREE.CylinderGeometry(struct.scale * 0.05, struct.scale * 0.05, struct.scale * 1.2, 6), relayMat)
+      antenna.position.y = struct.scale * 0.9
+      group.add(antenna)
+    }
+
+    group.position.set(struct.x, struct.y, struct.z)
+    group.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI * 2, Math.random() * Math.PI)
+    group.name = 'OuterStructure'
+    space.add(group)
+  }
+  console.log('✅ Outer structures created: 15 (5 satellites, 5 observatories, 5 relays)')
+
   const WRECKS = [
     { x: 2100, y: -200, z: -1600, scale: 100 },  // 船墓場中心
     { x: 2300, y: -150, z: -1700, scale: 90 },
@@ -4791,6 +4978,39 @@ async function buildSpaceMap() {
       space.add(inst)
     }
   })
+
+  // ===== 軌道パス（Orbital Path - 推奨飛行ルート可視化） =====
+  const ORBITAL_PATH = [
+    { x: 0, y: 0, z: 0 },                     // 中央ハブ
+    { x: 0, y: 350, z: -2400 },               // 軌道リング
+    { x: 2100, y: -200, z: -1600 },           // 船墓場
+    { x: -2300, y: -1800, z: -400 },          // 採掘コロニー
+    { x: 600, y: -800, z: -2400 },            // 要塞
+    { x: 0, y: 0, z: 0 },                     // 中央ハブに戻る
+  ]
+
+  // パス上に誘導ビーコン（光る球体）
+  const beaconMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.4 })
+  const beaconGeo = new THREE.SphereGeometry(15, 8, 8)
+
+  for (let i = 0; i < ORBITAL_PATH.length; i++) {
+    const current = ORBITAL_PATH[i]
+    const next = ORBITAL_PATH[(i + 1) % ORBITAL_PATH.length]
+
+    // 2点間に10個のビーコン配置
+    for (let j = 0; j < 10; j++) {
+      const t = j / 10
+      const x = current.x + (next.x - current.x) * t
+      const y = current.y + (next.y - current.y) * t
+      const z = current.z + (next.z - current.z) * t
+
+      const beacon = new THREE.Mesh(beaconGeo, beaconMat)
+      beacon.position.set(x, y, z)
+      beacon.name = 'OrbitalBeacon'
+      space.add(beacon)
+    }
+  }
+  console.log('✅ Orbital path created (50 beacons along 5 routes)')
 }
 
 // Tokyo MAP用のランドマーク配置関数
@@ -5058,6 +5278,29 @@ async function switchMap(map: GameMap) {
       megaTower.name = 'MegaTower'
       scene.add(megaTower)
       console.log('✅ Mega Tower loaded (800m landmark)')
+    })
+
+    // ストーリー要素: 放棄車両
+    const ABANDONED_VEHICLE_POSITIONS = [
+      { x: -1200, z: 300, scale: 1.0, rotation: 0, type: 'car' },
+      { x: 800, z: -700, scale: 1.2, rotation: Math.PI / 4, type: 'car' },
+      { x: -600, z: -400, scale: 1.0, rotation: -Math.PI / 3, type: 'truck' },
+      { x: 1500, z: 500, scale: 0.9, rotation: Math.PI / 2, type: 'car' },
+      { x: -1000, z: 900, scale: 1.1, rotation: Math.PI, type: 'truck' },
+      { x: 500, z: 350, scale: 2.0, rotation: Math.PI / 6, type: 'helicopter' }, // 墜落ヘリ
+    ]
+
+    gltfLoader.load(import.meta.env.BASE_URL + 'models/story_abandoned_vehicles.glb', (gltf) => {
+      for (const pos of ABANDONED_VEHICLE_POSITIONS) {
+        const vehicle = gltf.scene.clone()
+        vehicle.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
+        vehicle.position.set(pos.x, 0, pos.z)
+        vehicle.scale.setScalar(pos.scale)
+        vehicle.rotation.y = pos.rotation
+        vehicle.name = 'AbandonedVehicle'
+        scene.add(vehicle)
+      }
+      console.log('✅ Abandoned Vehicles loaded (6 locations)')
     })
 
     // Step 3: place the player in a clear northern approach corridor
