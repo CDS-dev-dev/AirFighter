@@ -3147,6 +3147,7 @@ export class NeoTokyoMapSystem {
     })
 
     const HIDDEN_AREAS_TOKYO = [
+      // 既存10個
       { name: 'Mega Tower最上階の秘密ルーム', x: 0, y: 780, z: 0, size: 20 },
       { name: '地下B5の秘密施設', x: -500, y: -50, z: 300, size: 15 },
       { name: '高架道路下の隠し空間', x: 0, y: 50, z: -1500, size: 18 },
@@ -3157,6 +3158,28 @@ export class NeoTokyoMapSystem {
       { name: '下水道の拡張部', x: -1200, y: -30, z: -600, size: 12 },
       { name: '放棄されたヘリポート', x: 1000, y: 400, z: -1000, size: 15 },
       { name: '皇居の地下', x: 800, y: -40, z: -200, size: 19 },
+
+      // 追加20個（手作業設計）
+      { name: 'Mega Tower避難所20階', x: 0, y: 200, z: 0, size: 14 },
+      { name: 'Mega Tower避難所40階', x: 0, y: 400, z: 0, size: 14 },
+      { name: 'Mega Tower避難所60階', x: 0, y: 600, z: 0, size: 14 },
+      { name: 'Mega Tower通信室', x: 10, y: 795, z: 10, size: 12 },
+      { name: 'Skytree展望台450m', x: 2000, y: 450, z: -1000, size: 16 },
+      { name: 'Skytree展望台550m', x: 2000, y: 550, z: -1000, size: 16 },
+      { name: 'Skytree放送室', x: 2005, y: 630, z: -1005, size: 13 },
+      { name: 'Stadium医療施設', x: -2500, y: 15, z: -2000, size: 15 },
+      { name: 'Stadium食料庫', x: -2480, y: 10, z: -2020, size: 14 },
+      { name: 'Twin Tower連絡橋', x: 1000, y: 300, z: 1500, size: 12 },
+      { name: '傾いたビル避難階段', x: 1800, y: 250, z: 500, size: 13 },
+      { name: 'Giant Dome内部', x: -2000, y: 80, z: 2500, size: 18 },
+      { name: 'Tokyo Tower展望台', x: -1500, y: 250, z: 800, size: 14 },
+      { name: '港湾灯台', x: -7050, y: 40, z: 5000, size: 12 },
+      { name: '港湾停泊船', x: -7100, y: 5, z: 5100, size: 16 },
+      { name: '郊外廃校', x: -6000, y: 20, z: -6000, size: 15 },
+      { name: '工業地帯制御室', x: 5000, y: 30, z: 5000, size: 13 },
+      { name: '山岳部展望台', x: -7000, y: 650, z: 0, size: 14 },
+      { name: '環状道路休憩所', x: -1768, y: 180, z: -1768, size: 12 },
+      { name: '地下B4シェルター', x: 0, y: -40, z: 0, size: 17 },
     ]
 
     for (const area of HIDDEN_AREAS_TOKYO) {

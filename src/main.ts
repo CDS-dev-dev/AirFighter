@@ -1465,6 +1465,7 @@ function addUndergroundCaveNetwork() {
   })
 
   const HIDDEN_AREAS_ORIGINAL = [
+    // 既存10個
     { name: '滝の裏の空間', x: -800, y: 150, z: 600, type: 'sphere', size: 15 },
     { name: 'クレバス底部', x: 50, y: -50, z: -250, type: 'sphere', size: 12 },
     { name: '巨大樹の樹洞', x: 2500, y: 100, z: 300, type: 'sphere', size: 18 },
@@ -1475,6 +1476,28 @@ function addUndergroundCaveNetwork() {
     { name: '峡谷の隠し横穴', x: 80, y: 10, z: -200, type: 'sphere', size: 11 },
     { name: '温泉', x: -1500, y: 50, z: 500, type: 'cylinder', size: 20 },
     { name: '古代の天文台跡', x: 1200, y: 900, z: -800, type: 'box', size: 25 },
+
+    // 追加20個（手作業設計）
+    { name: 'Titan Peak中腹のキャンプ跡', x: 0, y: 600, z: -2800, type: 'sphere', size: 12 },
+    { name: 'Titan Peak見晴らし台', x: -100, y: 900, z: -2700, type: 'box', size: 15 },
+    { name: 'Grand Canyon横穴1', x: -2050, y: 50, z: 1300, type: 'sphere', size: 10 },
+    { name: 'Grand Canyon横穴2', x: -2000, y: 80, z: 1500, type: 'sphere', size: 10 },
+    { name: 'Grand Canyon底部の祭壇', x: -2000, y: -250, z: 1500, type: 'box', size: 18 },
+    { name: 'Great Waterfall虹の祠', x: 1520, y: 100, z: -1050, type: 'sphere', size: 14 },
+    { name: 'Natural Arch門番の塔', x: 2450, y: 370, z: 2000, type: 'cylinder', size: 12 },
+    { name: 'Alpine Lake湖畔の碑', x: 450, y: 1002, z: -2500, type: 'box', size: 10 },
+    { name: 'Jungle Heart樹上集落', x: 2500, y: 150, z: 400, type: 'sphere', size: 16 },
+    { name: 'Jungle Heart地下洞窟', x: 2550, y: -30, z: 300, type: 'sphere', size: 12 },
+    { name: 'Desert Oasis地下水路', x: 250, y: -25, z: 2500, type: 'cylinder', size: 15 },
+    { name: 'Desert Oasis商隊宿', x: 350, y: 5, z: 2550, type: 'box', size: 14 },
+    { name: 'Snow Temple鐘楼', x: -50, y: 1520, z: -2850, type: 'cylinder', size: 13 },
+    { name: 'Snow Temple僧侶像', x: 50, y: 1505, z: -2800, type: 'sphere', size: 11 },
+    { name: '地下聖域祭壇', x: 0, y: -195, z: 5, type: 'box', size: 17 },
+    { name: '地下聖域光の柱', x: -10, y: -180, z: -10, type: 'cylinder', size: 8 },
+    { name: '遠方の峰展望台', x: -7000, y: 1100, z: -7000, type: 'box', size: 15 },
+    { name: '西の断崖灯台跡', x: -7500, y: 850, z: 0, type: 'cylinder', size: 12 },
+    { name: '大湖の島', x: -6000, y: 52, z: 3000, type: 'sphere', size: 13 },
+    { name: '森の深部の祠', x: 6500, y: 30, z: 500, type: 'box', size: 14 },
   ]
 
   for (const area of HIDDEN_AREAS_ORIGINAL) {
@@ -6172,6 +6195,7 @@ async function buildSpaceMap() {
   })
 
   const HIDDEN_AREAS_SPACE = [
+    // 既存10個
     { name: 'Mothership艦橋の隠し部屋', x: 0, y: -400, z: -3000, size: 20 },
     { name: '要塞コア制御室', x: 600, y: -1000, z: -2400, size: 18 },
     { name: '小惑星内部の採掘施設', x: -1500, y: 100, z: -1000, size: 25 },
@@ -6182,6 +6206,28 @@ async function buildSpaceMap() {
     { name: '小惑星の内部神殿', x: -1600, y: 50, z: -1100, size: 28 },
     { name: '凍結した宇宙船', x: 1500, y: 300, z: 1200, size: 19 },
     { name: 'ワームホールの痕跡', x: 0, y: 0, z: 0, size: 30 },
+
+    // 追加20個（手作業設計）
+    { name: 'Mothership司令室', x: -10, y: -350, z: -3010, size: 17 },
+    { name: 'Mothership艦長室', x: 15, y: -420, z: -2995, size: 14 },
+    { name: 'Mothership脱出ポッド格納庫', x: -50, y: -380, z: -3050, size: 18 },
+    { name: '要塞第1層司令室', x: 600, y: -850, z: -2400, size: 16 },
+    { name: '要塞第2層動力炉', x: 600, y: -950, z: -2400, size: 19 },
+    { name: '要塞兵器庫', x: 620, y: -880, z: -2420, size: 15 },
+    { name: '採掘コロニー司令室', x: -2300, y: -1750, z: -400, size: 17 },
+    { name: '採掘コロニー鉱夫宿舎', x: -2320, y: -1800, z: -420, size: 14 },
+    { name: 'Cruiser艦橋', x: -2000, y: -295, z: 1500, size: 16 },
+    { name: 'Mining Platform制御室', x: 2500, y: 220, z: -1000, size: 15 },
+    { name: 'Comm Tower通信室', x: -1500, y: 600, z: -2000, size: 13 },
+    { name: 'Habitat Ring個室群', x: 1800, y: -200, z: 2175, size: 14 },
+    { name: 'Fuel Refinery精製室', x: -2200, y: 120, z: 2200, size: 17 },
+    { name: 'Observatory観測室', x: 2000, y: 370, z: 1800, size: 16 },
+    { name: '外周Station研究室', x: 5000, y: 20, z: 5000, size: 15 },
+    { name: '廃棄Station居住区', x: -5500, y: 410, z: 0, size: 16 },
+    { name: 'Debris Belt隠し補給船', x: 4500, y: 100, z: -4500, size: 14 },
+    { name: '小惑星内部寺院祭壇', x: -1600, y: 55, z: -1095, size: 20 },
+    { name: 'Battleship艦橋', x: 2000, y: -95, z: -1400, size: 18 },
+    { name: 'Carrier格納庫', x: 2400, y: -295, z: -1800, size: 22 },
   ]
 
   for (const area of HIDDEN_AREAS_SPACE) {
