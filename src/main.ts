@@ -5,9 +5,11 @@ import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.
 import { NeoTokyoMapSystem } from './neoTokyoMapSystem'
 import { MultiplayerClient } from './multiplayer'
 import { CollectibleSystem } from './collectibleSystem'
+import { loadLogsData, createLogVisuals, checkLogDiscovery, discoverLog, getLogsStats, type LogEntry } from './logsSystem'
+import { getStoryScenesByMap, createStorySceneVisuals } from './environmentalStorySystem'
 
 // ===== VERSION =====
-const VERSION = '5.61.0'
+const VERSION = '7.00.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -139,6 +141,13 @@ let mapSwitchPromise: Promise<void> | null = null
 
 // コレクティブルシステム
 const collectibleSystem = new CollectibleSystem(scene)
+
+// Logsシステム
+let logsData: LogEntry[] = []
+let logsGroup: THREE.Group | null = null
+
+// 環境ストーリーシステム
+let storyGroup: THREE.Group | null = null
 
 interface MapBounds {
   minX: number
@@ -670,45 +679,66 @@ const foliIM  = new THREE.InstancedMesh(new THREE.ConeGeometry(4.4,10,6,2),     
 const foli2IM = new THREE.InstancedMesh(new THREE.ConeGeometry(3.2,7,6,2),          _treeMat(0x5f9d3a), TREE_COUNT)
 trunkIM.castShadow = foliIM.castShadow = foli2IM.castShadow = !isMobileDevice
 trunkIM.receiveShadow = foliIM.receiveShadow = foli2IM.receiveShadow = !isMobileDevice
+// 決定的な疑似ランダム関数（シード値ベース）
+function deterministicRandom(seed: number): number {
+  const x = Math.sin(seed) * 10000
+  return x - Math.floor(x)
+}
+
 const _d = new THREE.Object3D()
-for (let i = 0; i < TREE_COUNT; i++) {
-  const tx = (Math.random()-0.5)*8000, tz = (Math.random()-0.5)*8000
-  const ty = terrainH(tx, tz)
-  const treeSlope = Math.hypot(terrainH(tx + 16, tz) - terrainH(tx - 16, tz), terrainH(tx, tz + 16) - terrainH(tx, tz - 16)) / 32
+let treeIndex = 0
+// グリッドベース配置（決定的）
+const gridSize = 40  // 40mグリッド
+const gridRange = 200  // -4000〜4000mを40mグリッドで分割
+for (let gx = -gridRange; gx < gridRange && treeIndex < TREE_COUNT; gx++) {
+  for (let gz = -gridRange; gz < gridRange && treeIndex < TREE_COUNT; gz++) {
+    const baseX = gx * gridSize
+    const baseZ = gz * gridSize
+    // グリッド内でのオフセット（決定的）
+    const seed = gx * 10000 + gz
+    const offsetX = (deterministicRandom(seed) - 0.5) * gridSize * 0.8
+    const offsetZ = (deterministicRandom(seed + 1) - 0.5) * gridSize * 0.8
+    const tx = baseX + offsetX
+    const tz = baseZ + offsetZ
 
-  // バイオーム遷移チェック
-  const transition = getBiomeTransition(tx, tz)
+    const ty = terrainH(tx, tz)
+    const treeSlope = Math.hypot(terrainH(tx + 16, tz) - terrainH(tx - 16, tz), terrainH(tx, tz + 16) - terrainH(tx, tz - 16)) / 32
 
-  // 雪山エリアでは広葉樹を減らす（遷移帯では徐々に）
-  if (transition.biome === 'snow' && Math.random() > transition.strength * 0.3) { i--; continue }
+    // バイオーム遷移チェック
+    const transition = getBiomeTransition(tx, tz)
 
-  // 砂漠エリアでは広葉樹を大幅に減らす（遷移帯では徐々に）
-  if (transition.biome === 'desert' && Math.random() > transition.strength * 0.1) { i--; continue }
+    // 雪山エリアでは広葉樹を減らす（遷移帯では徐々に）
+    if (transition.biome === 'snow' && deterministicRandom(seed + 2) > transition.strength * 0.3) continue
 
-  // ジャングル遷移帯では密度が上がる
-  if (transition.biome === 'jungle' && Math.random() < (1 - transition.strength) * 0.5) {
-    // ジャングルに近いほどスキップ率が下がる（密度が上がる）
-    // continue しない = 配置確率が上がる
+    // 砂漠エリアでは広葉樹を大幅に減らす（遷移帯では徐々に）
+    if (transition.biome === 'desert' && deterministicRandom(seed + 3) > transition.strength * 0.1) continue
+
+    // ジャングル遷移帯では密度が上がる（スキップ率を下げる）
+    if (transition.biome === 'jungle' && deterministicRandom(seed + 4) < (1 - transition.strength) * 0.5) {
+      // ジャングルに近いほど配置確率が上がる
+    }
+
+    // 標高別植生: 高地（500m-）には木を生やさない
+    if (ty > 500) continue
+    if (ty < 4) continue  // 水面下・峡谷底には植樹しない
+    if (treeSlope > 6.0) continue
+
+    // 中腹（200-500m）: まばらな木（60%の確率でスキップ）
+    if (ty > 200 && deterministicRandom(seed + 5) < 0.6) continue
+
+    // ノイズによる森林パターン
+    if (fbm(tx * 0.0015 + 8, tz * 0.0015 - 4, 3) < 0.34 && deterministicRandom(seed + 6) < 0.75) continue
+
+    const s = 0.7 + deterministicRandom(seed + 7) * 0.7
+    _d.position.set(tx, ty+2*s, tz); _d.scale.setScalar(s); _d.rotation.y = deterministicRandom(seed + 8) * Math.PI * 2; _d.updateMatrix()
+    trunkIM.setMatrixAt(treeIndex, _d.matrix)
+    _d.position.set(tx, ty+7.5*s, tz); _d.updateMatrix()
+    foliIM.setMatrixAt(treeIndex, _d.matrix)
+    _d.position.set(tx, ty+11.5*s, tz); _d.scale.setScalar(s * 0.78); _d.updateMatrix()
+    foli2IM.setMatrixAt(treeIndex, _d.matrix)
+
+    treeIndex++
   }
-
-  // 標高別植生: 高地（500m-）には木を生やさない
-  if (ty > 500) { i--; continue }
-  if (ty < 4) { i--; continue }  // 水面下・峡谷底には植樹しない
-  if (treeSlope > 6.0) { i--; continue }
-
-  // 中腹（200-500m）: まばらな木（60%の確率でスキップ）
-  if (ty > 200 && Math.random() < 0.6) { i--; continue }
-
-  // ノイズによる森林パターン
-  if (fbm(tx * 0.0015 + 8, tz * 0.0015 - 4, 3) < 0.34 && Math.random() < 0.75) { i--; continue }
-
-  const s = 0.7 + Math.random()*0.7
-  _d.position.set(tx, ty+2*s, tz); _d.scale.setScalar(s); _d.rotation.y = Math.random()*Math.PI*2; _d.updateMatrix()
-  trunkIM.setMatrixAt(i, _d.matrix)
-  _d.position.set(tx, ty+7.5*s, tz); _d.updateMatrix()
-  foliIM.setMatrixAt(i, _d.matrix)
-  _d.position.set(tx, ty+11.5*s, tz); _d.scale.setScalar(s * 0.78); _d.updateMatrix()
-  foli2IM.setMatrixAt(i, _d.matrix)
 }
 trunkIM.instanceMatrix.needsUpdate = true; foliIM.instanceMatrix.needsUpdate = true; foli2IM.instanceMatrix.needsUpdate = true
 trunkIM.name = 'OriginalTrees_Trunk'
@@ -721,23 +751,34 @@ const HIGH_ALTITUDE_SHRUB_COUNT = isMobileDevice ? 200 : 500
 const shrubMat = _treeMat(0x4a6b3f)
 const shrubIM = new THREE.InstancedMesh(new THREE.SphereGeometry(1.5, 6, 4), shrubMat, HIGH_ALTITUDE_SHRUB_COUNT)
 shrubIM.castShadow = shrubIM.receiveShadow = !isMobileDevice
-for (let i = 0; i < HIGH_ALTITUDE_SHRUB_COUNT; i++) {
-  const sx = (Math.random() - 0.5) * 5600
-  const sz = (Math.random() - 0.5) * 5600
-  const sy = terrainH(sx, sz)
+let shrubIndex = 0
+const shrubGrid = 50  // 50mグリッド
+const shrubRange = 56  // -2800〜2800m
+for (let gx = -shrubRange; gx < shrubRange && shrubIndex < HIGH_ALTITUDE_SHRUB_COUNT; gx++) {
+  for (let gz = -shrubRange; gz < shrubRange && shrubIndex < HIGH_ALTITUDE_SHRUB_COUNT; gz++) {
+    const baseSx = gx * shrubGrid
+    const baseSz = gz * shrubGrid
+    const seed = gx * 20000 + gz + 50000  // 木とは異なるシード範囲
+    const offsetX = (deterministicRandom(seed) - 0.5) * shrubGrid * 0.7
+    const offsetZ = (deterministicRandom(seed + 1) - 0.5) * shrubGrid * 0.7
+    const sx = baseSx + offsetX
+    const sz = baseSz + offsetZ
+    const sy = terrainH(sx, sz)
 
-  // 高地（500-800m）のみ
-  if (sy < 500 || sy > 800) { i--; continue }
+    // 高地（500-800m）のみ
+    if (sy < 500 || sy > 800) continue
 
-  const slope = Math.hypot(terrainH(sx + 16, sz) - terrainH(sx - 16, sz), terrainH(sx, sz + 16) - terrainH(sx, sz - 16)) / 32
-  if (slope > 8.0) { i--; continue }
+    const slope = Math.hypot(terrainH(sx + 16, sz) - terrainH(sx - 16, sz), terrainH(sx, sz + 16) - terrainH(sx, sz - 16)) / 32
+    if (slope > 8.0) continue
 
-  const s = 0.8 + Math.random() * 0.6
-  _d.position.set(sx, sy + s, sz)
-  _d.scale.setScalar(s)
-  _d.rotation.y = Math.random() * Math.PI * 2
-  _d.updateMatrix()
-  shrubIM.setMatrixAt(i, _d.matrix)
+    const s = 0.8 + deterministicRandom(seed + 2) * 0.6
+    _d.position.set(sx, sy + s, sz)
+    _d.scale.setScalar(s)
+    _d.rotation.y = deterministicRandom(seed + 3) * Math.PI * 2
+    _d.updateMatrix()
+    shrubIM.setMatrixAt(shrubIndex, _d.matrix)
+    shrubIndex++
+  }
 }
 shrubIM.instanceMatrix.needsUpdate = true
 shrubIM.name = 'HighAltitudeShrubs'
@@ -746,62 +787,80 @@ console.log(`✅ High altitude vegetation created: ${HIGH_ALTITUDE_SHRUB_COUNT} 
 
 // ===== バイオーム別植生（雪山・ジャングル・砂漠） =====
 gltfLoader.load(import.meta.env.BASE_URL + 'models/biome_assets.glb', (gltf) => {
-  // 雪山エリア: 針葉樹300本
-  for (let i = 0; i < 300; i++) {
-    const x = (Math.random() - 0.5) * 3000
-    const z = -2500 + (Math.random() - 0.5) * 2000  // 北部
-    const y = terrainH(x, z)
+  // 雪山エリア: 針葉樹300本（決定的配置）
+  let pineCount = 0
+  for (let gx = -15; gx < 15 && pineCount < 300; gx++) {
+    for (let gz = -20; gz < 0 && pineCount < 300; gz++) {
+      const gridSize = 100
+      const seed = gx * 30000 + gz + 100000
+      const x = gx * gridSize + (deterministicRandom(seed) - 0.5) * gridSize * 0.7
+      const z = -2500 + gz * gridSize + (deterministicRandom(seed + 1) - 0.5) * gridSize * 0.7
+      const y = terrainH(x, z)
 
-    if (getBiome(x, z) !== 'snow') continue
-    if (y < 800) continue  // 標高800m以上
+      if (getBiome(x, z) !== 'snow') continue
+      if (y < 800) continue  // 標高800m以上
 
-    const pine = gltf.scene.children.find((c: any) => c.name === 'PineTrunk')?.clone()
-    if (pine) {
-      pine.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
-      pine.position.set(x, y, z)
-      pine.scale.setScalar(0.8 + Math.random() * 0.4)
-      pine.rotation.y = Math.random() * Math.PI * 2
-      scene.add(pine)
+      const pine = gltf.scene.children.find((c: any) => c.name === 'PineTrunk')?.clone()
+      if (pine) {
+        pine.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
+        pine.position.set(x, y, z)
+        pine.scale.setScalar(0.8 + deterministicRandom(seed + 2) * 0.4)
+        pine.rotation.y = deterministicRandom(seed + 3) * Math.PI * 2
+        scene.add(pine)
+        pineCount++
+      }
     }
   }
 
-  // ジャングルエリア: 巨大樹20本 + 密林強化
-  for (let i = 0; i < 20; i++) {
-    const x = 2500 + (Math.random() - 0.5) * 2000  // 東部
-    const z = (Math.random() - 0.5) * 3000
-    const y = terrainH(x, z)
+  // ジャングルエリア: 巨大樹20本（決定的配置）
+  let giantCount = 0
+  for (let gx = 0; gx < 20 && giantCount < 20; gx++) {
+    for (let gz = -15; gz < 15 && giantCount < 20; gz++) {
+      const gridSize = 200
+      const seed = gx * 40000 + gz + 200000
+      const x = 2500 + gx * gridSize + (deterministicRandom(seed) - 0.5) * gridSize * 0.8
+      const z = gz * gridSize + (deterministicRandom(seed + 1) - 0.5) * gridSize * 0.8
+      const y = terrainH(x, z)
 
-    if (getBiome(x, z) !== 'jungle') continue
+      if (getBiome(x, z) !== 'jungle') continue
 
-    const giantTree = gltf.scene.children.find((c: any) => c.name === 'GiantTrunk')?.clone()
-    if (giantTree) {
-      giantTree.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
-      giantTree.position.set(x, y, z)
-      giantTree.scale.setScalar(0.8 + Math.random() * 0.4)
-      giantTree.rotation.y = Math.random() * Math.PI * 2
-      scene.add(giantTree)
+      const giantTree = gltf.scene.children.find((c: any) => c.name === 'GiantTrunk')?.clone()
+      if (giantTree) {
+        giantTree.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
+        giantTree.position.set(x, y, z)
+        giantTree.scale.setScalar(0.8 + deterministicRandom(seed + 2) * 0.4)
+        giantTree.rotation.y = deterministicRandom(seed + 3) * Math.PI * 2
+        scene.add(giantTree)
+        giantCount++
+      }
     }
   }
 
-  // 砂漠エリア: サボテン200本
-  for (let i = 0; i < 200; i++) {
-    const x = (Math.random() - 0.5) * 3000
-    const z = 2500 + (Math.random() - 0.5) * 2000  // 南部
-    const y = terrainH(x, z)
+  // 砂漠エリア: サボテン200本（決定的配置）
+  let cactusCount = 0
+  for (let gx = -15; gx < 15 && cactusCount < 200; gx++) {
+    for (let gz = 0; gz < 20 && cactusCount < 200; gz++) {
+      const gridSize = 100
+      const seed = gx * 50000 + gz + 300000
+      const x = gx * gridSize + (deterministicRandom(seed) - 0.5) * gridSize * 0.7
+      const z = 2500 + gz * gridSize + (deterministicRandom(seed + 1) - 0.5) * gridSize * 0.7
+      const y = terrainH(x, z)
 
-    if (getBiome(x, z) !== 'desert') continue
+      if (getBiome(x, z) !== 'desert') continue
 
-    const cactus = gltf.scene.children.find((c: any) => c.name === 'CactusBody')?.clone()
-    if (cactus) {
-      cactus.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
-      cactus.position.set(x, y, z)
-      cactus.scale.setScalar(0.6 + Math.random() * 0.8)
-      cactus.rotation.y = Math.random() * Math.PI * 2
-      scene.add(cactus)
+      const cactus = gltf.scene.children.find((c: any) => c.name === 'CactusBody')?.clone()
+      if (cactus) {
+        cactus.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
+        cactus.position.set(x, y, z)
+        cactus.scale.setScalar(0.6 + deterministicRandom(seed + 2) * 0.8)
+        cactus.rotation.y = deterministicRandom(seed + 3) * Math.PI * 2
+        scene.add(cactus)
+        cactusCount++
+      }
     }
   }
 
-  console.log('✅ Biome vegetation loaded (snow: 300 pines, jungle: 20 giants, desert: 200 cacti)')
+  console.log('✅ Biome vegetation loaded (snow: 300 pines, jungle: 20 giants, desert: 200 cacti) - deterministic placement')
 })
 
 // ===== ROCK PILLARS (Blender GLB) =====
@@ -821,27 +880,29 @@ gltfLoader.load(import.meta.env.BASE_URL + 'models/rock_pillar.glb', (gltf) => {
 
   for (const cl of PILLAR_SPECS) {
     for (let j = 0; j < cl.n; j++) {
-      const px = cl.cx + (Math.random()-0.5)*250
-      const pz = cl.cz + (Math.random()-0.5)*250
+      const seed = cl.cx * 60000 + cl.cz * 100 + j + 400000
+      const px = cl.cx + (deterministicRandom(seed) - 0.5) * 250
+      const pz = cl.cz + (deterministicRandom(seed + 1) - 0.5) * 250
       const ph = terrainH(px, pz)
-      const ht = 150 + Math.random()*150  // 改善: 50-140m → 150-300m
-      const rb = 15 + Math.random()*25    // 改善: 9-25m → 15-40m
+      const ht = 150 + deterministicRandom(seed + 2) * 150  // 150-300m
+      const rb = 15 + deterministicRandom(seed + 3) * 25    // 15-40m
       const inst = proto.clone()
       inst.position.set(px, ph, pz)
       inst.scale.set(rb/0.26, ht, rb/0.26)
-      inst.rotation.y = Math.random()*Math.PI*2
+      inst.rotation.y = deterministicRandom(seed + 4) * Math.PI * 2
       inst.name = `OriginalRockPillar_${cl.cx}_${j}`
       scene.add(inst)
     }
   }
-  // 孤立高塔
+  // 孤立高塔（決定的配置）
   for (let idx = 0; idx < ISOLATED_TOWERS.length; idx++) {
     const [px, pz, ht, rb] = ISOLATED_TOWERS[idx]
     const ph = terrainH(px, pz)
+    const seed = px * 70000 + pz + 500000
     const inst = proto.clone()
     inst.position.set(px, ph, pz)
     inst.scale.set(rb/0.26, ht, rb/0.26)
-    inst.rotation.y = Math.random()*Math.PI*2
+    inst.rotation.y = deterministicRandom(seed) * Math.PI * 2
     inst.name = `OriginalRockTower_${idx}`
     scene.add(inst)
   }
@@ -885,18 +946,37 @@ const boulderIM = new THREE.InstancedMesh(
 )
 boulderIM.castShadow = true
 boulderIM.receiveShadow = true
-for (let i = 0; i < BOULDER_COUNT; i++) {
-  const bx = (Math.random() - 0.5) * 6200
-  const bz = (Math.random() - 0.5) * 6200
-  const by = terrainH(bx, bz)
-  const slope = Math.hypot(terrainH(bx + 14, bz) - terrainH(bx - 14, bz), terrainH(bx, bz + 14) - terrainH(bx, bz - 14)) / 28
-  if (by < WATER_LEVEL + 5 || by > 900 || slope > 9.0) { i--; continue }
-  const s = 2.4 + Math.random() * 8
-  _d.position.set(bx, by + s * 0.45, bz)
-  _d.scale.set(s * (0.8 + Math.random() * 0.6), s * (0.45 + Math.random() * 0.45), s * (0.7 + Math.random() * 0.7))
-  _d.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
-  _d.updateMatrix()
-  boulderIM.setMatrixAt(i, _d.matrix)
+let boulderIndex = 0
+const boulderGrid = 70  // 70mグリッド
+const boulderRange = 44  // -3080〜3080m
+for (let gx = -boulderRange; gx < boulderRange && boulderIndex < BOULDER_COUNT; gx++) {
+  for (let gz = -boulderRange; gz < boulderRange && boulderIndex < BOULDER_COUNT; gz++) {
+    const baseBx = gx * boulderGrid
+    const baseBz = gz * boulderGrid
+    const seed = gx * 80000 + gz + 600000
+    const offsetX = (deterministicRandom(seed) - 0.5) * boulderGrid * 0.6
+    const offsetZ = (deterministicRandom(seed + 1) - 0.5) * boulderGrid * 0.6
+    const bx = baseBx + offsetX
+    const bz = baseBz + offsetZ
+    const by = terrainH(bx, bz)
+    const slope = Math.hypot(terrainH(bx + 14, bz) - terrainH(bx - 14, bz), terrainH(bx, bz + 14) - terrainH(bx, bz - 14)) / 28
+    if (by < WATER_LEVEL + 5 || by > 900 || slope > 9.0) continue
+    const s = 2.4 + deterministicRandom(seed + 2) * 8
+    _d.position.set(bx, by + s * 0.45, bz)
+    _d.scale.set(
+      s * (0.8 + deterministicRandom(seed + 3) * 0.6),
+      s * (0.45 + deterministicRandom(seed + 4) * 0.45),
+      s * (0.7 + deterministicRandom(seed + 5) * 0.7)
+    )
+    _d.rotation.set(
+      deterministicRandom(seed + 6) * Math.PI,
+      deterministicRandom(seed + 7) * Math.PI,
+      deterministicRandom(seed + 8) * Math.PI
+    )
+    _d.updateMatrix()
+    boulderIM.setMatrixAt(boulderIndex, _d.matrix)
+    boulderIndex++
+  }
 }
 boulderIM.instanceMatrix.needsUpdate = true
 boulderIM.name = 'OriginalBoulders'
@@ -3356,22 +3436,26 @@ function addCityArea(cx: number, cz: number, radius: number, buildingCount: numb
   const availableGLBs = glbBuildings.filter(g => g !== null)
   if (availableGLBs.length === 0) return  // GLB未ロードならスキップ
 
+  // 決定的な配置（シード値ベース）
+  const baseSeed = Math.floor(cx * 1000 + cz)
   for (let i = 0; i < buildingCount; i++) {
-    const angle = Math.random() * Math.PI * 2
-    const dist = Math.random() * radius
+    const seed = baseSeed + i * 1000 + 700000
+    const angle = deterministicRandom(seed) * Math.PI * 2
+    const dist = deterministicRandom(seed + 1) * radius
     const bx = cx + Math.cos(angle) * dist
     const bz = cz + Math.sin(angle) * dist
     const by = terrainH(bx, bz)
 
     if (by < WATER_LEVEL + 3) continue  // 水没回避
 
-    // ランダムにGLBを選択
-    const glb = availableGLBs[Math.floor(Math.random() * availableGLBs.length)]!
+    // 決定的にGLBを選択
+    const glbIndex = Math.floor(deterministicRandom(seed + 2) * availableGLBs.length)
+    const glb = availableGLBs[glbIndex]!
     const building = glb.clone()
     building.position.set(bx, by, bz)
-    building.rotation.y = Math.random() * Math.PI * 2
-    // ランダムスケール（0.8〜1.2倍）
-    const scale = 0.8 + Math.random() * 0.4
+    building.rotation.y = deterministicRandom(seed + 3) * Math.PI * 2
+    // 決定的スケール（0.8〜1.2倍）
+    const scale = 0.8 + deterministicRandom(seed + 4) * 0.4
     building.scale.setScalar(scale)
     scene.add(building)
 
@@ -6404,80 +6488,101 @@ async function buildSpaceMap() {
   const containerMat = new THREE.MeshLambertMaterial({ color: 0x4a4a5a })
   const smallSatMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.5, metalness: 0.6 })
 
-  // 小型デブリ2000個（1m以下）
+  // 小型デブリ2000個（1m以下）- 決定的配置
   const smallDebrisCount = isMobileDevice ? 800 : 2000
   for (let i = 0; i < smallDebrisCount; i++) {
-    const dx = (Math.random() - 0.5) * 11000
-    const dy = (Math.random() - 0.5) * 1000
-    const dz = (Math.random() - 0.5) * 11000
+    const seed = i + 800000
+    const dx = (deterministicRandom(seed) - 0.5) * 11000
+    const dy = (deterministicRandom(seed + 1) - 0.5) * 1000
+    const dz = (deterministicRandom(seed + 2) - 0.5) * 11000
 
     const debris = new THREE.Mesh(
-      new THREE.DodecahedronGeometry(0.3 + Math.random() * 0.7, 0),
+      new THREE.DodecahedronGeometry(0.3 + deterministicRandom(seed + 3) * 0.7, 0),
       smallDebrisMat
     )
     debris.position.set(dx, dy, dz)
-    debris.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+    debris.rotation.set(
+      deterministicRandom(seed + 4) * Math.PI,
+      deterministicRandom(seed + 5) * Math.PI,
+      deterministicRandom(seed + 6) * Math.PI
+    )
     space.add(debris)
   }
 
-  // 浮遊ケーブル300本
+  // 浮遊ケーブル300本 - 決定的配置
   const cableCount = isMobileDevice ? 120 : 300
   for (let i = 0; i < cableCount; i++) {
-    const startX = (Math.random() - 0.5) * 10000
-    const startY = (Math.random() - 0.5) * 800
-    const startZ = (Math.random() - 0.5) * 10000
+    const seed = i + 900000
+    const startX = (deterministicRandom(seed) - 0.5) * 10000
+    const startY = (deterministicRandom(seed + 1) - 0.5) * 800
+    const startZ = (deterministicRandom(seed + 2) - 0.5) * 10000
 
     const points: THREE.Vector3[] = []
     let x = startX, y = startY, z = startZ
     for (let j = 0; j < 10; j++) {
       points.push(new THREE.Vector3(x, y, z))
-      x += (Math.random() - 0.5) * 20
-      y += (Math.random() - 0.5) * 20
-      z += (Math.random() - 0.5) * 20
+      x += (deterministicRandom(seed + j * 3 + 3) - 0.5) * 20
+      y += (deterministicRandom(seed + j * 3 + 4) - 0.5) * 20
+      z += (deterministicRandom(seed + j * 3 + 5) - 0.5) * 20
     }
     const cableGeo = new THREE.BufferGeometry().setFromPoints(points)
     const cable = new THREE.Line(cableGeo, cableMat)
     space.add(cable)
   }
 
-  // パネル破片400個
+  // パネル破片400個 - 決定的配置
   const panelCount = isMobileDevice ? 160 : 400
   for (let i = 0; i < panelCount; i++) {
-    const px = (Math.random() - 0.5) * 10000
-    const py = (Math.random() - 0.5) * 800
-    const pz = (Math.random() - 0.5) * 10000
+    const seed = i + 1000000
+    const px = (deterministicRandom(seed) - 0.5) * 10000
+    const py = (deterministicRandom(seed + 1) - 0.5) * 800
+    const pz = (deterministicRandom(seed + 2) - 0.5) * 10000
 
     const panel = new THREE.Mesh(
-      new THREE.BoxGeometry(3 + Math.random() * 4, 0.1, 2 + Math.random() * 3),
+      new THREE.BoxGeometry(
+        3 + deterministicRandom(seed + 3) * 4,
+        0.1,
+        2 + deterministicRandom(seed + 4) * 3
+      ),
       debrisPanelMat
     )
     panel.position.set(px, py, pz)
-    panel.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+    panel.rotation.set(
+      deterministicRandom(seed + 5) * Math.PI,
+      deterministicRandom(seed + 6) * Math.PI,
+      deterministicRandom(seed + 7) * Math.PI
+    )
     space.add(panel)
   }
 
-  // 貨物コンテナ200個
+  // 貨物コンテナ200個 - 決定的配置
   const containerCount = isMobileDevice ? 80 : 200
   for (let i = 0; i < containerCount; i++) {
-    const cx = (Math.random() - 0.5) * 10000
-    const cy = (Math.random() - 0.5) * 800
-    const cz = (Math.random() - 0.5) * 10000
+    const seed = i + 1100000
+    const cx = (deterministicRandom(seed) - 0.5) * 10000
+    const cy = (deterministicRandom(seed + 1) - 0.5) * 800
+    const cz = (deterministicRandom(seed + 2) - 0.5) * 10000
 
     const container = new THREE.Mesh(
       new THREE.BoxGeometry(8, 3, 3),
       containerMat
     )
     container.position.set(cx, cy, cz)
-    container.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+    container.rotation.set(
+      deterministicRandom(seed + 3) * Math.PI,
+      deterministicRandom(seed + 4) * Math.PI,
+      deterministicRandom(seed + 5) * Math.PI
+    )
     space.add(container)
   }
 
-  // 小型衛星50個
+  // 小型衛星50個 - 決定的配置
   const smallSatCount = isMobileDevice ? 20 : 50
   for (let i = 0; i < smallSatCount; i++) {
-    const sx = (Math.random() - 0.5) * 11000
-    const sy = (Math.random() - 0.5) * 900
-    const sz = (Math.random() - 0.5) * 11000
+    const seed = i + 1200000
+    const sx = (deterministicRandom(seed) - 0.5) * 11000
+    const sy = (deterministicRandom(seed + 1) - 0.5) * 900
+    const sz = (deterministicRandom(seed + 2) - 0.5) * 11000
 
     // 本体
     const satBody = new THREE.Mesh(
@@ -6485,7 +6590,11 @@ async function buildSpaceMap() {
       smallSatMat
     )
     satBody.position.set(sx, sy, sz)
-    satBody.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+    satBody.rotation.set(
+      deterministicRandom(seed + 3) * Math.PI,
+      deterministicRandom(seed + 4) * Math.PI,
+      deterministicRandom(seed + 5) * Math.PI
+    )
     space.add(satBody)
 
     // ソーラーパネル×2
@@ -6500,19 +6609,24 @@ async function buildSpaceMap() {
     }
   }
 
-  // 浮遊工具100個
+  // 浮遊工具100個 - 決定的配置
   const toolCount = isMobileDevice ? 40 : 100
   for (let i = 0; i < toolCount; i++) {
-    const tx = (Math.random() - 0.5) * 10000
-    const ty = (Math.random() - 0.5) * 800
-    const tz = (Math.random() - 0.5) * 10000
+    const seed = i + 1300000
+    const tx = (deterministicRandom(seed) - 0.5) * 10000
+    const ty = (deterministicRandom(seed + 1) - 0.5) * 800
+    const tz = (deterministicRandom(seed + 2) - 0.5) * 10000
 
     const tool = new THREE.Mesh(
       new THREE.CylinderGeometry(0.2, 0.2, 1.5, 8),
       new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.7, roughness: 0.4 })
     )
     tool.position.set(tx, ty, tz)
-    tool.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+    tool.rotation.set(
+      deterministicRandom(seed + 3) * Math.PI,
+      deterministicRandom(seed + 4) * Math.PI,
+      deterministicRandom(seed + 5) * Math.PI
+    )
     space.add(tool)
   }
 
@@ -7038,6 +7152,28 @@ async function switchMap(map: GameMap) {
     createNavigationBeacons('original')
 
     if (import.meta.env.DEV) console.log('✅ オリジナルMAP切り替え完了')
+  }
+
+  // Logsシステム初期化（全MAP共通）
+  logsData = loadLogsData()
+  if (logsGroup) {
+    scene.remove(logsGroup)
+  }
+  logsGroup = createLogVisuals(scene, logsData.filter(log => log.mapName === map))
+  if (import.meta.env.DEV) {
+    const stats = getLogsStats(logsData)
+    console.log(`📜 Logsシステム初期化: ${stats.byMap[map]?.total || 0}個のログを配置`)
+  }
+
+  // 環境ストーリーシステム初期化
+  if (storyGroup) {
+    scene.remove(storyGroup)
+  }
+  const storyScenes = getStoryScenesByMap(map)
+  storyGroup = createStorySceneVisuals(scene, storyScenes)
+  if (import.meta.env.DEV) {
+    const totalObjects = storyScenes.reduce((sum, scene) => sum + scene.objects.length, 0)
+    console.log(`📖 環境ストーリー初期化: ${storyScenes.length}シーン、${totalObjects}オブジェクト配置`)
   }
 }
 
@@ -9286,6 +9422,20 @@ function loop() {
   if (collected) {
     // TODO: サウンド・エフェクト追加
     if (import.meta.env.DEV) console.log(`✨ Collected: ${collected.id}`)
+  }
+
+  // Logsシステム更新
+  const discoveredLog = checkLogDiscovery(player.position, logsData)
+  if (discoveredLog) {
+    discoverLog(discoveredLog.id, logsData)
+    // ビジュアル更新（発見済みログは非表示）
+    if (logsGroup) {
+      logsGroup.children.forEach(child => {
+        if (child.userData.logId === discoveredLog.id) {
+          child.visible = false
+        }
+      })
+    }
   }
 
   if (composer) {
