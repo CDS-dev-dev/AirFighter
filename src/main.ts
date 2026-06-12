@@ -5685,6 +5685,12 @@ function loop() {
       // Quaternionを使って機体ローカル座標系でロール回転
       const localRollQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, -1), rollAngle)
       player.quaternion.multiply(localRollQuat)
+
+      // 機体が傾くことによる横方向への移動（揚力効果）
+      // 現在の機体の横軸方向に移動
+      const lateralForce = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion)
+      const lateralSpeed = speed * 0.3  // 前進速度の30%で横移動
+      player.position.add(lateralForce.multiplyScalar(barrelRollState.direction * lateralSpeed * dt))
     }
   }
 
