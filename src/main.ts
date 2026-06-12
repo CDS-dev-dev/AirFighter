@@ -1918,9 +1918,13 @@ function triggerFlareBurst() {
 function isBlockedByMapGeometry(raycaster: THREE.Raycaster): boolean {
   if (currentMap === 'space') {
     // 宇宙マップ: 小惑星とゾーン構造物で遮蔽判定
+    // 見えるものは物理的に存在する（ミサイル・弾丸も当たる）
     const hits: THREE.Intersection[] = []
     if (spaceAsteroids) {
       hits.push(...raycaster.intersectObject(spaceAsteroids, false))
+    }
+    if (spaceIndividualAsteroids.length > 0) {
+      hits.push(...raycaster.intersectObjects(spaceIndividualAsteroids, false))
     }
     if (spaceZoneGroups.length > 0) {
       hits.push(...raycaster.intersectObjects(spaceZoneGroups, true))
@@ -6080,8 +6084,26 @@ function loop() {
       }
     }
 
-    // ゾーン構造物の衝突判定は無効化（内部飛行可能な世界観）
-    // spaceZoneGroupsは視覚的なランドマークのみ
+    // ゾーン構造物との衝突判定（レイキャスト）
+    // 見えるものは物理的に存在する（他MAPと同じ思想）
+    if (spaceZoneGroups.length > 0) {
+      const raycaster = new THREE.Raycaster()
+      const moveDir = player.position.clone().sub(prevPos).normalize()
+      const moveDist = player.position.distanceTo(prevPos)
+      if (moveDist > 0.1) {
+        raycaster.set(prevPos, moveDir)
+        raycaster.far = moveDist + adjustedCollisionRadius
+        for (const zoneGroup of spaceZoneGroups) {
+          const hits = raycaster.intersectObject(zoneGroup, true)  // recursive
+          if (hits.length > 0 && hits[0].distance < moveDist + adjustedCollisionRadius) {
+            player.position.copy(prevPos)
+            hitFlashTimer = 0.3
+            camShakeAmt = Math.max(camShakeAmt, 0.6)
+            break
+          }
+        }
+      }
+    }
   }
 
   // Engine glow follows player
