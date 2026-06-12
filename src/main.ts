@@ -1888,11 +1888,7 @@ function fireEnemyMissile(enemy: Enemy) {
 }
 
 function _dropSingleFlare() {
-  if (flareAmmo <= 0) return
-  flareAmmo--
-  flareEl.textContent = flareAmmo.toString()
-  updatePips(flarePips, flareAmmo, 'flare-on')
-  updateMobileAmmo()  // スマホ版ボタン内の残量更新
+  // フレア放出（消費はtriggerFlareBurstで1個のみ）
   const mat = new THREE.MeshStandardMaterial({ color: 0xff8800, emissive: 0xff5500, emissiveIntensity: 9.0, roughness: 0.4 })
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.32, 7, 7), mat)
   mesh.position.copy(player.position).add(new THREE.Vector3((Math.random()-0.5)*1.5, -0.5, 2.5).applyQuaternion(player.quaternion))
@@ -1908,8 +1904,12 @@ function triggerFlareBurst() {
   if (flareCooldown > 0 || flareAmmo <= 0) return
   if (!audioReady) initAudio()
   flareCooldown = 1.2
-  flareBurstLeft = Math.min(3, flareAmmo)
+  flareBurstLeft = 3  // 常に3個放出
   flareBurstTimer = 0
+  flareAmmo--  // 消費は1個のみ
+  flareEl.textContent = flareAmmo.toString()
+  updatePips(flarePips, flareAmmo, 'flare-on')
+  updateMobileAmmo()  // スマホ版ボタン内の残量更新
 }
 
 /**
