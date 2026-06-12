@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.11.0'
+const VERSION = '7.12.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -1300,18 +1300,13 @@ function addMountainCave() {
 
 // ===== 地下洞窟ネットワーク（3層構造） =====
 function addUndergroundCaveNetwork() {
-  const caveMat = new THREE.MeshStandardMaterial({
-    color: 0x3a3a3a,
-    roughness: 0.95,
-    metalness: 0.05,
-  })
-
   const glowMat = new THREE.MeshStandardMaterial({
     color: 0x88ffff,
     emissive: 0x44dddd,
     emissiveIntensity: 1.0,
   })
 
+  // GLBベースの洞窟システム（3層構造）
   // 第1層（地下30-80m）: 入口8箇所、大広間15箇所、トンネル30本
   const L1_ENTRANCES = [
     { x: -800, z: -600 }, { x: 800, z: -600 },
@@ -1321,205 +1316,236 @@ function addUndergroundCaveNetwork() {
   ]
 
   const L1_CHAMBERS = [
-    { x: -500, y: -50, z: -400, r: 40 },
-    { x: 500, y: -50, z: -400, r: 35 },
-    { x: -500, y: -60, z: 400, r: 45 },
-    { x: 500, y: -60, z: 400, r: 38 },
-    { x: -300, y: -55, z: 0, r: 42 },
-    { x: 300, y: -55, z: 0, r: 40 },
-    { x: 0, y: -50, z: -600, r: 50 },
-    { x: 0, y: -50, z: 600, r: 48 },
-    { x: -700, y: -65, z: -200, r: 36 },
-    { x: 700, y: -65, z: -200, r: 34 },
-    { x: -700, y: -70, z: 200, r: 38 },
-    { x: 700, y: -70, z: 200, r: 40 },
-    { x: -200, y: -60, z: -800, r: 44 },
-    { x: 200, y: -60, z: -800, r: 42 },
-    { x: 0, y: -55, z: 0, r: 60 },  // 中央大広間
+    { x: -500, y: -50, z: -400, r: 40, size: 'small' },
+    { x: 500, y: -50, z: -400, r: 35, size: 'small' },
+    { x: -500, y: -60, z: 400, r: 45, size: 'medium' },
+    { x: 500, y: -60, z: 400, r: 38, size: 'small' },
+    { x: -300, y: -55, z: 0, r: 42, size: 'medium' },
+    { x: 300, y: -55, z: 0, r: 40, size: 'small' },
+    { x: 0, y: -50, z: -600, r: 50, size: 'medium' },
+    { x: 0, y: -50, z: 600, r: 48, size: 'medium' },
+    { x: -700, y: -65, z: -200, r: 36, size: 'small' },
+    { x: 700, y: -65, z: -200, r: 34, size: 'small' },
+    { x: -700, y: -70, z: 200, r: 38, size: 'small' },
+    { x: 700, y: -70, z: 200, r: 40, size: 'medium' },
+    { x: -200, y: -60, z: -800, r: 44, size: 'medium' },
+    { x: 200, y: -60, z: -800, r: 42, size: 'medium' },
+    { x: 0, y: -55, z: 0, r: 60, size: 'large' },  // 中央大広間
   ]
 
-  // 入口を配置
+  // 入口マーカー（簡易アーチはGLB化せず光るマーカーのみ）
   for (const entrance of L1_ENTRANCES) {
     const h = terrainH(entrance.x, entrance.z)
-    const archGeo = new THREE.TorusGeometry(25, 6, 12, 24, Math.PI)
-    const arch = new THREE.Mesh(archGeo, caveMat)
-    arch.position.set(entrance.x, h + 25, entrance.z)
-    arch.rotation.x = Math.PI / 2
-    originalMapGroup.add(arch)
-
-    // 入口マーカー
     const marker = new THREE.Mesh(new THREE.SphereGeometry(3, 8, 8), glowMat)
     marker.position.set(entrance.x, h + 10, entrance.z)
     originalMapGroup.add(marker)
   }
 
-  // 第1層の大広間
-  for (const chamber of L1_CHAMBERS) {
-    const chamberGeo = new THREE.SphereGeometry(chamber.r, 16, 16)
-    const chamberMesh = new THREE.Mesh(chamberGeo, caveMat)
-    chamberMesh.position.set(chamber.x, chamber.y, chamber.z)
-    originalMapGroup.add(chamberMesh)
+  // GLBチャンバーをロード＆配置（small/medium/large）
+  const chamberFiles = {
+    small: 'cave_chamber_small.glb',
+    medium: 'cave_chamber_medium.glb',
+    large: 'cave_chamber_large.glb'
+  }
 
-    // 光る鉱石
-    for (let i = 0; i < 5; i++) {
-      const angle = (i / 5) * Math.PI * 2
-      const r = chamber.r * 0.8
+  for (const [sizeKey, filename] of Object.entries(chamberFiles)) {
+    gltfLoader.load(import.meta.env.BASE_URL + 'models/' + filename, (gltf) => {
+      const template = gltf.scene
+      template.traverse((c: any) => { if (c.isMesh) { c.castShadow = !isMobileDevice; c.receiveShadow = !isMobileDevice } })
+
+      for (const chamber of L1_CHAMBERS.filter(c => c.size === sizeKey)) {
+        const chamberMesh = template.clone()
+        chamberMesh.position.set(chamber.x, chamber.y, chamber.z)
+        chamberMesh.scale.setScalar(chamber.r / (sizeKey === 'large' ? 80 : sizeKey === 'medium' ? 50 : 30))
+        originalMapGroup.add(chamberMesh)
+
+        // 光る鉱石
+        for (let i = 0; i < 5; i++) {
+          const angle = (i / 5) * Math.PI * 2
+          const r = chamber.r * 0.8
+          const crystal = new THREE.Mesh(
+            new THREE.OctahedronGeometry(2 + Math.random() * 3),
+            glowMat
+          )
+          crystal.position.set(
+            chamber.x + Math.cos(angle) * r,
+            chamber.y + (Math.random() - 0.5) * chamber.r * 0.5,
+            chamber.z + Math.sin(angle) * r
+          )
+          crystal.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+          originalMapGroup.add(crystal)
+        }
+      }
+    })
+  }
+
+  // GLBトンネルをロード＆配置
+  gltfLoader.load(import.meta.env.BASE_URL + 'models/cave_tunnel_medium.glb', (gltf) => {
+    const tunnelTemplate = gltf.scene
+    tunnelTemplate.traverse((c: any) => { if (c.isMesh) { c.castShadow = !isMobileDevice; c.receiveShadow = !isMobileDevice } })
+
+    // トンネル（第1層の広間を接続）
+    for (let i = 0; i < L1_CHAMBERS.length - 1; i++) {
+      const c1 = L1_CHAMBERS[i]
+      const c2 = L1_CHAMBERS[i + 1]
+      const length = Math.hypot(c2.x - c1.x, c2.z - c1.z, c2.y - c1.y)
+      const midX = (c1.x + c2.x) / 2
+      const midY = (c1.y + c2.y) / 2
+      const midZ = (c1.z + c2.z) / 2
+
+      const tunnel = tunnelTemplate.clone()
+      tunnel.position.set(midX, midY, midZ)
+      tunnel.scale.set(15 / 12, length / 100, 15 / 12)  // GLBの基準サイズに合わせてスケール
+
+      const angleY = Math.atan2(c2.z - c1.z, c2.x - c1.x)
+      const angleX = Math.atan2(c2.y - c1.y, Math.hypot(c2.x - c1.x, c2.z - c1.z))
+      tunnel.rotation.set(angleX, 0, angleY + Math.PI / 2)
+
+      originalMapGroup.add(tunnel)
+    }
+  })
+
+  // 第2層（地下100-150m）: 大広間10箇所（GLBベース）
+  const L2_CHAMBERS = [
+    { x: -400, y: -120, z: -300, r: 50, size: 'medium' },
+    { x: 400, y: -120, z: -300, r: 45, size: 'medium' },
+    { x: -400, y: -130, z: 300, r: 48, size: 'medium' },
+    { x: 400, y: -130, z: 300, r: 46, size: 'medium' },
+    { x: 0, y: -125, z: 0, r: 70, size: 'large' },  // 中央大広間
+    { x: -600, y: -135, z: 0, r: 42, size: 'medium' },
+    { x: 600, y: -135, z: 0, r: 44, size: 'medium' },
+    { x: 0, y: -120, z: -500, r: 40, size: 'small' },
+    { x: 0, y: -120, z: 500, r: 38, size: 'small' },
+    { x: -300, y: -140, z: -500, r: 36, size: 'small' },
+  ]
+
+  // 第2層チャンバーをGLBでロード
+  for (const [sizeKey, filename] of Object.entries(chamberFiles)) {
+    gltfLoader.load(import.meta.env.BASE_URL + 'models/' + filename, (gltf) => {
+      const template = gltf.scene
+      template.traverse((c: any) => { if (c.isMesh) { c.castShadow = !isMobileDevice; c.receiveShadow = !isMobileDevice } })
+
+      for (const chamber of L2_CHAMBERS.filter(c => c.size === sizeKey)) {
+        const chamberMesh = template.clone()
+        chamberMesh.position.set(chamber.x, chamber.y, chamber.z)
+        chamberMesh.scale.setScalar(chamber.r / (sizeKey === 'large' ? 80 : sizeKey === 'medium' ? 50 : 30))
+        originalMapGroup.add(chamberMesh)
+
+        // 巨大クリスタル
+        const crystal = new THREE.Mesh(
+          new THREE.OctahedronGeometry(15),
+          glowMat
+        )
+        crystal.position.set(chamber.x, chamber.y, chamber.z)
+        crystal.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0)
+        originalMapGroup.add(crystal)
+      }
+    })
+  }
+
+  // 第2層トンネル（GLB）
+  gltfLoader.load(import.meta.env.BASE_URL + 'models/cave_tunnel_medium.glb', (gltf) => {
+    const tunnelTemplate = gltf.scene
+    tunnelTemplate.traverse((c: any) => { if (c.isMesh) { c.castShadow = !isMobileDevice; c.receiveShadow = !isMobileDevice } })
+
+    for (let i = 0; i < L2_CHAMBERS.length - 1; i++) {
+      const c1 = L2_CHAMBERS[i]
+      const c2 = L2_CHAMBERS[i + 1]
+      const length = Math.hypot(c2.x - c1.x, c2.z - c1.z, c2.y - c1.y)
+      const midX = (c1.x + c2.x) / 2
+      const midY = (c1.y + c2.y) / 2
+      const midZ = (c1.z + c2.z) / 2
+
+      const tunnel = tunnelTemplate.clone()
+      tunnel.position.set(midX, midY, midZ)
+      tunnel.scale.set(12 / 12, length / 100, 12 / 12)
+
+      const angleY = Math.atan2(c2.z - c1.z, c2.x - c1.x)
+      const angleX = Math.atan2(c2.y - c1.y, Math.hypot(c2.x - c1.x, c2.z - c1.z))
+      tunnel.rotation.set(angleX, 0, angleY + Math.PI / 2)
+
+      originalMapGroup.add(tunnel)
+    }
+  })
+
+  // 第3層（地下200m）: 最深部の祭殿（GLB: underground_temple.glb使用）
+  const L3_CHAMBERS = [
+    { x: 0, y: -200, z: 0, r: 80, isTemple: true },  // 最深部祭殿
+    { x: -200, y: -200, z: -200, r: 50, size: 'medium' },
+    { x: 200, y: -200, z: -200, r: 50, size: 'medium' },
+    { x: -200, y: -200, z: 200, r: 50, size: 'medium' },
+    { x: 200, y: -200, z: 200, r: 50, size: 'medium' },
+  ]
+
+  // 祭殿（underground_temple.glb）
+  gltfLoader.load(import.meta.env.BASE_URL + 'models/underground_temple.glb', (gltf) => {
+    const temple = gltf.scene
+    temple.traverse((c: any) => { if (c.isMesh) { c.castShadow = !isMobileDevice; c.receiveShadow = !isMobileDevice } })
+
+    const mainChamber = L3_CHAMBERS[0]
+    temple.position.set(mainChamber.x, mainChamber.y, mainChamber.z)
+    temple.scale.setScalar(2.5)
+    originalMapGroup.add(temple)
+
+    // 巨大クリスタル×4
+    for (let i = 0; i < 4; i++) {
+      const angle = (i / 4) * Math.PI * 2
+      const r = 50
       const crystal = new THREE.Mesh(
-        new THREE.OctahedronGeometry(2 + Math.random() * 3),
+        new THREE.OctahedronGeometry(20),
         glowMat
       )
       crystal.position.set(
-        chamber.x + Math.cos(angle) * r,
-        chamber.y + (Math.random() - 0.5) * chamber.r * 0.5,
-        chamber.z + Math.sin(angle) * r
+        mainChamber.x + Math.cos(angle) * r,
+        mainChamber.y,
+        mainChamber.z + Math.sin(angle) * r
       )
-      crystal.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+      crystal.rotation.set(0, angle, 0)
       originalMapGroup.add(crystal)
     }
-  }
+  })
 
-  // トンネル（第1層の広間を接続）
-  for (let i = 0; i < L1_CHAMBERS.length - 1; i++) {
-    const c1 = L1_CHAMBERS[i]
-    const c2 = L1_CHAMBERS[i + 1]
-    const length = Math.hypot(c2.x - c1.x, c2.z - c1.z, c2.y - c1.y)
-    const midX = (c1.x + c2.x) / 2
-    const midY = (c1.y + c2.y) / 2
-    const midZ = (c1.z + c2.z) / 2
+  // 第3層の周辺チャンバー（GLB）
+  for (const [sizeKey, filename] of Object.entries(chamberFiles)) {
+    gltfLoader.load(import.meta.env.BASE_URL + 'models/' + filename, (gltf) => {
+      const template = gltf.scene
+      template.traverse((c: any) => { if (c.isMesh) { c.castShadow = !isMobileDevice; c.receiveShadow = !isMobileDevice } })
 
-    const tunnel = new THREE.Mesh(
-      new THREE.CylinderGeometry(15, 15, length, 12),
-      caveMat
-    )
-    tunnel.position.set(midX, midY, midZ)
-
-    const angleY = Math.atan2(c2.z - c1.z, c2.x - c1.x)
-    const angleX = Math.atan2(c2.y - c1.y, Math.hypot(c2.x - c1.x, c2.z - c1.z))
-    tunnel.rotation.set(angleX, 0, angleY + Math.PI / 2)
-
-    originalMapGroup.add(tunnel)
-  }
-
-  // 第2層（地下100-150m）: 大広間10箇所
-  const L2_CHAMBERS = [
-    { x: -400, y: -120, z: -300, r: 50 },
-    { x: 400, y: -120, z: -300, r: 45 },
-    { x: -400, y: -130, z: 300, r: 48 },
-    { x: 400, y: -130, z: 300, r: 46 },
-    { x: 0, y: -125, z: 0, r: 70 },  // 中央大広間
-    { x: -600, y: -135, z: 0, r: 42 },
-    { x: 600, y: -135, z: 0, r: 44 },
-    { x: 0, y: -120, z: -500, r: 40 },
-    { x: 0, y: -120, z: 500, r: 38 },
-    { x: -300, y: -140, z: -500, r: 36 },
-  ]
-
-  for (const chamber of L2_CHAMBERS) {
-    const chamberGeo = new THREE.SphereGeometry(chamber.r, 16, 16)
-    const chamberMesh = new THREE.Mesh(chamberGeo, caveMat)
-    chamberMesh.position.set(chamber.x, chamber.y, chamber.z)
-    originalMapGroup.add(chamberMesh)
-
-    // 巨大クリスタル
-    const crystal = new THREE.Mesh(
-      new THREE.OctahedronGeometry(15),
-      glowMat
-    )
-    crystal.position.set(chamber.x, chamber.y, chamber.z)
-    crystal.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0)
-    originalMapGroup.add(crystal)
-  }
-
-  // 第2層のトンネル
-  for (let i = 0; i < L2_CHAMBERS.length - 1; i++) {
-    const c1 = L2_CHAMBERS[i]
-    const c2 = L2_CHAMBERS[i + 1]
-    const length = Math.hypot(c2.x - c1.x, c2.z - c1.z, c2.y - c1.y)
-    const midX = (c1.x + c2.x) / 2
-    const midY = (c1.y + c2.y) / 2
-    const midZ = (c1.z + c2.z) / 2
-
-    const tunnel = new THREE.Mesh(
-      new THREE.CylinderGeometry(12, 12, length, 12),
-      caveMat
-    )
-    tunnel.position.set(midX, midY, midZ)
-
-    const angleY = Math.atan2(c2.z - c1.z, c2.x - c1.x)
-    const angleX = Math.atan2(c2.y - c1.y, Math.hypot(c2.x - c1.x, c2.z - c1.z))
-    tunnel.rotation.set(angleX, 0, angleY + Math.PI / 2)
-
-    originalMapGroup.add(tunnel)
-  }
-
-  // 第3層（地下200m）: 最深部の祭殿
-  const L3_CHAMBERS = [
-    { x: 0, y: -200, z: 0, r: 80 },  // 最深部祭殿
-    { x: -200, y: -200, z: -200, r: 50 },
-    { x: 200, y: -200, z: -200, r: 50 },
-    { x: -200, y: -200, z: 200, r: 50 },
-    { x: 200, y: -200, z: 200, r: 50 },
-  ]
-
-  for (const chamber of L3_CHAMBERS) {
-    const chamberGeo = new THREE.SphereGeometry(chamber.r, 16, 16)
-    const chamberMesh = new THREE.Mesh(chamberGeo, caveMat)
-    chamberMesh.position.set(chamber.x, chamber.y, chamber.z)
-    originalMapGroup.add(chamberMesh)
-
-    // 古代遺跡の装飾
-    if (chamber.r > 70) {
-      // 祭壇
-      const altar = new THREE.Mesh(
-        new THREE.BoxGeometry(30, 10, 20),
-        new THREE.MeshStandardMaterial({ color: 0x886633, roughness: 0.9 })
-      )
-      altar.position.set(chamber.x, chamber.y - 30, chamber.z)
-      originalMapGroup.add(altar)
-
-      // 巨大クリスタル×4
-      for (let i = 0; i < 4; i++) {
-        const angle = (i / 4) * Math.PI * 2
-        const r = 50
-        const crystal = new THREE.Mesh(
-          new THREE.OctahedronGeometry(20),
-          glowMat
-        )
-        crystal.position.set(
-          chamber.x + Math.cos(angle) * r,
-          chamber.y,
-          chamber.z + Math.sin(angle) * r
-        )
-        crystal.rotation.set(0, angle, 0)
-        originalMapGroup.add(crystal)
+      for (const chamber of L3_CHAMBERS.filter(c => c.size === sizeKey)) {
+        const chamberMesh = template.clone()
+        chamberMesh.position.set(chamber.x, chamber.y, chamber.z)
+        chamberMesh.scale.setScalar(chamber.r / 50)
+        originalMapGroup.add(chamberMesh)
       }
+    })
+  }
+
+  // 第3層トンネル（GLB）
+  gltfLoader.load(import.meta.env.BASE_URL + 'models/cave_tunnel_short.glb', (gltf) => {
+    const tunnelTemplate = gltf.scene
+    tunnelTemplate.traverse((c: any) => { if (c.isMesh) { c.castShadow = !isMobileDevice; c.receiveShadow = !isMobileDevice } })
+
+    for (let i = 1; i < L3_CHAMBERS.length; i++) {
+      const c1 = L3_CHAMBERS[0]
+      const c2 = L3_CHAMBERS[i]
+      const length = Math.hypot(c2.x - c1.x, c2.z - c1.z, c2.y - c1.y)
+      const midX = (c1.x + c2.x) / 2
+      const midY = (c1.y + c2.y) / 2
+      const midZ = (c1.z + c2.z) / 2
+
+      const tunnel = tunnelTemplate.clone()
+      tunnel.position.set(midX, midY, midZ)
+      tunnel.scale.set(10 / 12, length / 60, 10 / 12)
+
+      const angleY = Math.atan2(c2.z - c1.z, c2.x - c1.x)
+      const angleX = Math.atan2(c2.y - c1.y, Math.hypot(c2.x - c1.x, c2.z - c1.z))
+      tunnel.rotation.set(angleX, 0, angleY + Math.PI / 2)
+
+      originalMapGroup.add(tunnel)
     }
-  }
+  })
 
-  // 第3層のトンネル
-  for (let i = 1; i < L3_CHAMBERS.length; i++) {
-    const c1 = L3_CHAMBERS[0]  // 中央祭殿
-    const c2 = L3_CHAMBERS[i]
-    const length = Math.hypot(c2.x - c1.x, c2.z - c1.z, c2.y - c1.y)
-    const midX = (c1.x + c2.x) / 2
-    const midY = (c1.y + c2.y) / 2
-    const midZ = (c1.z + c2.z) / 2
-
-    const tunnel = new THREE.Mesh(
-      new THREE.CylinderGeometry(10, 10, length, 12),
-      caveMat
-    )
-    tunnel.position.set(midX, midY, midZ)
-
-    const angleY = Math.atan2(c2.z - c1.z, c2.x - c1.x)
-    const angleX = Math.atan2(c2.y - c1.y, Math.hypot(c2.x - c1.x, c2.z - c1.z))
-    tunnel.rotation.set(angleX, 0, angleY + Math.PI / 2)
-
-    originalMapGroup.add(tunnel)
-  }
-
-  // 層間接続（第1層→第2層、第2層→第3層）
-  // 縦穴
+  // 層間接続（縦穴・GLBトンネル）
   const shafts = [
     { x: 0, y1: -80, y2: -100, z: 0 },
     { x: -500, y1: -80, y2: -100, z: -400 },
@@ -1528,15 +1554,19 @@ function addUndergroundCaveNetwork() {
     { x: -200, y1: -150, y2: -200, z: -200 },
   ]
 
-  for (const shaft of shafts) {
-    const height = Math.abs(shaft.y2 - shaft.y1)
-    const shaftMesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(20, 20, height, 12),
-      caveMat
-    )
-    shaftMesh.position.set(shaft.x, (shaft.y1 + shaft.y2) / 2, shaft.z)
-    originalMapGroup.add(shaftMesh)
-  }
+  gltfLoader.load(import.meta.env.BASE_URL + 'models/cave_tunnel_long.glb', (gltf) => {
+    const shaftTemplate = gltf.scene
+    shaftTemplate.traverse((c: any) => { if (c.isMesh) { c.castShadow = !isMobileDevice; c.receiveShadow = !isMobileDevice } })
+
+    for (const shaft of shafts) {
+      const height = Math.abs(shaft.y2 - shaft.y1)
+      const shaftMesh = shaftTemplate.clone()
+      shaftMesh.position.set(shaft.x, (shaft.y1 + shaft.y2) / 2, shaft.z)
+      shaftMesh.scale.set(20 / 12, height / 150, 20 / 12)
+      shaftMesh.rotation.x = 0  // 垂直
+      originalMapGroup.add(shaftMesh)
+    }
+  })
 
   console.log('✅ Underground cave network created (3 layers, 30 chambers, 50+ tunnels)')
 
