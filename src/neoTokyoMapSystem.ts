@@ -3172,6 +3172,142 @@ export class NeoTokyoMapSystem {
 
     console.log('✅ Hidden areas created (10 locations in Tokyo MAP)')
 
+    // ===== 中型ランドマーク（Mid-size Landmarks - 7個、300-634m級） =====
+    const towerMat = new THREE.MeshStandardMaterial({
+      color: 0xdd6633,
+      metalness: 0.7,
+      roughness: 0.4,
+      emissive: 0x442200,
+      emissiveIntensity: 0.2
+    })
+
+    const buildingMat = new THREE.MeshLambertMaterial({
+      color: 0x3a4a5a,
+      emissive: 0x1a2a3a,
+      emissiveIntensity: 0.3
+    })
+
+    // 1. 東京タワー（333m）
+    const TOKYO_TOWER = { x: -1500, z: 800, height: 333 }
+    const tokyoTower = new THREE.Mesh(
+      new THREE.CylinderGeometry(15, 30, TOKYO_TOWER.height, 4),
+      towerMat
+    )
+    const towerY = NeoTokyoMapSystem.heightAt(TOKYO_TOWER.x, TOKYO_TOWER.z)
+    tokyoTower.position.set(TOKYO_TOWER.x, towerY + TOKYO_TOWER.height / 2, TOKYO_TOWER.z)
+    tokyoTower.name = 'TokyoTower'
+    this.scene.add(tokyoTower)
+    this.deco.push(tokyoTower)
+
+    // 2. スカイツリー（634m）
+    const SKYTREE = { x: 2000, z: -1000, height: 634 }
+    const skytree = new THREE.Mesh(
+      new THREE.CylinderGeometry(20, 35, SKYTREE.height, 3),
+      new THREE.MeshStandardMaterial({
+        color: 0xcccccc,
+        metalness: 0.8,
+        roughness: 0.3,
+        emissive: 0x4444ff,
+        emissiveIntensity: 0.15
+      })
+    )
+    const skytreeY = NeoTokyoMapSystem.heightAt(SKYTREE.x, SKYTREE.z)
+    skytree.position.set(SKYTREE.x, skytreeY + SKYTREE.height / 2, SKYTREE.z)
+    skytree.name = 'Skytree'
+    this.scene.add(skytree)
+    this.deco.push(skytree)
+
+    // 3. 巨大競技場（Stadium, 高さ80m、直径400m）
+    const STADIUM = { x: -2500, z: -2000, radius: 200, height: 80 }
+    const stadiumOuter = new THREE.Mesh(
+      new THREE.CylinderGeometry(STADIUM.radius, STADIUM.radius, STADIUM.height, 32),
+      buildingMat
+    )
+    const stadiumY = NeoTokyoMapSystem.heightAt(STADIUM.x, STADIUM.z)
+    stadiumOuter.position.set(STADIUM.x, stadiumY + STADIUM.height / 2, STADIUM.z)
+    this.scene.add(stadiumOuter)
+    this.deco.push(stadiumOuter)
+
+    // 競技場の屋根
+    const stadiumRoof = new THREE.Mesh(
+      new THREE.RingGeometry(STADIUM.radius * 0.6, STADIUM.radius, 32),
+      new THREE.MeshLambertMaterial({ color: 0x666666 })
+    )
+    stadiumRoof.position.set(STADIUM.x, stadiumY + STADIUM.height, STADIUM.z)
+    stadiumRoof.rotation.x = -Math.PI / 2
+    this.scene.add(stadiumRoof)
+    this.deco.push(stadiumRoof)
+
+    // 4. 超高層ツインタワー（450m×2）
+    const TWIN_TOWERS = { x: 1000, z: 1500, height: 450, spacing: 120 }
+    for (let side of [-1, 1]) {
+      const twinTower = new THREE.Mesh(
+        new THREE.BoxGeometry(60, TWIN_TOWERS.height, 60),
+        buildingMat
+      )
+      const twinY = NeoTokyoMapSystem.heightAt(TWIN_TOWERS.x + side * TWIN_TOWERS.spacing / 2, TWIN_TOWERS.z)
+      twinTower.position.set(
+        TWIN_TOWERS.x + side * TWIN_TOWERS.spacing / 2,
+        twinY + TWIN_TOWERS.height / 2,
+        TWIN_TOWERS.z
+      )
+      twinTower.name = 'TwinTower'
+      this.scene.add(twinTower)
+      this.deco.push(twinTower)
+    }
+
+    // 5. 廃墟化した展望ビル（380m）
+    const OBSERVATION_BUILDING = { x: -1000, z: -1500, height: 380 }
+    const obsBuilding = new THREE.Mesh(
+      new THREE.CylinderGeometry(40, 35, OBSERVATION_BUILDING.height, 8),
+      new THREE.MeshLambertMaterial({
+        color: 0x555555,
+        emissive: 0x222222,
+        emissiveIntensity: 0.1
+      })
+    )
+    const obsY = NeoTokyoMapSystem.heightAt(OBSERVATION_BUILDING.x, OBSERVATION_BUILDING.z)
+    obsBuilding.position.set(OBSERVATION_BUILDING.x, obsY + OBSERVATION_BUILDING.height / 2, OBSERVATION_BUILDING.z)
+    this.scene.add(obsBuilding)
+    this.deco.push(obsBuilding)
+
+    // 6. 傾いた超高層ビル（420m、15度傾斜）
+    const TILTED_BUILDING = { x: 1800, z: 500, height: 420, tilt: Math.PI / 12 }
+    const tiltedBuilding = new THREE.Mesh(
+      new THREE.BoxGeometry(50, TILTED_BUILDING.height, 50),
+      new THREE.MeshLambertMaterial({
+        color: 0x4a4a5a,
+        emissive: 0x2a1a1a,
+        emissiveIntensity: 0.2
+      })
+    )
+    const tiltedY = NeoTokyoMapSystem.heightAt(TILTED_BUILDING.x, TILTED_BUILDING.z)
+    tiltedBuilding.position.set(TILTED_BUILDING.x, tiltedY + TILTED_BUILDING.height / 2, TILTED_BUILDING.z)
+    tiltedBuilding.rotation.z = TILTED_BUILDING.tilt
+    tiltedBuilding.name = 'TiltedBuilding'
+    this.scene.add(tiltedBuilding)
+    this.deco.push(tiltedBuilding)
+
+    // 7. 巨大ドーム（高さ150m、直径500m）
+    const DOME = { x: -2000, z: 2500, radius: 250, height: 150 }
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(DOME.radius, 24, 24, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshStandardMaterial({
+        color: 0x888888,
+        metalness: 0.6,
+        roughness: 0.4,
+        transparent: true,
+        opacity: 0.8
+      })
+    )
+    const domeY = NeoTokyoMapSystem.heightAt(DOME.x, DOME.z)
+    dome.position.set(DOME.x, domeY, DOME.z)
+    dome.name = 'GiantDome'
+    this.scene.add(dome)
+    this.deco.push(dome)
+
+    console.log('✅ Mid-size landmarks created (7 landmarks: Tokyo Tower, Skytree, Stadium, Twin Towers, Observation Building, Tilted Building, Giant Dome)')
+
     // ===== 細部ディテール（Urban Details） =====
     const signMat = new THREE.MeshLambertMaterial({ color: 0x666666 })
     const trafficLightMat = new THREE.MeshLambertMaterial({ color: 0x222222 })
@@ -3372,6 +3508,168 @@ export class NeoTokyoMapSystem {
     }
 
     console.log('✅ Urban details added (500 signs, 300 traffic lights, 200 benches, 400 trash cans, 150 vending machines, 100 bicycles, 500 cars, 800 lamps, 600 poles, 200 rubble)')
+
+    // ===== 外周エリアの詳細化（Outer Area Details, 3500-8600m圏） =====
+    const suburbanMat = new THREE.MeshLambertMaterial({
+      color: 0x4a5a6a,
+      emissive: 0x1a2a3a,
+      emissiveIntensity: 0.15
+    })
+
+    // 郊外住宅地（低層、2-5階）
+    const SUBURBAN_AREAS = [
+      { centerX: -6000, centerZ: -6000, radius: 2000, buildings: this.mobile ? 200 : 500 },
+      { centerX: 6000, centerZ: 6000, radius: 2000, buildings: this.mobile ? 160 : 400 },
+    ]
+
+    for (const area of SUBURBAN_AREAS) {
+      for (let i = 0; i < area.buildings; i++) {
+        const angle = Math.random() * Math.PI * 2
+        const r = Math.sqrt(Math.random()) * area.radius
+        const sx = area.centerX + Math.cos(angle) * r
+        const sz = area.centerZ + Math.sin(angle) * r
+
+        if (isInWaterArea(sx, sz)) continue
+
+        const gy = NeoTokyoMapSystem.heightAt(sx, sz)
+        const floors = 2 + Math.floor(Math.random() * 4)  // 2-5階
+        const h = floors * 3.5
+
+        const house = new THREE.Mesh(
+          new THREE.BoxGeometry(12 + Math.random() * 8, h, 10 + Math.random() * 6),
+          suburbanMat
+        )
+        house.position.set(sx, gy + h / 2, sz)
+        house.rotation.y = Math.random() * Math.PI * 2
+        this.scene.add(house)
+        this.deco.push(house)
+      }
+    }
+
+    // 工業地帯拡張
+    const EXTENDED_INDUSTRIAL = [
+      { centerX: 5000, centerZ: 5000, factories: 15, warehouses: 80 },
+      { centerX: 6000, centerZ: -5000, factories: 10, warehouses: 60 },
+    ]
+
+    const factoryExtMat = new THREE.MeshLambertMaterial({ color: 0x3a3a3a })
+
+    for (const area of EXTENDED_INDUSTRIAL) {
+      // 工場
+      for (let i = 0; i < area.factories; i++) {
+        const fx = area.centerX + (Math.random() - 0.5) * 1500
+        const fz = area.centerZ + (Math.random() - 0.5) * 1500
+
+        if (isInWaterArea(fx, fz)) continue
+
+        const gy = NeoTokyoMapSystem.heightAt(fx, fz)
+        const fh = 25 + Math.random() * 20
+
+        const factory = new THREE.Mesh(
+          new THREE.BoxGeometry(60 + Math.random() * 40, fh, 50 + Math.random() * 30),
+          factoryExtMat
+        )
+        factory.position.set(fx, gy + fh / 2, fz)
+        this.scene.add(factory)
+        this.deco.push(factory)
+      }
+
+      // 倉庫
+      for (let i = 0; i < area.warehouses; i++) {
+        const wx = area.centerX + (Math.random() - 0.5) * 2000
+        const wz = area.centerZ + (Math.random() - 0.5) * 2000
+
+        if (isInWaterArea(wx, wz)) continue
+
+        const gy = NeoTokyoMapSystem.heightAt(wx, wz)
+        const wh = 10 + Math.random() * 8
+
+        const warehouse = new THREE.Mesh(
+          new THREE.BoxGeometry(20 + Math.random() * 15, wh, 15 + Math.random() * 10),
+          new THREE.MeshLambertMaterial({ color: 0x4a4a4a })
+        )
+        warehouse.position.set(wx, gy + wh / 2, wz)
+        this.scene.add(warehouse)
+        this.deco.push(warehouse)
+      }
+    }
+
+    // 港湾エリア
+    const PORT_AREA = { x: -7000, z: 5000 }
+    const portMat = new THREE.MeshLambertMaterial({ color: 0x555555 })
+
+    // コンテナヤード（200個）
+    const containerCount = this.mobile ? 80 : 200
+    for (let i = 0; i < containerCount; i++) {
+      const cx = PORT_AREA.x + (Math.random() - 0.5) * 1000
+      const cz = PORT_AREA.z + (Math.random() - 0.5) * 800
+
+      const gy = NeoTokyoMapSystem.heightAt(cx, cz)
+      const container = new THREE.Mesh(
+        new THREE.BoxGeometry(12, 2.5, 2.5),
+        new THREE.MeshLambertMaterial({
+          color: Math.random() > 0.5 ? 0xff4444 : 0x4444ff
+        })
+      )
+      container.position.set(cx, gy + 1.25, cz)
+      container.rotation.y = Math.random() * Math.PI * 2
+      this.scene.add(container)
+      this.deco.push(container)
+    }
+
+    // クレーン20基
+    const craneMat = new THREE.MeshStandardMaterial({ color: 0xff8800, metalness: 0.7, roughness: 0.4 })
+    for (let i = 0; i < 20; i++) {
+      const crx = PORT_AREA.x + (Math.random() - 0.5) * 1200
+      const crz = PORT_AREA.z + (Math.random() - 0.5) * 1000
+
+      const gy = NeoTokyoMapSystem.heightAt(crx, crz)
+      const craneH = 40 + Math.random() * 20
+
+      const cranePole = new THREE.Mesh(
+        new THREE.BoxGeometry(5, craneH, 5),
+        craneMat
+      )
+      cranePole.position.set(crx, gy + craneH / 2, crz)
+      this.scene.add(cranePole)
+      this.deco.push(cranePole)
+    }
+
+    // 倉庫50棟
+    for (let i = 0; i < 50; i++) {
+      const whx = PORT_AREA.x + (Math.random() - 0.5) * 1500
+      const whz = PORT_AREA.z + (Math.random() - 0.5) * 1200
+
+      const gy = NeoTokyoMapSystem.heightAt(whx, whz)
+      const warehouse = new THREE.Mesh(
+        new THREE.BoxGeometry(30 + Math.random() * 20, 15, 25 + Math.random() * 15),
+        portMat
+      )
+      warehouse.position.set(whx, gy + 7.5, whz)
+      this.scene.add(warehouse)
+      this.deco.push(warehouse)
+    }
+
+    // 山岳部（西側）
+    const WESTERN_MOUNTAINS = [
+      { x: -7000, z: -3000, height: 600 },
+      { x: -7500, z: 0, height: 800 },
+      { x: -7000, z: 3000, height: 700 },
+    ]
+
+    const mountainMat = new THREE.MeshStandardMaterial({ color: 0x6a5a4a, roughness: 0.9 })
+
+    for (const mt of WESTERN_MOUNTAINS) {
+      const mountain = new THREE.Mesh(
+        new THREE.ConeGeometry(300, mt.height, 8),
+        mountainMat
+      )
+      mountain.position.set(mt.x, mt.height / 2, mt.z)
+      this.scene.add(mountain)
+      this.deco.push(mountain)
+    }
+
+    console.log('✅ Outer area details added (900 suburban buildings, 235 industrial structures, 270 port facilities, 3 mountains)')
   }
 
 }

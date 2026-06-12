@@ -200,17 +200,41 @@ function fbm(x: number, z: number, octaves = 5): number {
 type Biome = 'temperate' | 'snow' | 'jungle' | 'desert'
 
 function getBiome(x: number, z: number): Biome {
-  // 雪山エリア（北部、z < -1500）
-  if (z < -1500) return 'snow'
+  // 雪山エリア（北部、z < -2000）
+  if (z < -2000) return 'snow'
 
-  // ジャングルエリア（東部、x > 1500）
-  if (x > 1500) return 'jungle'
+  // ジャングルエリア（東部、x > 2000）
+  if (x > 2000) return 'jungle'
 
-  // 砂漠エリア（南部、z > 1500）
-  if (z > 1500) return 'desert'
+  // 砂漠エリア（南部、z > 2500）
+  if (z > 2500) return 'desert'
 
   // 温帯エリア（中央部）
   return 'temperate'
+}
+
+// バイオーム遷移の強度を返す（0.0-1.0）
+function getBiomeTransition(x: number, z: number): { biome: Biome; strength: number } {
+  // 雪山→温帯 遷移帯（-2000～-1000m）
+  if (z >= -2000 && z < -1000) {
+    const t = (z + 2000) / 1000  // 0.0（雪山100%）→ 1.0（温帯100%）
+    return { biome: z < -1500 ? 'snow' : 'temperate', strength: z < -1500 ? 1 - t : t }
+  }
+
+  // 温帯→ジャングル 遷移帯（1000～2000m）
+  if (x >= 1000 && x < 2000) {
+    const t = (x - 1000) / 1000  // 0.0（温帯100%）→ 1.0（ジャングル100%）
+    return { biome: x < 1500 ? 'temperate' : 'jungle', strength: x < 1500 ? 1 - t : t }
+  }
+
+  // 温帯→砂漠 遷移帯（1500～2500m）
+  if (z >= 1500 && z < 2500) {
+    const t = (z - 1500) / 1000  // 0.0（温帯100%）→ 1.0（砂漠100%）
+    return { biome: z < 2000 ? 'temperate' : 'desert', strength: z < 2000 ? 1 - t : t }
+  }
+
+  // 遷移帯外（純粋なバイオーム）
+  return { biome: getBiome(x, z), strength: 1.0 }
 }
 
 // MAP別地形関数の切り替え
@@ -648,9 +672,24 @@ trunkIM.castShadow = foliIM.castShadow = foli2IM.castShadow = !isMobileDevice
 trunkIM.receiveShadow = foliIM.receiveShadow = foli2IM.receiveShadow = !isMobileDevice
 const _d = new THREE.Object3D()
 for (let i = 0; i < TREE_COUNT; i++) {
-  const tx = (Math.random()-0.5)*5600, tz = (Math.random()-0.5)*5600
+  const tx = (Math.random()-0.5)*8000, tz = (Math.random()-0.5)*8000
   const ty = terrainH(tx, tz)
   const treeSlope = Math.hypot(terrainH(tx + 16, tz) - terrainH(tx - 16, tz), terrainH(tx, tz + 16) - terrainH(tx, tz - 16)) / 32
+
+  // バイオーム遷移チェック
+  const transition = getBiomeTransition(tx, tz)
+
+  // 雪山エリアでは広葉樹を減らす（遷移帯では徐々に）
+  if (transition.biome === 'snow' && Math.random() > transition.strength * 0.3) { i--; continue }
+
+  // 砂漠エリアでは広葉樹を大幅に減らす（遷移帯では徐々に）
+  if (transition.biome === 'desert' && Math.random() > transition.strength * 0.1) { i--; continue }
+
+  // ジャングル遷移帯では密度が上がる
+  if (transition.biome === 'jungle' && Math.random() < (1 - transition.strength) * 0.5) {
+    // ジャングルに近いほどスキップ率が下がる（密度が上がる）
+    // continue しない = 配置確率が上がる
+  }
 
   // 標高別植生: 高地（500m-）には木を生やさない
   if (ty > 500) { i--; continue }
@@ -1463,6 +1502,145 @@ function addUndergroundCaveNetwork() {
 
   console.log('✅ Hidden areas created (10 locations in Original MAP)')
 
+  // ===== 中型ランドマーク（Mid-size Landmarks - 5個、300-500m級） =====
+  const landmarkMat = new THREE.MeshStandardMaterial({
+    color: 0x8a7a6a,
+    roughness: 0.9,
+    metalness: 0.1
+  })
+
+  // 1. 大峡谷（Grand Canyon）
+  const GRAND_CANYON = { x: -2000, z: 1500, length: 2000, width: 400, depth: 300 }
+  for (let i = 0; i < 10; i++) {
+    const t = i / 9
+    const cx = GRAND_CANYON.x + (Math.random() - 0.5) * GRAND_CANYON.width
+    const cz = GRAND_CANYON.z - t * GRAND_CANYON.length
+    const cy = terrainH(cx, cz) - GRAND_CANYON.depth + (Math.random() * 50)
+
+    const canyonWall = new THREE.Mesh(
+      new THREE.BoxGeometry(
+        GRAND_CANYON.width / 10 + Math.random() * 50,
+        GRAND_CANYON.depth,
+        100
+      ),
+      landmarkMat
+    )
+    canyonWall.position.set(cx, cy + GRAND_CANYON.depth / 2, cz)
+    canyonWall.rotation.y = Math.random() * 0.3
+    canyonWall.name = 'GrandCanyon_Wall'
+    originalMapGroup.add(canyonWall)
+  }
+
+  // 峡谷底に川
+  const canyonRiverMat = new THREE.MeshBasicMaterial({ color: 0x3366aa, transparent: true, opacity: 0.7 })
+  const canyonRiver = new THREE.Mesh(
+    new THREE.PlaneGeometry(GRAND_CANYON.width * 0.3, GRAND_CANYON.length),
+    canyonRiverMat
+  )
+  canyonRiver.position.set(GRAND_CANYON.x, terrainH(GRAND_CANYON.x, GRAND_CANYON.z) - GRAND_CANYON.depth + 5, GRAND_CANYON.z - GRAND_CANYON.length / 2)
+  canyonRiver.rotation.x = -Math.PI / 2
+  originalMapGroup.add(canyonRiver)
+
+  // 2. 大滝（Great Waterfall）
+  const GREAT_WATERFALL = { x: 1500, z: -1000, height: 400, width: 200 }
+  const waterfallMat = new THREE.MeshBasicMaterial({
+    color: 0xaaccee,
+    transparent: true,
+    opacity: 0.6
+  })
+  const waterfall = new THREE.Mesh(
+    new THREE.PlaneGeometry(GREAT_WATERFALL.width, GREAT_WATERFALL.height),
+    waterfallMat
+  )
+  const waterfallTop = terrainH(GREAT_WATERFALL.x, GREAT_WATERFALL.z) + 50
+  waterfall.position.set(GREAT_WATERFALL.x, waterfallTop - GREAT_WATERFALL.height / 2, GREAT_WATERFALL.z)
+  waterfall.rotation.y = Math.PI / 4
+  waterfall.name = 'GreatWaterfall'
+  originalMapGroup.add(waterfall)
+
+  // 滝壺
+  const waterfallBasin = new THREE.Mesh(
+    new THREE.CircleGeometry(80, 32),
+    new THREE.MeshBasicMaterial({ color: 0x2266aa, transparent: true, opacity: 0.8 })
+  )
+  waterfallBasin.position.set(GREAT_WATERFALL.x, waterfallTop - GREAT_WATERFALL.height + 2, GREAT_WATERFALL.z)
+  waterfallBasin.rotation.x = -Math.PI / 2
+  originalMapGroup.add(waterfallBasin)
+
+  // 3. 巨大洞窟入口（Giant Cave Entrance）
+  const GIANT_CAVE = { x: -1000, z: -2000, width: 150, height: 200 }
+  const caveEntranceMat = new THREE.MeshStandardMaterial({
+    color: 0x333333,
+    roughness: 1.0,
+    metalness: 0
+  })
+  const caveEntrance = new THREE.Mesh(
+    new THREE.CylinderGeometry(GIANT_CAVE.width / 2, GIANT_CAVE.width / 2, 20, 16, 1, true),
+    caveEntranceMat
+  )
+  const caveY = terrainH(GIANT_CAVE.x, GIANT_CAVE.z)
+  caveEntrance.position.set(GIANT_CAVE.x, caveY + GIANT_CAVE.height / 2, GIANT_CAVE.z)
+  caveEntrance.rotation.z = Math.PI / 2
+  caveEntrance.name = 'GiantCaveEntrance'
+  originalMapGroup.add(caveEntrance)
+
+  // 洞窟の開口部マーキング
+  const caveOpening = new THREE.Mesh(
+    new THREE.CircleGeometry(GIANT_CAVE.width / 2, 32),
+    new THREE.MeshBasicMaterial({ color: 0x000000 })
+  )
+  caveOpening.position.set(GIANT_CAVE.x, caveY + 10, GIANT_CAVE.z + 10)
+  caveOpening.rotation.y = Math.PI / 4
+  originalMapGroup.add(caveOpening)
+
+  // 4. 天然アーチ（Natural Arch）
+  const NATURAL_ARCH = { x: 2500, z: 2000, height: 350, width: 180 }
+  const archMat = new THREE.MeshStandardMaterial({
+    color: 0xaa8866,
+    roughness: 0.95,
+    metalness: 0.05
+  })
+
+  // アーチの柱×2
+  for (let side of [-1, 1]) {
+    const pillar = new THREE.Mesh(
+      new THREE.CylinderGeometry(30, 40, NATURAL_ARCH.height, 12),
+      archMat
+    )
+    const archY = terrainH(NATURAL_ARCH.x, NATURAL_ARCH.z)
+    pillar.position.set(NATURAL_ARCH.x + side * (NATURAL_ARCH.width / 2), archY + NATURAL_ARCH.height / 2, NATURAL_ARCH.z)
+    pillar.name = 'NaturalArch_Pillar'
+    originalMapGroup.add(pillar)
+  }
+
+  // アーチの天井
+  const archTop = new THREE.Mesh(
+    new THREE.TorusGeometry(NATURAL_ARCH.width / 2, 25, 16, 32, Math.PI),
+    archMat
+  )
+  const archY = terrainH(NATURAL_ARCH.x, NATURAL_ARCH.z)
+  archTop.position.set(NATURAL_ARCH.x, archY + NATURAL_ARCH.height, NATURAL_ARCH.z)
+  archTop.rotation.z = Math.PI / 2
+  originalMapGroup.add(archTop)
+
+  // 5. 高山湖（Alpine Lake）
+  const ALPINE_LAKE = { x: 500, z: -2500, radius: 250, altitude: 1000 }
+  const alpineLakeMat = new THREE.MeshBasicMaterial({
+    color: 0x0088dd,
+    transparent: true,
+    opacity: 0.8
+  })
+  const alpineLake = new THREE.Mesh(
+    new THREE.CircleGeometry(ALPINE_LAKE.radius, 32),
+    alpineLakeMat
+  )
+  alpineLake.position.set(ALPINE_LAKE.x, ALPINE_LAKE.altitude + 2, ALPINE_LAKE.z)
+  alpineLake.rotation.x = -Math.PI / 2
+  alpineLake.name = 'AlpineLake'
+  originalMapGroup.add(alpineLake)
+
+  console.log('✅ Mid-size landmarks created (5 landmarks: Grand Canyon, Great Waterfall, Giant Cave, Natural Arch, Alpine Lake)')
+
   // ===== 細部ディテール（Natural Details） =====
   const flowerMat = new THREE.MeshLambertMaterial({ color: 0xff88cc })
   const mushroomMat = new THREE.MeshLambertMaterial({ color: 0xddaa88 })
@@ -1636,6 +1814,95 @@ function addUndergroundCaveNetwork() {
   }
 
   console.log('✅ Natural details added (1000 flowers, 500 mushrooms, 200 logs, 300 rock piles, 20 streams, 10 ponds, 65 artifacts)')
+
+  // ===== 外周エリアの詳細化（Outer Area Details, 4300-8600m圏） =====
+  const distantMountainMat = new THREE.MeshStandardMaterial({ color: 0x8a7a6a, roughness: 0.9, metalness: 0.1 })
+
+  // 北側: 雪山山脈の延長
+  const NORTHERN_PEAKS = [
+    { x: -7000, z: -7000, peaks: 5, baseHeight: 1000 },
+    { x: 0, z: -7500, peaks: 3, baseHeight: 1200 },
+    { x: 7000, z: -7000, peaks: 4, baseHeight: 1100 },
+  ]
+
+  for (const range of NORTHERN_PEAKS) {
+    for (let i = 0; i < range.peaks; i++) {
+      const peakX = range.x + (Math.random() - 0.5) * 1000
+      const peakZ = range.z + (Math.random() - 0.5) * 500
+      const peakHeight = range.baseHeight + Math.random() * 400
+
+      const peak = new THREE.Mesh(
+        new THREE.ConeGeometry(200 + Math.random() * 100, peakHeight, 8),
+        distantMountainMat
+      )
+      peak.position.set(peakX, peakHeight / 2, peakZ)
+      peak.name = 'DistantPeak'
+      originalMapGroup.add(peak)
+    }
+  }
+
+  // 西側: 海岸線・断崖
+  const WESTERN_CLIFFS = [
+    { x: -7500, z: -2000, height: 800 },
+    { x: -7500, z: 0, height: 850 },
+    { x: -7500, z: 2000, height: 800 },
+  ]
+
+  for (const cliff of WESTERN_CLIFFS) {
+    const cliffMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(100, cliff.height, 1000),
+      distantMountainMat
+    )
+    cliffMesh.position.set(cliff.x, cliff.height / 2, cliff.z)
+    cliffMesh.name = 'WesternCliff'
+    originalMapGroup.add(cliffMesh)
+  }
+
+  // 東側: ジャングルの深部（樹木密度アップは既存システムで対応）
+  const DISTANT_FORESTS = [
+    { x: 6000, z: 0, radius: 1500 },
+    { x: 7000, z: 2000, radius: 1000 },
+  ]
+
+  for (const forest of DISTANT_FORESTS) {
+    // フォレストマーカー（視覚的ガイド用）
+    const forestMarker = new THREE.Mesh(
+      new THREE.CylinderGeometry(forest.radius, forest.radius, 50, 32, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: 0x2a5a2a,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide
+      })
+    )
+    forestMarker.position.set(forest.x, 25, forest.z)
+    originalMapGroup.add(forestMarker)
+  }
+
+  // 大湖×2
+  const LARGE_LAKES = [
+    { x: -6000, z: 3000, radius: 800 },
+    { x: 5000, z: -4000, radius: 600 },
+  ]
+
+  const largeLakeMat = new THREE.MeshBasicMaterial({
+    color: 0x2266aa,
+    transparent: true,
+    opacity: 0.8
+  })
+
+  for (const lake of LARGE_LAKES) {
+    const largeLake = new THREE.Mesh(
+      new THREE.CircleGeometry(lake.radius, 32),
+      largeLakeMat
+    )
+    largeLake.position.set(lake.x, terrainH(lake.x, lake.z) + 1, lake.z)
+    largeLake.rotation.x = -Math.PI / 2
+    largeLake.name = 'LargeLake'
+    originalMapGroup.add(largeLake)
+  }
+
+  console.log('✅ Outer area details added (12 distant peaks, 3 cliffs, 2 forest zones, 2 large lakes)')
 }
 
 function _glbSetShadow(g: THREE.Group) {
@@ -5929,6 +6196,161 @@ async function buildSpaceMap() {
 
   console.log('✅ Hidden areas created (10 locations in Space MAP)')
 
+  // ===== 中型ランドマーク（Mid-size Landmarks - 6個、300-500m級） =====
+  const spaceLandmarkMat = new THREE.MeshStandardMaterial({
+    color: 0x5a5a6a,
+    metalness: 0.7,
+    roughness: 0.5,
+    emissive: 0x1a1a2a,
+    emissiveIntensity: 0.2
+  })
+
+  // 1. 中型戦艦（Cruiser Class, 500m）
+  const CRUISER = { x: -2000, y: -300, z: 1500, length: 500 }
+  const cruiserHull = new THREE.Mesh(
+    new THREE.BoxGeometry(CRUISER.length, CRUISER.length * 0.12, CRUISER.length * 0.2),
+    spaceLandmarkMat
+  )
+  cruiserHull.position.set(CRUISER.x, CRUISER.y, CRUISER.z)
+  cruiserHull.rotation.set(0.2, Math.PI / 6, 0.1)
+  cruiserHull.name = 'MidCruiser'
+  space.add(cruiserHull)
+
+  // 艦橋
+  const cruiserBridge = new THREE.Mesh(
+    new THREE.BoxGeometry(CRUISER.length * 0.15, CRUISER.length * 0.08, CRUISER.length * 0.1),
+    spaceLandmarkMat
+  )
+  cruiserBridge.position.set(CRUISER.x + 50, CRUISER.y + 40, CRUISER.z)
+  cruiserBridge.rotation.copy(cruiserHull.rotation)
+  space.add(cruiserBridge)
+
+  // 2. 採掘プラットフォーム（直径400m）
+  const MINING_PLATFORM = { x: 2500, y: 200, z: -1000, radius: 200 }
+  const platformCore = new THREE.Mesh(
+    new THREE.CylinderGeometry(MINING_PLATFORM.radius, MINING_PLATFORM.radius, 80, 16),
+    new THREE.MeshStandardMaterial({
+      color: 0x6a5a4a,
+      metalness: 0.6,
+      roughness: 0.6,
+      emissive: 0xff8800,
+      emissiveIntensity: 0.15
+    })
+  )
+  platformCore.position.set(MINING_PLATFORM.x, MINING_PLATFORM.y, MINING_PLATFORM.z)
+  platformCore.name = 'MiningPlatform'
+  space.add(platformCore)
+
+  // 採掘アーム×4
+  for (let i = 0; i < 4; i++) {
+    const angle = (i / 4) * Math.PI * 2
+    const arm = new THREE.Mesh(
+      new THREE.BoxGeometry(150, 20, 20),
+      spaceLandmarkMat
+    )
+    arm.position.set(
+      MINING_PLATFORM.x + Math.cos(angle) * 150,
+      MINING_PLATFORM.y,
+      MINING_PLATFORM.z + Math.sin(angle) * 150
+    )
+    arm.rotation.y = angle
+    space.add(arm)
+  }
+
+  // 3. 通信アレイ塔（高さ450m）
+  const COMM_TOWER = { x: -1500, y: 400, z: -2000, height: 450 }
+  const commTower = new THREE.Mesh(
+    new THREE.CylinderGeometry(10, 25, COMM_TOWER.height, 8),
+    new THREE.MeshStandardMaterial({
+      color: 0x888888,
+      metalness: 0.8,
+      roughness: 0.3,
+      emissive: 0x0088ff,
+      emissiveIntensity: 0.3
+    })
+  )
+  commTower.position.set(COMM_TOWER.x, COMM_TOWER.y + COMM_TOWER.height / 2, COMM_TOWER.z)
+  commTower.name = 'CommTower'
+  space.add(commTower)
+
+  // アンテナディッシュ×3
+  for (let i = 0; i < 3; i++) {
+    const dish = new THREE.Mesh(
+      new THREE.CylinderGeometry(40, 40, 5, 16),
+      spaceLandmarkMat
+    )
+    dish.position.set(COMM_TOWER.x, COMM_TOWER.y + 150 + i * 120, COMM_TOWER.z)
+    dish.rotation.x = Math.PI / 2
+    space.add(dish)
+  }
+
+  // 4. 居住リング（中型、直径350m）
+  const HABITAT_RING = { x: 1800, y: -200, z: 2000, radius: 175 }
+  const habitatRing = new THREE.Mesh(
+    new THREE.TorusGeometry(HABITAT_RING.radius, 25, 16, 32),
+    new THREE.MeshStandardMaterial({
+      color: 0xaaaaaa,
+      metalness: 0.7,
+      roughness: 0.4,
+      emissive: 0x333333,
+      emissiveIntensity: 0.2
+    })
+  )
+  habitatRing.position.set(HABITAT_RING.x, HABITAT_RING.y, HABITAT_RING.z)
+  habitatRing.rotation.x = Math.PI / 2
+  habitatRing.name = 'HabitatRing'
+  space.add(habitatRing)
+  rotatingSpaceObjects.push(habitatRing)
+
+  // 5. 燃料精製施設（300m×300m×300m）
+  const REFINERY = { x: -2200, y: 100, z: 2200, size: 300 }
+  const refineryCore = new THREE.Mesh(
+    new THREE.BoxGeometry(REFINERY.size, REFINERY.size, REFINERY.size),
+    new THREE.MeshStandardMaterial({
+      color: 0x5a4a3a,
+      metalness: 0.5,
+      roughness: 0.7,
+      emissive: 0xff4400,
+      emissiveIntensity: 0.2
+    })
+  )
+  refineryCore.position.set(REFINERY.x, REFINERY.y, REFINERY.z)
+  refineryCore.name = 'FuelRefinery'
+  space.add(refineryCore)
+
+  // タンク×4
+  for (let i = 0; i < 4; i++) {
+    const angle = (i / 4) * Math.PI * 2
+    const tank = new THREE.Mesh(
+      new THREE.CylinderGeometry(40, 40, 100, 16),
+      spaceLandmarkMat
+    )
+    tank.position.set(
+      REFINERY.x + Math.cos(angle) * 200,
+      REFINERY.y,
+      REFINERY.z + Math.sin(angle) * 200
+    )
+    space.add(tank)
+  }
+
+  // 6. 観測ステーション（球体、直径300m）
+  const OBSERVATORY = { x: 2000, y: 350, z: 1800, radius: 150 }
+  const observatory = new THREE.Mesh(
+    new THREE.SphereGeometry(OBSERVATORY.radius, 24, 24),
+    new THREE.MeshStandardMaterial({
+      color: 0x3a4a5a,
+      metalness: 0.8,
+      roughness: 0.3,
+      emissive: 0x00ffaa,
+      emissiveIntensity: 0.25
+    })
+  )
+  observatory.position.set(OBSERVATORY.x, OBSERVATORY.y, OBSERVATORY.z)
+  observatory.name = 'Observatory'
+  space.add(observatory)
+
+  console.log('✅ Mid-size landmarks created (6 landmarks: Cruiser, Mining Platform, Comm Tower, Habitat Ring, Fuel Refinery, Observatory)')
+
   // ===== 細部ディテール（Space Details） =====
   const smallDebrisMat = new THREE.MeshStandardMaterial({ color: 0x7a7a7a, roughness: 0.9, metalness: 0.2 })
   const cableMat = new THREE.MeshBasicMaterial({ color: 0x555555 })
@@ -6049,6 +6471,126 @@ async function buildSpaceMap() {
   }
 
   console.log('✅ Space details added (2000 small debris, 300 cables, 400 panels, 200 containers, 50 satellites, 100 tools)')
+
+  // ===== 外周エリアの詳細化（Outer Area Details, 3000-6000m圏） =====
+  const outerStationMat = new THREE.MeshStandardMaterial({
+    color: 0x5a5a6a,
+    metalness: 0.6,
+    roughness: 0.5,
+    emissive: 0x2a2a3a,
+    emissiveIntensity: 0.2
+  })
+
+  // 外周宇宙ステーション群×4
+  const OUTER_STATIONS = [
+    { x: 5000, y: 0, z: 5000, type: 'research', size: 200 },
+    { x: -5000, y: 200, z: 5000, type: 'refinery', size: 300 },
+    { x: 5000, y: -200, z: -5000, type: 'military', size: 250 },
+    { x: -5000, y: 100, z: -5000, type: 'trading', size: 180 },
+  ]
+
+  for (const station of OUTER_STATIONS) {
+    // 中央モジュール
+    const core = new THREE.Mesh(
+      new THREE.BoxGeometry(station.size, station.size * 0.6, station.size * 0.8),
+      outerStationMat
+    )
+    core.position.set(station.x, station.y, station.z)
+    core.rotation.set(Math.random() * 0.3, Math.random() * Math.PI * 2, Math.random() * 0.3)
+    core.name = `OuterStation_${station.type}`
+    space.add(core)
+
+    // 接続モジュール×4
+    for (let i = 0; i < 4; i++) {
+      const angle = (i / 4) * Math.PI * 2
+      const module = new THREE.Mesh(
+        new THREE.CylinderGeometry(station.size * 0.15, station.size * 0.15, station.size * 0.4, 12),
+        outerStationMat
+      )
+      module.position.set(
+        station.x + Math.cos(angle) * station.size * 0.7,
+        station.y,
+        station.z + Math.sin(angle) * station.size * 0.7
+      )
+      module.rotation.z = Math.PI / 2
+      module.rotation.y = angle
+      space.add(module)
+    }
+  }
+
+  // デブリベルト（半径4000-6000m、高密度）
+  const DEBRIS_BELT = {
+    innerRadius: 4000,
+    outerRadius: 6000,
+    count: isMobileDevice ? 800 : 2000,
+  }
+
+  const debrisBeltMat = new THREE.MeshStandardMaterial({
+    color: 0x6a6a6a,
+    roughness: 0.95,
+    metalness: 0.3,
+    flatShading: true
+  })
+
+  for (let i = 0; i < DEBRIS_BELT.count; i++) {
+    const angle = Math.random() * Math.PI * 2
+    const r = DEBRIS_BELT.innerRadius + Math.random() * (DEBRIS_BELT.outerRadius - DEBRIS_BELT.innerRadius)
+    const dx = Math.cos(angle) * r
+    const dz = Math.sin(angle) * r
+    const dy = (Math.random() - 0.5) * 1000
+
+    const debris = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(2 + Math.random() * 8, 0),
+      debrisBeltMat
+    )
+    debris.position.set(dx, dy, dz)
+    debris.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+    space.add(debris)
+  }
+
+  // 廃棄ステーション群×4
+  const ABANDONED_STATIONS = [
+    { x: 5500, y: -300, z: 0, size: 150 },
+    { x: -5500, y: 400, z: 0, size: 200 },
+    { x: 0, y: -500, z: 5500, size: 180 },
+    { x: 0, y: 300, z: -5500, size: 160 },
+  ]
+
+  const abandonedMat = new THREE.MeshStandardMaterial({
+    color: 0x444444,
+    metalness: 0.5,
+    roughness: 0.8,
+    emissive: 0x110000,
+    emissiveIntensity: 0.1
+  })
+
+  for (const abandoned of ABANDONED_STATIONS) {
+    const station = new THREE.Mesh(
+      new THREE.BoxGeometry(abandoned.size, abandoned.size * 0.5, abandoned.size * 0.7),
+      abandonedMat
+    )
+    station.position.set(abandoned.x, abandoned.y, abandoned.z)
+    station.rotation.set(Math.random() * 0.5, Math.random() * Math.PI * 2, Math.random() * 0.5)
+    station.name = 'AbandonedStation'
+    space.add(station)
+
+    // 破損パネル×4
+    for (let i = 0; i < 4; i++) {
+      const panel = new THREE.Mesh(
+        new THREE.BoxGeometry(abandoned.size * 0.4, abandoned.size * 0.05, abandoned.size * 0.3),
+        abandonedMat
+      )
+      panel.position.set(
+        abandoned.x + (Math.random() - 0.5) * abandoned.size * 1.5,
+        abandoned.y + (Math.random() - 0.5) * abandoned.size * 0.8,
+        abandoned.z + (Math.random() - 0.5) * abandoned.size * 1.5
+      )
+      panel.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+      space.add(panel)
+    }
+  }
+
+  console.log('✅ Outer area details added (4 outer stations, 2000 debris belt objects, 4 abandoned stations)')
 }
 
 // Tokyo MAP用のランドマーク配置関数
