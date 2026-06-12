@@ -3529,30 +3529,25 @@ async function buildSpaceMap() {
   const obj = new THREE.Object3D()
 
   for (let i = 0; i < asteroidCount; i++) {
-    // MAP全体に3D的に均等配置
-    // Y座標：全レイヤーに均等分散
-    const y = -300 + Math.random() * 700  // -300〜400の範囲
+    // MAP全体（6km×6km×0.9km）に3D的に均等配置
+    // Y座標：-400〜500mの範囲
+    const y = -400 + Math.random() * 900
 
-    // XZ座標：円柱状に配置
-    const angle = Math.random() * Math.PI * 2
-    const distFromCenter = 400 + Math.random() * 2400  // 400〜2800m
+    // XZ座標：-3000〜3000mの範囲にランダム配置
+    let x = -3000 + Math.random() * 6000
+    let z = -3000 + Math.random() * 6000
 
-    let x = Math.cos(angle) * distFromCenter
-    let z = -1500 + Math.sin(angle) * distFromCenter  // Z方向中心-1500
-
-    // 中央回廊（X: -250 to 250、Z: -500 to 500）は小惑星なし
-    const isInCentralCorridor = Math.abs(x) < 250 && z > -500 && z < 500
-    if (isInCentralCorridor) {
-      // 回廊外に押し出す
-      if (Math.random() < 0.5) {
-        x = x < 0 ? -300 - Math.random() * 400 : 300 + Math.random() * 400
-      } else {
-        z = z < 0 ? -600 - Math.random() * 800 : 600 + Math.random() * 800
-      }
+    // 中央補給ステーション周辺（0, 130, 420）は小惑星なし（半径200m）
+    const hubDist = Math.sqrt(x * x + (z - 420) * (z - 420))
+    if (hubDist < 200 && Math.abs(y - 130) < 100) {
+      // 外側に押し出す
+      const angle = Math.atan2(z - 420, x)
+      x = Math.cos(angle) * (250 + Math.random() * 200)
+      z = 420 + Math.sin(angle) * (250 + Math.random() * 200)
     }
 
-    // サイズ：小〜大までランダム（均等分布）
-    const s = 6 + Math.random() * 30  // 6〜36m
+    // サイズ：小〜中サイズ中心に配置
+    const s = 4 + Math.random() * 24  // 4〜28m
 
     // 位置に多少のランダムオフセットを追加
     obj.position.set(
@@ -5964,23 +5959,8 @@ function loop() {
       }
     }
 
-    // ゾーン構造物との衝突判定（より緩めに：外装のみ）
-    if (spaceZoneGroups.length > 0) {
-      for (const zoneGroup of spaceZoneGroups) {
-        // Bounding Boxを使うが、余裕を持たせる
-        const bbox = new THREE.Box3().setFromObject(zoneGroup)
-        const closest = bbox.clampPoint(player.position, new THREE.Vector3())
-        const dist = closest.distanceTo(player.position)
-        if (dist < adjustedCollisionRadius * 1.2) { // より緩く（内部飛行可能に）
-          const pushDir = player.position.clone().sub(closest).normalize()
-          if (pushDir.length() < 0.1) pushDir.set(0, 1, 0)
-          player.position.copy(closest).add(pushDir.multiplyScalar(adjustedCollisionRadius * 1.2 + 1))
-          hitFlashTimer = 0.3
-          camShakeAmt = Math.max(camShakeAmt, 0.5)
-          break
-        }
-      }
-    }
+    // ゾーン構造物の衝突判定は無効化（内部飛行可能な世界観）
+    // spaceZoneGroupsは視覚的なランドマークのみ
   }
 
   // Engine glow follows player
