@@ -8,9 +8,17 @@ import { CollectibleSystem } from './collectibleSystem'
 import { loadLogsData, createLogVisuals, checkLogDiscovery, discoverLog, getLogsStats, type LogEntry } from './logsSystem'
 import { getStoryScenesByMap, createStorySceneVisuals } from './environmentalStorySystem'
 import { getDetailedAreasByMap, createRouteMarkers } from './detailedAreasSystem'
+import {
+  getCurrentBiomeEffect,
+  calculateSpeedModifier,
+  isPlayerStealthy,
+  getMissileEvasionBonus,
+  type BiomeEffect,
+  type TerrainContext
+} from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.10.0'
+const VERSION = '7.10.1'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -154,7 +162,9 @@ let storyGroup: THREE.Group | null = null
 let routeMarkersGroup: THREE.Group | null = null
 
 // ゲームプレイ効果システム（バイオーム・地形戦術効果）
-// 将来の実装用：現在はシステム初期化のみ
+let currentBiome: string = 'temperate'  // 現在のバイオーム
+let currentBiomeEffect: BiomeEffect | null = null  // 現在のバイオーム効果
+let playerStealthActive: boolean = false  // プレイヤーの隠密状態
 
 interface MapBounds {
   minX: number
@@ -7866,38 +7876,52 @@ function updateEnemies(dt: number) {
 
     // ミサイル発射判定
     if (!isEvading && !enemy.seekingSupply) {
-      enemy.fireCooldown -= dt
-      const angleToTarget = Math.acos(
-        Math.max(-1, Math.min(1, toTarget.clone().normalize().dot(currentForward)))
-      )
+      // プレイヤーが隠密状態の場合、検知範囲を大幅に減少
+      const detectionRangeMultiplier = playerStealthActive ? 0.3 : 1.0
+      // バイオーム効果による視界倍率を適用
+      const visibilityMultiplier = currentBiomeEffect ? currentBiomeEffect.visibilityMultiplier : 1.0
+      const effectiveDetectionRange = distToTarget * detectionRangeMultiplier * visibilityMultiplier
 
-      // ミサイル発射判定（ゾーン補正を適用）
-      const adjustedPreferredDistance = enemy.preferredDistance + zoneDistanceModifier
-      const missileMinRange = adjustedPreferredDistance * 0.5
-      const missileMaxRange = adjustedPreferredDistance * 3.0
-      if (enemy.fireCooldown <= 0 && distToTarget > missileMinRange && distToTarget < missileMaxRange && angleToTarget < Math.PI / 6) {
-        if (enemy.missileAmmo > 0) {
-          enemy.fireCooldown = 9 + Math.random() * 7
-          fireEnemyMissile(enemy)
-        } else {
-          enemy.seekingSupply = true
-          enemy.fireCooldown = 3
+      // プレイヤーが隠密状態かつ視界範囲外の場合は攻撃しない
+      const baseDetectionRange = 500  // 基本検知距離（500m）
+      const canDetectPlayer = target === player
+        ? (playerStealthActive ? effectiveDetectionRange < baseDetectionRange * 0.3 : effectiveDetectionRange < baseDetectionRange)
+        : true  // 味方機は常に検知可能
+
+      if (canDetectPlayer) {
+        enemy.fireCooldown -= dt
+        const angleToTarget = Math.acos(
+          Math.max(-1, Math.min(1, toTarget.clone().normalize().dot(currentForward)))
+        )
+
+        // ミサイル発射判定（ゾーン補正を適用）
+        const adjustedPreferredDistance = enemy.preferredDistance + zoneDistanceModifier
+        const missileMinRange = adjustedPreferredDistance * 0.5
+        const missileMaxRange = adjustedPreferredDistance * 3.0
+        if (enemy.fireCooldown <= 0 && distToTarget > missileMinRange && distToTarget < missileMaxRange && angleToTarget < Math.PI / 6) {
+          if (enemy.missileAmmo > 0) {
+            enemy.fireCooldown = 9 + Math.random() * 7
+            fireEnemyMissile(enemy)
+          } else {
+            enemy.seekingSupply = true
+            enemy.fireCooldown = 3
+          }
         }
-      }
 
-      // マシンガン射撃判定（ゾーン補正を適用）
-      enemy.gunCooldown -= dt
-      const gunMaxRange = Math.min(200, adjustedPreferredDistance * 1.5)
-      if (enemy.gunCooldown <= 0 && distToTarget < gunMaxRange && distToTarget > 30 && angleToTarget < Math.PI / 9) {
-        enemy.gunCooldown = 0.10 + Math.random() * 0.04
-        const aimDir = toTarget.clone().normalize()
-        const enemyVel = currentForward.clone().multiplyScalar(enemy.currentSpeed)
-        for (const side of [-0.5, 0.5]) {
-          const offset = new THREE.Vector3(side, 0, 0).applyQuaternion(enemy.group.quaternion)
-          const mesh = new THREE.Mesh(_enemyBulletGeo, enemyBulletMat)
-          mesh.position.copy(enemy.group.position).add(offset)
-          scene.add(mesh)
-          enemyBullets.push({ mesh, vel: aimDir.clone().multiplyScalar(700).add(enemyVel), life: 0.4 })
+        // マシンガン射撃判定（ゾーン補正を適用）
+        enemy.gunCooldown -= dt
+        const gunMaxRange = Math.min(200, adjustedPreferredDistance * 1.5)
+        if (enemy.gunCooldown <= 0 && distToTarget < gunMaxRange && distToTarget > 30 && angleToTarget < Math.PI / 9) {
+          enemy.gunCooldown = 0.10 + Math.random() * 0.04
+          const aimDir = toTarget.clone().normalize()
+          const enemyVel = currentForward.clone().multiplyScalar(enemy.currentSpeed)
+          for (const side of [-0.5, 0.5]) {
+            const offset = new THREE.Vector3(side, 0, 0).applyQuaternion(enemy.group.quaternion)
+            const mesh = new THREE.Mesh(_enemyBulletGeo, enemyBulletMat)
+            mesh.position.copy(enemy.group.position).add(offset)
+            scene.add(mesh)
+            enemyBullets.push({ mesh, vel: aimDir.clone().multiplyScalar(700).add(enemyVel), life: 0.4 })
+          }
         }
       }
     }
@@ -7988,6 +8012,23 @@ function checkCollisions() {
     const m = enemyMissiles[mi]
     if (!m) continue
     if (m.mesh.position.distanceTo(player.position) < 4) {
+      // 地形戦術効果によるミサイル回避ボーナス
+      const terrainContext: TerrainContext = {
+        altitude: player.position.y,
+        nearestTerrain: 'open_field',  // TODO: 最寄り地形の実装
+        distanceToNearestTerrain: 1000
+      }
+      const evasionBonus = getMissileEvasionBonus(terrainContext)
+      const missedByTerrain = Math.random() < evasionBonus
+
+      if (missedByTerrain) {
+        // 地形効果でミサイル回避成功
+        createExplosion(m.mesh.position.clone(), 0.8); playExplosionSound(0.6)
+        if (m.light) scene.remove(m.light)
+        scene.remove(m.mesh); enemyMissiles.splice(mi, 1)
+        continue
+      }
+
       createExplosion(m.mesh.position.clone(), 1.0); playExplosionSound(0.8)
       if (m.light) scene.remove(m.light)
       scene.remove(m.mesh); enemyMissiles.splice(mi, 1)
@@ -8070,6 +8111,10 @@ const overlayCtx = overlayCanvas.getContext('2d')!
 const centerXhairEl = document.getElementById('center-xhair') as HTMLDivElement
 const landmarksHudEl = document.getElementById('hud-landmarks') as HTMLDivElement
 const landmarkListEl = document.getElementById('landmark-list') as HTMLDivElement
+const hudEffectsEl = document.getElementById('hud-effects') as HTMLDivElement
+const biomeNameEl = document.getElementById('biome-name') as HTMLDivElement
+const biomeEffectsEl = document.getElementById('biome-effects') as HTMLDivElement
+const stealthIndicatorEl = document.getElementById('stealth-indicator') as HTMLDivElement
 
 // ピップ初期化
 function initPips(el: HTMLElement, count: number, cls: string) {
@@ -8581,6 +8626,23 @@ function updateGunLeadIndicator() {
 function syncFlightReadouts() {
   speedEl.textContent = Math.round(speed * 3.6).toString()
   altEl.textContent = Math.round(player.position.y).toString()
+
+  // バイオーム・地形効果HUD更新
+  if (currentBiomeEffect) {
+    hudEffectsEl.style.display = 'block'
+    biomeNameEl.textContent = currentBiomeEffect.name
+
+    // 効果の表示（速度・視界・レーダー）
+    const speedPercent = Math.round(currentBiomeEffect.speedMultiplier * 100)
+    const visPercent = Math.round(currentBiomeEffect.visibilityMultiplier * 100)
+    const radarPercent = Math.round(currentBiomeEffect.radarAccuracy * 100)
+    biomeEffectsEl.textContent = `SPD ${speedPercent}% / VIS ${visPercent}% / RAD ${radarPercent}%`
+
+    // 隠密状態の表示
+    stealthIndicatorEl.style.display = playerStealthActive ? 'block' : 'none'
+  } else {
+    hudEffectsEl.style.display = 'none'
+  }
 }
 
 // ===== SPACE NAVIGATION HUD更新 =====
@@ -8878,9 +8940,33 @@ function loop() {
   }
   const brake = touchState.brake || decelerateMode
   const boost = (!!keys['Space'] || touchState.boost) && !brake
+
+  // === バイオーム効果の更新 ===
+  if (currentMap === 'original') {
+    currentBiome = getBiome(player.position.x, player.position.z)
+  } else if (currentMap === 'tokyo') {
+    currentBiome = 'urban'
+  } else if (currentMap === 'space') {
+    currentBiome = 'space'
+  }
+  currentBiomeEffect = getCurrentBiomeEffect(currentBiome)
+
+  // 地形コンテキストの構築（地形戦術効果判定用）
+  const terrainContext: TerrainContext = {
+    altitude: player.position.y,
+    nearestTerrain: 'open_field',  // TODO: 最寄り地形の実装
+    distanceToNearestTerrain: 1000  // TODO: 距離計算の実装
+  }
+
+  // 速度補正の適用
+  const speedModifier = calculateSpeedModifier(currentBiomeEffect, player.position.y)
   const boostTarget = brake ? 50 : (boost ? 550 : wheelSpeedTarget)  // 減速50m/s、ブースト550m/s（1,980km/h）
-  speed += (boostTarget - speed) * dt * 2.2
+  const modifiedBoostTarget = boostTarget * speedModifier
+  speed += (modifiedBoostTarget - speed) * dt * 2.2
   if (!boost && !decelerateMode) wheelSpeedTarget += (150 - wheelSpeedTarget) * dt * 0.4  // 巡航速度150に自動復帰
+
+  // 隠密状態の更新
+  playerStealthActive = isPlayerStealthy(terrainContext, player.position.y)
 
   // === MOUSE HOLD TIMER ===
   if (mouseState.leftDown) mouseState.leftHoldTime += dt
