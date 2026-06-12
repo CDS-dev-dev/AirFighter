@@ -421,19 +421,19 @@ function generateTerrainMesh(): THREE.Mesh {
   }
 }
 
-// 初期化時の地形生成（東京MAP以外）
+// 初期化時の地形生成（オリジナルMAPのみ）
 let ground: THREE.Mesh
-if (currentMap === 'tokyo') {
-  // 東京MAPの場合は空のプレースホルダー（TokyoMapSystemが後で生成）
+if (currentMap === 'original') {
+  ground = generateTerrainMesh()
+  ground.name = 'OriginalGround'
+  scene.add(ground)
+} else {
+  // 東京MAP・宇宙MAPの場合は空のプレースホルダー
   ground = new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1),
     new THREE.MeshBasicMaterial({ visible: false })
   )
-} else {
-  ground = generateTerrainMesh()
-  ground.name = 'OriginalGround'
 }
-scene.add(ground)
 
 // ===== TERRAIN GLB（Blender生成の高品質地形）=====
 // 非同期で読み込み、完了後にプロシージャル地形と差し替え
@@ -453,8 +453,8 @@ gltfLoader.load(
       }
     })
     // プロシージャル地形を非表示にして GLB 地形に切り替え
-    // ただし東京MAPの場合は追加しない
-    if (currentMap !== 'tokyo') {
+    // ただし東京MAP・宇宙MAPの場合は追加しない
+    if (currentMap === 'original') {
       scene.remove(ground)
       terrainGLB = gltf.scene  // グローバル変数に保存
       terrainGLB.name = 'OriginalTerrainGLB'
@@ -467,7 +467,7 @@ gltfLoader.load(
       if (import.meta.env.DEV) console.log('[Terrain] GLB loaded — procedural terrain replaced')
     } else {
       terrainGLB = gltf.scene
-      if (import.meta.env.DEV) console.log('[Terrain] GLB loaded but not added (Tokyo MAP active)')
+      if (import.meta.env.DEV) console.log(`[Terrain] GLB loaded but not added (current map: ${currentMap})`)
     }
   },
   undefined,
@@ -5536,7 +5536,8 @@ function loop() {
       barrelRollState.progress = 0
     } else {
       const rollSpeed = (Math.PI * 2) / barrelRollState.duration  // 360度/秒
-      player.quaternion.multiply(_sq1.setFromAxisAngle(barrelRollState.forwardAxis, barrelRollState.direction * rollSpeed * dt))
+      const fwdAxis = _fwd.clone().applyQuaternion(player.quaternion)
+      player.quaternion.multiply(_sq1.setFromAxisAngle(fwdAxis, barrelRollState.direction * rollSpeed * dt))
 
       const lateralDist = 40  // 横移動距離（m）
       const lateralMove = barrelRollState.lateralAxis.clone().multiplyScalar(barrelRollState.direction * lateralDist * dt / barrelRollState.duration)
