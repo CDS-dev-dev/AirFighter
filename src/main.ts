@@ -136,7 +136,7 @@ interface MapBounds {
 const MAP_BOUNDS: Record<GameMap, MapBounds> = {
   original: { minX: -4300, maxX: 4300, minZ: -4300, maxZ: 4300, warningMargin: 550 },
   tokyo: { minX: -6800, maxX: 6800, minZ: -6800, maxZ: 6800, warningMargin: 700 },
-  space: { minX: -7600, maxX: 7600, minZ: -7600, maxZ: 7600, warningMargin: 900 },
+  space: { minX: -3000, maxX: 3000, minZ: -3000, maxZ: 3000, warningMargin: 400 },
 }
 
 // ===== TERRAIN =====
@@ -3165,11 +3165,13 @@ interface SpaceZone {
   position: { x: number; y: number; z: number }
   name: string
   description: string
+  layer?: 'upper' | 'middle' | 'lower'
 }
 
 const spaceZones: SpaceZone[] = []
 const spaceBeacons: THREE.Group[] = []
 let spaceSpawnPoints: { enemy: Array<{ zone: string; offset: { x: number; y: number; z: number } }>; ally: Array<{ zone: string; offset: { x: number; y: number; z: number } }> } | null = null
+let spaceNavigationRoutes: Array<{ from: string; to: string; distance: number; direction: { x: number; y: number; z: number } }> = []
 const ZONE_COLORS: Record<string, number> = {
   central_hub: 0x00ffff,  // cyan
   fortress: 0xff4444,      // red
@@ -3199,6 +3201,7 @@ function clearSpaceMap() {
   spaceGateBoostTimer = 0
   spaceZones.length = 0
   spaceSpawnPoints = null
+  spaceNavigationRoutes.length = 0
   spaceBeacons.forEach(b => {
     scene.remove(b)
     b.traverse(child => {
@@ -3237,13 +3240,18 @@ async function loadSpaceZones(parentGroup: THREE.Group) {
         zone_id: zone.zone_id,
         position: zone.position,
         name: zone.name,
-        description: zone.description
+        description: zone.description,
+        layer: zone.layer
       })
     }
 
     // スポーンポイントを保存
     spaceSpawnPoints = config.spawn_points
     if (import.meta.env.DEV && spaceSpawnPoints) console.log(`🎯 スポーンポイント: 敵${spaceSpawnPoints.enemy.length}箇所、味方${spaceSpawnPoints.ally.length}箇所`)
+
+    // ナビゲーションルートを保存
+    spaceNavigationRoutes = config.navigation_routes || []
+    if (import.meta.env.DEV) console.log(`🗺️ ナビゲーションルート: ${spaceNavigationRoutes.length}本`)
 
     // モバイル環境ではGLBを読み込まない（パフォーマンス対策）
     if (isMobileDevice) {
@@ -3557,10 +3565,10 @@ async function buildSpaceMap() {
     const distFactor = Math.abs(x) / 500
     const isLowerLayer = baseY < 0
 
-    // サイズ：壁エリア + 下層は大型・密集
-    const s = (isWallZone && isLowerLayer && Math.random() < 0.25) || (distFactor > 0.7 && Math.random() < 0.12)
-      ? 26 + Math.random() * 42  // 大型
-      : 4 + Math.random() * 15   // 小型
+    // サイズ：壁エリア + 下層は大型（カバーとして機能）、それ以外は中型
+    const s = (isWallZone && isLowerLayer && Math.random() < 0.3) || (distFactor > 0.7 && Math.random() < 0.15)
+      ? 30 + Math.random() * 50  // 大型（完全なカバー）
+      : 8 + Math.random() * 20   // 中型（部分的カバー）
 
     // 下層の壁エリアは密度2倍（狭い隙間を作る）
     if (isLowerLayer && isWallZone && Math.random() < 0.3) {
@@ -3612,6 +3620,45 @@ async function buildSpaceMap() {
   asteroids.receiveShadow = !isMobileDevice
   space.add(asteroids)
   spaceAsteroids = asteroids
+
+  // ゾーン周辺の戦術的障害物配置
+  if (spaceZones.length > 0) {
+    const zoneAsteroidGeo = new THREE.DodecahedronGeometry(1, 1)
+    const zoneAsteroidMat = new THREE.MeshStandardMaterial({ color: 0x8a8288, roughness: 0.9, metalness: 0.08, flatShading: true })
+
+    for (const zone of spaceZones) {
+      if (zone.zone_id === 'central_hub') continue // 補給ステーションは障害物なし
+
+      // ゾーン周囲に10-15個の小惑星を配置（カバーポイント）
+      const count = 10 + Math.floor(Math.random() * 6)
+      const radius = zone.layer === 'upper' ? 220 : zone.layer === 'lower' ? 200 : 180
+
+      for (let j = 0; j < count; j++) {
+        const angle = (j / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.8
+        const dist = radius + Math.random() * 80
+        const offsetX = Math.cos(angle) * dist
+        const offsetZ = Math.sin(angle) * dist
+        const offsetY = (Math.random() - 0.5) * 100
+
+        const size = 18 + Math.random() * 28
+        const asteroid = new THREE.Mesh(zoneAsteroidGeo, zoneAsteroidMat)
+        asteroid.position.set(
+          zone.position.x + offsetX,
+          zone.position.y + offsetY,
+          zone.position.z + offsetZ
+        )
+        asteroid.scale.set(
+          size * (0.7 + Math.random() * 0.6),
+          size * (0.6 + Math.random() * 0.5),
+          size * (0.7 + Math.random() * 0.6)
+        )
+        asteroid.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+        asteroid.castShadow = !isMobileDevice
+        asteroid.receiveShadow = !isMobileDevice
+        space.add(asteroid)
+      }
+    }
+  }
 
   const railMat = new THREE.MeshStandardMaterial({ color: 0x9fb6c8, emissive: 0x14355a, emissiveIntensity: 0.9, roughness: 0.44, metalness: 0.72 })
   const glowCyan = new THREE.MeshStandardMaterial({ color: 0x6df7ff, emissive: 0x00b7ff, emissiveIntensity: 2.9, roughness: 0.25, metalness: 0.25 })
@@ -5361,10 +5408,24 @@ function updateSpaceNavigationHUD() {
 
   // 最も近い3つを表示
   const nearest = distancesWithZones.slice(0, 3)
-  landmarkListEl.innerHTML = nearest.map(({ zone, distance }) => {
+  let html = nearest.map(({ zone, distance }) => {
     const distKm = (distance / 1000).toFixed(1)
     return `<div class="lm-item">${zone.name} ${distKm}km</div>`
   }).join('')
+
+  // 推奨ルート表示（最寄りゾーンからの推奨ルート）
+  if (spaceNavigationRoutes.length > 0 && nearest.length > 0) {
+    const currentZoneId = nearest[0].zone.zone_id
+    const recommendedRoute = spaceNavigationRoutes.find(r => r.from === currentZoneId)
+    if (recommendedRoute) {
+      const toZone = spaceZones.find(z => z.zone_id === recommendedRoute.to)
+      if (toZone) {
+        html += `<div class="lm-item" style="color: #88ddff; font-size: 0.9em;">→ ${toZone.name}</div>`
+      }
+    }
+  }
+
+  landmarkListEl.innerHTML = html
 }
 
 // ビーコンの可視性とフェード処理
@@ -5668,8 +5729,8 @@ function loop() {
       barrelRollState.progress = 0
     } else {
       const rollSpeed = (Math.PI * 2) / barrelRollState.duration  // 360度/秒
-      const fwdAxis = _fwd.clone().applyQuaternion(player.quaternion)
-      player.quaternion.multiply(_sq1.setFromAxisAngle(fwdAxis, barrelRollState.direction * rollSpeed * dt))
+      // 開始時に保存した前方軸を使用（進行方向を維持）
+      player.quaternion.multiply(_sq1.setFromAxisAngle(barrelRollState.forwardAxis, barrelRollState.direction * rollSpeed * dt))
 
       const lateralDist = 40  // 横移動距離（m）
       const lateralMove = barrelRollState.lateralAxis.clone().multiplyScalar(barrelRollState.direction * lateralDist * dt / barrelRollState.duration)

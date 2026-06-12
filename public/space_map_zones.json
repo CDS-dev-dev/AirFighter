@@ -2,12 +2,12 @@
   "version": "1.0",
   "map_type": "space_sector",
   "bounds": {
-    "minX": -7600,
-    "maxX": 7600,
-    "minZ": -7600,
-    "maxZ": 7600,
-    "minY": -620,
-    "maxY": 720
+    "minX": -3000,
+    "maxX": 3000,
+    "minZ": -3000,
+    "maxZ": 3000,
+    "minY": -400,
+    "maxY": 500
   },
   "zones": {
     "central_hub": {
@@ -23,6 +23,7 @@
         "z": 0
       },
       "scale": 1.0,
+      "layer": "middle",
       "name": "中央補給ステーション",
       "glb_file": null,
       "description": "プレイヤースタート地点、補給ポイント",
@@ -45,6 +46,7 @@
         "z": 0
       },
       "scale": 2.0,
+      "layer": "middle",
       "name": "破壊された要塞",
       "glb_file": "space_fortress_destroyed.glb",
       "description": "中央回廊上の巨大ランドマーク。内部トンネル飛行可能",
@@ -68,6 +70,7 @@
         "z": 0
       },
       "scale": 1.3,
+      "layer": "lower",
       "name": "小惑星採掘コロニー",
       "glb_file": "space_mining_colony.glb",
       "description": "下層・西壁エリア。トンネル内が近道ルート",
@@ -91,6 +94,7 @@
         "z": 0
       },
       "scale": 1.2,
+      "layer": "lower",
       "name": "宇宙船墓場",
       "glb_file": "space_ship_graveyard.glb",
       "description": "下層・東壁エリア。巨大船の隙間が峡谷状の戦闘エリア",
@@ -114,6 +118,7 @@
         "z": 0
       },
       "scale": 1.0,
+      "layer": "upper",
       "name": "軌道リング都市",
       "glb_file": "space_orbital_ring.glb",
       "description": "上層・中央回廊上。リング内部が航路トンネル",
@@ -137,6 +142,7 @@
         "z": 0
       },
       "scale": 1.1,
+      "layer": "upper",
       "name": "建造現場",
       "glb_file": "space_construction.glb",
       "description": "上層・西壁エリア。足場の隙間が複雑な3D迷路",
