@@ -196,6 +196,23 @@ function fbm(x: number, z: number, octaves = 5): number {
 
 // 東京MAP用の地形関数は削除 - TokyoMapSystemが完全に管理
 
+// ===== バイオーム判定関数 =====
+type Biome = 'temperate' | 'snow' | 'jungle' | 'desert'
+
+function getBiome(x: number, z: number): Biome {
+  // 雪山エリア（北部、z < -1500）
+  if (z < -1500) return 'snow'
+
+  // ジャングルエリア（東部、x > 1500）
+  if (x > 1500) return 'jungle'
+
+  // 砂漠エリア（南部、z > 1500）
+  if (z > 1500) return 'desert'
+
+  // 温帯エリア（中央部）
+  return 'temperate'
+}
+
 // MAP別地形関数の切り替え
 function terrainH(x: number, z: number): number {
   if (currentMap === 'space') return 0
@@ -248,6 +265,23 @@ function terrainH(x: number, z: number): number {
     const flatFactor = Math.cos((plainDist / 600) * Math.PI * 0.5)
     h *= (1 - flatFactor * 0.5)
     h += 250 * flatFactor
+  }
+
+  // バイオーム別の高度調整
+  const biome = getBiome(x, z)
+  if (biome === 'snow') {
+    // 雪山: 高度+400m、急峻な地形
+    h += 400
+    h += Math.sin(x * 0.02) * Math.cos(z * 0.02) * 200
+  } else if (biome === 'jungle') {
+    // ジャングル: 低地、なだらかな地形
+    h *= 0.4
+    h = Math.max(20, h)  // 最低高度20m
+  } else if (biome === 'desert') {
+    // 砂漠: 砂丘（波状地形）
+    h *= 0.5
+    h += Math.sin(x * 0.01) * 50 + Math.sin(z * 0.015) * 40
+    h = Math.max(10, h)  // 最低高度10m
   }
 
   return Math.max(0, h)
@@ -671,6 +705,66 @@ shrubIM.name = 'HighAltitudeShrubs'
 scene.add(shrubIM)
 console.log(`✅ High altitude vegetation created: ${HIGH_ALTITUDE_SHRUB_COUNT} shrubs`)
 
+// ===== バイオーム別植生（雪山・ジャングル・砂漠） =====
+gltfLoader.load(import.meta.env.BASE_URL + 'models/biome_assets.glb', (gltf) => {
+  // 雪山エリア: 針葉樹300本
+  for (let i = 0; i < 300; i++) {
+    const x = (Math.random() - 0.5) * 3000
+    const z = -2500 + (Math.random() - 0.5) * 2000  // 北部
+    const y = terrainH(x, z)
+
+    if (getBiome(x, z) !== 'snow') continue
+    if (y < 800) continue  // 標高800m以上
+
+    const pine = gltf.scene.children.find((c: any) => c.name === 'PineTrunk')?.clone()
+    if (pine) {
+      pine.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
+      pine.position.set(x, y, z)
+      pine.scale.setScalar(0.8 + Math.random() * 0.4)
+      pine.rotation.y = Math.random() * Math.PI * 2
+      scene.add(pine)
+    }
+  }
+
+  // ジャングルエリア: 巨大樹20本 + 密林強化
+  for (let i = 0; i < 20; i++) {
+    const x = 2500 + (Math.random() - 0.5) * 2000  // 東部
+    const z = (Math.random() - 0.5) * 3000
+    const y = terrainH(x, z)
+
+    if (getBiome(x, z) !== 'jungle') continue
+
+    const giantTree = gltf.scene.children.find((c: any) => c.name === 'GiantTrunk')?.clone()
+    if (giantTree) {
+      giantTree.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
+      giantTree.position.set(x, y, z)
+      giantTree.scale.setScalar(0.8 + Math.random() * 0.4)
+      giantTree.rotation.y = Math.random() * Math.PI * 2
+      scene.add(giantTree)
+    }
+  }
+
+  // 砂漠エリア: サボテン200本
+  for (let i = 0; i < 200; i++) {
+    const x = (Math.random() - 0.5) * 3000
+    const z = 2500 + (Math.random() - 0.5) * 2000  // 南部
+    const y = terrainH(x, z)
+
+    if (getBiome(x, z) !== 'desert') continue
+
+    const cactus = gltf.scene.children.find((c: any) => c.name === 'CactusBody')?.clone()
+    if (cactus) {
+      cactus.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
+      cactus.position.set(x, y, z)
+      cactus.scale.setScalar(0.6 + Math.random() * 0.8)
+      cactus.rotation.y = Math.random() * Math.PI * 2
+      scene.add(cactus)
+    }
+  }
+
+  console.log('✅ Biome vegetation loaded (snow: 300 pines, jungle: 20 giants, desert: 200 cacti)')
+})
+
 // ===== ROCK PILLARS (Blender GLB) =====
 // rock_pillar.glb: height=1.0, base_r≈0.26 (unit scale). Loaded async, placed at cluster positions.
 const PILLAR_SPECS: Array<{ cx:number; cz:number; n:number }> = [
@@ -1002,6 +1096,9 @@ function buildWorldStructures() {
   // ===== 中央岩山の洞窟（内部飛行可能）=====
   addMountainCave()
 
+  // ===== 地下洞窟ネットワーク（3層構造） =====
+  addUndergroundCaveNetwork()
+
   // ===== ストーリー要素: 古代遺跡 =====
   const ANCIENT_RUINS_POSITIONS = [
     { x: -800, z: -600, scale: 1.0, rotation: 0 },
@@ -1075,6 +1172,249 @@ function addMountainCave() {
   )
   coreOrb.position.set(0, terrainH(0, 0) + 200, 0)
   originalMapGroup.add(coreOrb)
+}
+
+// ===== 地下洞窟ネットワーク（3層構造） =====
+function addUndergroundCaveNetwork() {
+  const caveMat = new THREE.MeshStandardMaterial({
+    color: 0x3a3a3a,
+    roughness: 0.95,
+    metalness: 0.05,
+  })
+
+  const glowMat = new THREE.MeshStandardMaterial({
+    color: 0x88ffff,
+    emissive: 0x44dddd,
+    emissiveIntensity: 1.0,
+  })
+
+  // 第1層（地下30-80m）: 入口8箇所、大広間15箇所、トンネル30本
+  const L1_ENTRANCES = [
+    { x: -800, z: -600 }, { x: 800, z: -600 },
+    { x: -800, z: 600 }, { x: 800, z: 600 },
+    { x: 0, z: -1000 }, { x: 0, z: 1000 },
+    { x: -1000, z: 0 }, { x: 1000, z: 0 },
+  ]
+
+  const L1_CHAMBERS = [
+    { x: -500, y: -50, z: -400, r: 40 },
+    { x: 500, y: -50, z: -400, r: 35 },
+    { x: -500, y: -60, z: 400, r: 45 },
+    { x: 500, y: -60, z: 400, r: 38 },
+    { x: -300, y: -55, z: 0, r: 42 },
+    { x: 300, y: -55, z: 0, r: 40 },
+    { x: 0, y: -50, z: -600, r: 50 },
+    { x: 0, y: -50, z: 600, r: 48 },
+    { x: -700, y: -65, z: -200, r: 36 },
+    { x: 700, y: -65, z: -200, r: 34 },
+    { x: -700, y: -70, z: 200, r: 38 },
+    { x: 700, y: -70, z: 200, r: 40 },
+    { x: -200, y: -60, z: -800, r: 44 },
+    { x: 200, y: -60, z: -800, r: 42 },
+    { x: 0, y: -55, z: 0, r: 60 },  // 中央大広間
+  ]
+
+  // 入口を配置
+  for (const entrance of L1_ENTRANCES) {
+    const h = terrainH(entrance.x, entrance.z)
+    const archGeo = new THREE.TorusGeometry(25, 6, 12, 24, Math.PI)
+    const arch = new THREE.Mesh(archGeo, caveMat)
+    arch.position.set(entrance.x, h + 25, entrance.z)
+    arch.rotation.x = Math.PI / 2
+    originalMapGroup.add(arch)
+
+    // 入口マーカー
+    const marker = new THREE.Mesh(new THREE.SphereGeometry(3, 8, 8), glowMat)
+    marker.position.set(entrance.x, h + 10, entrance.z)
+    originalMapGroup.add(marker)
+  }
+
+  // 第1層の大広間
+  for (const chamber of L1_CHAMBERS) {
+    const chamberGeo = new THREE.SphereGeometry(chamber.r, 16, 16)
+    const chamberMesh = new THREE.Mesh(chamberGeo, caveMat)
+    chamberMesh.position.set(chamber.x, chamber.y, chamber.z)
+    originalMapGroup.add(chamberMesh)
+
+    // 光る鉱石
+    for (let i = 0; i < 5; i++) {
+      const angle = (i / 5) * Math.PI * 2
+      const r = chamber.r * 0.8
+      const crystal = new THREE.Mesh(
+        new THREE.OctahedronGeometry(2 + Math.random() * 3),
+        glowMat
+      )
+      crystal.position.set(
+        chamber.x + Math.cos(angle) * r,
+        chamber.y + (Math.random() - 0.5) * chamber.r * 0.5,
+        chamber.z + Math.sin(angle) * r
+      )
+      crystal.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+      originalMapGroup.add(crystal)
+    }
+  }
+
+  // トンネル（第1層の広間を接続）
+  for (let i = 0; i < L1_CHAMBERS.length - 1; i++) {
+    const c1 = L1_CHAMBERS[i]
+    const c2 = L1_CHAMBERS[i + 1]
+    const length = Math.hypot(c2.x - c1.x, c2.z - c1.z, c2.y - c1.y)
+    const midX = (c1.x + c2.x) / 2
+    const midY = (c1.y + c2.y) / 2
+    const midZ = (c1.z + c2.z) / 2
+
+    const tunnel = new THREE.Mesh(
+      new THREE.CylinderGeometry(15, 15, length, 12),
+      caveMat
+    )
+    tunnel.position.set(midX, midY, midZ)
+
+    const angleY = Math.atan2(c2.z - c1.z, c2.x - c1.x)
+    const angleX = Math.atan2(c2.y - c1.y, Math.hypot(c2.x - c1.x, c2.z - c1.z))
+    tunnel.rotation.set(angleX, 0, angleY + Math.PI / 2)
+
+    originalMapGroup.add(tunnel)
+  }
+
+  // 第2層（地下100-150m）: 大広間10箇所
+  const L2_CHAMBERS = [
+    { x: -400, y: -120, z: -300, r: 50 },
+    { x: 400, y: -120, z: -300, r: 45 },
+    { x: -400, y: -130, z: 300, r: 48 },
+    { x: 400, y: -130, z: 300, r: 46 },
+    { x: 0, y: -125, z: 0, r: 70 },  // 中央大広間
+    { x: -600, y: -135, z: 0, r: 42 },
+    { x: 600, y: -135, z: 0, r: 44 },
+    { x: 0, y: -120, z: -500, r: 40 },
+    { x: 0, y: -120, z: 500, r: 38 },
+    { x: -300, y: -140, z: -500, r: 36 },
+  ]
+
+  for (const chamber of L2_CHAMBERS) {
+    const chamberGeo = new THREE.SphereGeometry(chamber.r, 16, 16)
+    const chamberMesh = new THREE.Mesh(chamberGeo, caveMat)
+    chamberMesh.position.set(chamber.x, chamber.y, chamber.z)
+    originalMapGroup.add(chamberMesh)
+
+    // 巨大クリスタル
+    const crystal = new THREE.Mesh(
+      new THREE.OctahedronGeometry(15),
+      glowMat
+    )
+    crystal.position.set(chamber.x, chamber.y, chamber.z)
+    crystal.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0)
+    originalMapGroup.add(crystal)
+  }
+
+  // 第2層のトンネル
+  for (let i = 0; i < L2_CHAMBERS.length - 1; i++) {
+    const c1 = L2_CHAMBERS[i]
+    const c2 = L2_CHAMBERS[i + 1]
+    const length = Math.hypot(c2.x - c1.x, c2.z - c1.z, c2.y - c1.y)
+    const midX = (c1.x + c2.x) / 2
+    const midY = (c1.y + c2.y) / 2
+    const midZ = (c1.z + c2.z) / 2
+
+    const tunnel = new THREE.Mesh(
+      new THREE.CylinderGeometry(12, 12, length, 12),
+      caveMat
+    )
+    tunnel.position.set(midX, midY, midZ)
+
+    const angleY = Math.atan2(c2.z - c1.z, c2.x - c1.x)
+    const angleX = Math.atan2(c2.y - c1.y, Math.hypot(c2.x - c1.x, c2.z - c1.z))
+    tunnel.rotation.set(angleX, 0, angleY + Math.PI / 2)
+
+    originalMapGroup.add(tunnel)
+  }
+
+  // 第3層（地下200m）: 最深部の祭殿
+  const L3_CHAMBERS = [
+    { x: 0, y: -200, z: 0, r: 80 },  // 最深部祭殿
+    { x: -200, y: -200, z: -200, r: 50 },
+    { x: 200, y: -200, z: -200, r: 50 },
+    { x: -200, y: -200, z: 200, r: 50 },
+    { x: 200, y: -200, z: 200, r: 50 },
+  ]
+
+  for (const chamber of L3_CHAMBERS) {
+    const chamberGeo = new THREE.SphereGeometry(chamber.r, 16, 16)
+    const chamberMesh = new THREE.Mesh(chamberGeo, caveMat)
+    chamberMesh.position.set(chamber.x, chamber.y, chamber.z)
+    originalMapGroup.add(chamberMesh)
+
+    // 古代遺跡の装飾
+    if (chamber.r > 70) {
+      // 祭壇
+      const altar = new THREE.Mesh(
+        new THREE.BoxGeometry(30, 10, 20),
+        new THREE.MeshStandardMaterial({ color: 0x886633, roughness: 0.9 })
+      )
+      altar.position.set(chamber.x, chamber.y - 30, chamber.z)
+      originalMapGroup.add(altar)
+
+      // 巨大クリスタル×4
+      for (let i = 0; i < 4; i++) {
+        const angle = (i / 4) * Math.PI * 2
+        const r = 50
+        const crystal = new THREE.Mesh(
+          new THREE.OctahedronGeometry(20),
+          glowMat
+        )
+        crystal.position.set(
+          chamber.x + Math.cos(angle) * r,
+          chamber.y,
+          chamber.z + Math.sin(angle) * r
+        )
+        crystal.rotation.set(0, angle, 0)
+        originalMapGroup.add(crystal)
+      }
+    }
+  }
+
+  // 第3層のトンネル
+  for (let i = 1; i < L3_CHAMBERS.length; i++) {
+    const c1 = L3_CHAMBERS[0]  // 中央祭殿
+    const c2 = L3_CHAMBERS[i]
+    const length = Math.hypot(c2.x - c1.x, c2.z - c1.z, c2.y - c1.y)
+    const midX = (c1.x + c2.x) / 2
+    const midY = (c1.y + c2.y) / 2
+    const midZ = (c1.z + c2.z) / 2
+
+    const tunnel = new THREE.Mesh(
+      new THREE.CylinderGeometry(10, 10, length, 12),
+      caveMat
+    )
+    tunnel.position.set(midX, midY, midZ)
+
+    const angleY = Math.atan2(c2.z - c1.z, c2.x - c1.x)
+    const angleX = Math.atan2(c2.y - c1.y, Math.hypot(c2.x - c1.x, c2.z - c1.z))
+    tunnel.rotation.set(angleX, 0, angleY + Math.PI / 2)
+
+    originalMapGroup.add(tunnel)
+  }
+
+  // 層間接続（第1層→第2層、第2層→第3層）
+  // 縦穴
+  const shafts = [
+    { x: 0, y1: -80, y2: -100, z: 0 },
+    { x: -500, y1: -80, y2: -100, z: -400 },
+    { x: 500, y1: -80, y2: -100, z: 400 },
+    { x: 0, y1: -150, y2: -200, z: 0 },
+    { x: -200, y1: -150, y2: -200, z: -200 },
+  ]
+
+  for (const shaft of shafts) {
+    const height = Math.abs(shaft.y2 - shaft.y1)
+    const shaftMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(20, 20, height, 12),
+      caveMat
+    )
+    shaftMesh.position.set(shaft.x, (shaft.y1 + shaft.y2) / 2, shaft.z)
+    originalMapGroup.add(shaftMesh)
+  }
+
+  console.log('✅ Underground cave network created (3 layers, 30 chambers, 50+ tunnels)')
 }
 
 function _glbSetShadow(g: THREE.Group) {
@@ -4507,7 +4847,7 @@ async function buildSpaceMap() {
 
   // ===== 小惑星クラスター（密集エリア） =====
   const ASTEROID_CLUSTERS = [
-    { x: -1500, y: 100, z: -1000, count: 150, radius: 300 },  // 採掘コロニー付近
+    { x: -1500, y: 100, z: -1000, count: 1500, radius: 500 },  // 採掘コロニー付近（10倍密度、拡張）
     { x: 1000, y: -200, z: 800, count: 120, radius: 250 },    // 南東エリア
     { x: -800, y: 400, z: 1200, count: 100, radius: 200 },    // 建造現場付近
   ]
@@ -4978,6 +5318,328 @@ async function buildSpaceMap() {
       space.add(inst)
     }
   })
+
+  // ===== 要塞内部構造（3層） =====
+  const fortressCenter = { x: 600, y: -800, z: -2400 }
+  const fortressMat = new THREE.MeshStandardMaterial({ color: 0x333344, metalness: 0.7, roughness: 0.5 })
+  const fortressLightMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 2.0 })
+
+  // 第1層（外殻、0～-100m）: 司令室、兵器庫、ハンガーベイ
+  const l1Rooms = [
+    { x: 0, y: -50, z: 0, w: 80, h: 40, d: 80, name: 'command' },
+    { x: 100, y: -50, z: 0, w: 60, h: 30, d: 60, name: 'armory' },
+    { x: -100, y: -50, z: 0, w: 60, h: 30, d: 60, name: 'armory' },
+    { x: 0, y: -50, z: 100, w: 120, h: 50, d: 80, name: 'hangar' },
+    { x: 0, y: -50, z: -100, w: 50, h: 30, d: 50, name: 'room' },
+  ]
+
+  for (const room of l1Rooms) {
+    const roomMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(room.w, room.h, room.d),
+      fortressMat
+    )
+    roomMesh.position.set(
+      fortressCenter.x + room.x,
+      fortressCenter.y + room.y,
+      fortressCenter.z + room.z
+    )
+    space.add(roomMesh)
+
+    // 照明
+    const light = new THREE.Mesh(
+      new THREE.BoxGeometry(room.w * 0.5, 2, room.d * 0.5),
+      fortressLightMat
+    )
+    light.position.set(
+      fortressCenter.x + room.x,
+      fortressCenter.y + room.y + room.h / 2 - 2,
+      fortressCenter.z + room.z
+    )
+    space.add(light)
+  }
+
+  // 廊下（第1層）
+  const l1Corridors = [
+    { x: 50, y: -50, z: 0, length: 40, angle: 0 },
+    { x: -50, y: -50, z: 0, length: 40, angle: 0 },
+    { x: 0, y: -50, z: 50, length: 40, angle: Math.PI / 2 },
+    { x: 0, y: -50, z: -50, length: 40, angle: Math.PI / 2 },
+  ]
+
+  for (const corridor of l1Corridors) {
+    const corridorMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(corridor.length, 15, 10),
+      fortressMat
+    )
+    corridorMesh.position.set(
+      fortressCenter.x + corridor.x,
+      fortressCenter.y + corridor.y,
+      fortressCenter.z + corridor.z
+    )
+    corridorMesh.rotation.y = corridor.angle
+    space.add(corridorMesh)
+  }
+
+  // 第2層（中層、-100～-200m）
+  const l2Rooms = [
+    { x: 0, y: -150, z: 0, w: 100, h: 40, d: 100, name: 'reactor' },
+    { x: 80, y: -150, z: 0, w: 50, h: 30, d: 50, name: 'life_support' },
+    { x: -80, y: -150, z: 0, w: 50, h: 30, d: 50, name: 'quarters' },
+    { x: 0, y: -150, z: 80, w: 60, h: 30, d: 60, name: 'quarters' },
+    { x: 0, y: -150, z: -80, w: 60, h: 30, d: 60, name: 'storage' },
+  ]
+
+  for (const room of l2Rooms) {
+    const roomMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(room.w, room.h, room.d),
+      fortressMat
+    )
+    roomMesh.position.set(
+      fortressCenter.x + room.x,
+      fortressCenter.y + room.y,
+      fortressCenter.z + room.z
+    )
+    space.add(roomMesh)
+
+    // 動力炉の発光
+    if (room.name === 'reactor') {
+      const reactor = new THREE.Mesh(
+        new THREE.SphereGeometry(30, 16, 16),
+        new THREE.MeshStandardMaterial({ color: 0x0088ff, emissive: 0x0066ff, emissiveIntensity: 3.0 })
+      )
+      reactor.position.set(
+        fortressCenter.x + room.x,
+        fortressCenter.y + room.y,
+        fortressCenter.z + room.z
+      )
+      space.add(reactor)
+    }
+  }
+
+  // 第3層（深部、-200～-300m）: コア制御室
+  const l3Core = new THREE.Mesh(
+    new THREE.BoxGeometry(80, 30, 80),
+    new THREE.MeshStandardMaterial({ color: 0x222244, metalness: 0.9, roughness: 0.3 })
+  )
+  l3Core.position.set(fortressCenter.x, fortressCenter.y - 250, fortressCenter.z)
+  space.add(l3Core)
+
+  // コア中央の制御装置
+  const coreDevice = new THREE.Mesh(
+    new THREE.CylinderGeometry(15, 15, 20, 12),
+    new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00cccc, emissiveIntensity: 4.0 })
+  )
+  coreDevice.position.set(fortressCenter.x, fortressCenter.y - 250, fortressCenter.z)
+  space.add(coreDevice)
+
+  // 層間接続シャフト
+  const shafts = [
+    { x: 0, y1: -100, y2: -200 },
+    { x: 50, y1: -100, y2: -200 },
+    { x: -50, y1: -100, y2: -200 },
+    { x: 0, y1: -200, y2: -300 },
+  ]
+
+  for (const shaft of shafts) {
+    const height = Math.abs(shaft.y2 - shaft.y1)
+    const shaftMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(8, 8, height, 12),
+      fortressMat
+    )
+    shaftMesh.position.set(
+      fortressCenter.x + shaft.x,
+      fortressCenter.y + (shaft.y1 + shaft.y2) / 2,
+      fortressCenter.z
+    )
+    space.add(shaftMesh)
+  }
+
+  console.log('✅ Fortress interior structure created (3 layers, 15 rooms, 4 shafts)')
+
+  // ===== B. 宇宙ステーション居住区（Habitat Module） =====
+  const HABITAT_MODULE = {
+    position: { x: -1000, y: 500, z: 1500 },
+    size: { length: 400, width: 200, height: 150 },
+  }
+
+  const habitatMat = new THREE.MeshStandardMaterial({
+    color: 0xcccccc,
+    metalness: 0.6,
+    roughness: 0.4,
+    emissive: 0x2a3a4a,
+    emissiveIntensity: 0.3
+  })
+
+  // 居住モジュール8個
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2
+    const r = 80
+    const x = HABITAT_MODULE.position.x + Math.cos(angle) * r
+    const z = HABITAT_MODULE.position.z + Math.sin(angle) * r
+
+    const module = new THREE.Mesh(
+      new THREE.CylinderGeometry(25, 25, 60, 16),
+      habitatMat
+    )
+    module.position.set(x, HABITAT_MODULE.position.y, z)
+    module.rotation.z = Math.PI / 2
+    module.name = 'HabitatModule'
+    space.add(module)
+  }
+
+  // 回転重力リング（中心を囲む）
+  const gravityRingMat = new THREE.MeshStandardMaterial({
+    color: 0x888888,
+    metalness: 0.8,
+    roughness: 0.3
+  })
+
+  const gravityRing = new THREE.Mesh(
+    new THREE.TorusGeometry(120, 15, 16, 64),
+    gravityRingMat
+  )
+  gravityRing.position.set(HABITAT_MODULE.position.x, HABITAT_MODULE.position.y, HABITAT_MODULE.position.z)
+  gravityRing.rotation.x = Math.PI / 2
+  gravityRing.name = 'GravityRing'
+  space.add(gravityRing)
+  rotatingSpaceObjects.push(gravityRing)
+
+  // 農業ドーム2個
+  const domeMat = new THREE.MeshStandardMaterial({
+    color: 0x88ff88,
+    metalness: 0.1,
+    roughness: 0.2,
+    transparent: true,
+    opacity: 0.6
+  })
+
+  for (let i = 0; i < 2; i++) {
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(40, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2),
+      domeMat
+    )
+    dome.position.set(
+      HABITAT_MODULE.position.x + (i === 0 ? -100 : 100),
+      HABITAT_MODULE.position.y + 50,
+      HABITAT_MODULE.position.z
+    )
+    dome.name = 'AgriculturalDome'
+    space.add(dome)
+  }
+
+  // 太陽光パネルアレイ（4枚）
+  const panelMat = new THREE.MeshStandardMaterial({
+    color: 0x1a2a4a,
+    metalness: 0.9,
+    roughness: 0.1,
+    emissive: 0x0a1a3a,
+    emissiveIntensity: 0.2
+  })
+
+  for (let i = 0; i < 4; i++) {
+    const angle = (i / 4) * Math.PI * 2 + Math.PI / 4
+    const r = 180
+    const x = HABITAT_MODULE.position.x + Math.cos(angle) * r
+    const z = HABITAT_MODULE.position.z + Math.sin(angle) * r
+
+    const panel = new THREE.Mesh(
+      new THREE.BoxGeometry(60, 1, 40),
+      panelMat
+    )
+    panel.position.set(x, HABITAT_MODULE.position.y, z)
+    panel.rotation.y = angle
+    panel.name = 'SolarPanel'
+    space.add(panel)
+  }
+
+  console.log('✅ Habitat module created (8 modules, gravity ring, 2 domes, 4 solar panels)')
+
+  // ===== C. 廃棄船墓場の拡張（巨大戦艦5隻追加） =====
+  const ADDITIONAL_CAPITAL_SHIPS = [
+    { x: 2000, y: -100, z: -1400, length: 800, type: 'battleship' },
+    { x: 2400, y: -300, z: -1800, length: 1000, type: 'carrier' },
+    { x: 1800, y: 0, z: -1200, length: 700, type: 'cruiser' },
+    { x: 2200, y: -200, z: -2000, length: 900, type: 'dreadnought' },
+    { x: 2600, y: -400, z: -1600, length: 600, type: 'destroyer' },
+  ]
+
+  const capitalShipMat = new THREE.MeshStandardMaterial({
+    color: 0x4a4a5a,
+    metalness: 0.6,
+    roughness: 0.7,
+    emissive: 0x1a1a2a,
+    emissiveIntensity: 0.1
+  })
+
+  for (const ship of ADDITIONAL_CAPITAL_SHIPS) {
+    // 艦体（メイン）
+    const hull = new THREE.Mesh(
+      new THREE.BoxGeometry(ship.length, ship.length * 0.15, ship.length * 0.25),
+      capitalShipMat
+    )
+    hull.position.set(ship.x, ship.y, ship.z)
+    hull.rotation.set(
+      (Math.random() - 0.5) * 0.3,
+      Math.random() * Math.PI * 2,
+      (Math.random() - 0.5) * 0.3
+    )
+    hull.name = `CapitalShip_${ship.type}`
+    space.add(hull)
+
+    // 艦橋
+    const bridge = new THREE.Mesh(
+      new THREE.BoxGeometry(ship.length * 0.15, ship.length * 0.1, ship.length * 0.12),
+      capitalShipMat
+    )
+    bridge.position.set(ship.x, ship.y + ship.length * 0.12, ship.z)
+    bridge.rotation.copy(hull.rotation)
+    space.add(bridge)
+
+    // エンジンブロック×2
+    for (let i = 0; i < 2; i++) {
+      const engine = new THREE.Mesh(
+        new THREE.CylinderGeometry(ship.length * 0.08, ship.length * 0.1, ship.length * 0.2, 12),
+        new THREE.MeshStandardMaterial({
+          color: 0x3a3a4a,
+          metalness: 0.8,
+          roughness: 0.5,
+          emissive: 0xff3300,
+          emissiveIntensity: 0.05  // 微弱な発光（死んでいるエンジン）
+        })
+      )
+      const offsetZ = (i === 0 ? -1 : 1) * ship.length * 0.08
+      engine.position.set(
+        ship.x - ship.length * 0.4,
+        ship.y,
+        ship.z + offsetZ
+      )
+      engine.rotation.set(hull.rotation.x, hull.rotation.y, Math.PI / 2)
+      space.add(engine)
+    }
+
+    // 破損箇所（穴）
+    const damageCount = 3 + Math.floor(Math.random() * 3)
+    for (let i = 0; i < damageCount; i++) {
+      const damage = new THREE.Mesh(
+        new THREE.SphereGeometry(ship.length * 0.05, 8, 8),
+        new THREE.MeshBasicMaterial({ color: 0x000000 })
+      )
+      damage.position.set(
+        ship.x + (Math.random() - 0.5) * ship.length * 0.8,
+        ship.y + (Math.random() - 0.5) * ship.length * 0.1,
+        ship.z + (Math.random() - 0.5) * ship.length * 0.2
+      )
+      space.add(damage)
+    }
+
+    // 衝突判定（船全体）
+    spaceHazards.push({
+      pos: new THREE.Vector3(ship.x, ship.y, ship.z),
+      radius: ship.length * 0.6
+    })
+  }
+
+  console.log('✅ Additional capital ships created (5 ships: battleship, carrier, cruiser, dreadnought, destroyer)')
 
   // ===== 軌道パス（Orbital Path - 推奨飛行ルート可視化） =====
   const ORBITAL_PATH = [

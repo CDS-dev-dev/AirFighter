@@ -302,6 +302,7 @@ export class NeoTokyoMapSystem {
     this.createRouteSideDensity()
     this.createDistantSkyline()
     this.createPeripheralBuildings()
+    this.createDistrictFeatures()
     this.createLandmarks()
     this.createNeoLandmarkExtensions()
     this.createImperialPalace()
@@ -309,6 +310,7 @@ export class NeoTokyoMapSystem {
     this.createRainbowBridgeAscentTube()
     this.createHolograms()
     this.createWater()
+    this.createUndergroundStructure()
   }
 
   // Tokyo topography: Musashino Plateau (west, high), CBD (center), Bay (east-south, low)
@@ -1421,6 +1423,418 @@ export class NeoTokyoMapSystem {
       }
     }
     console.log(`✅ Peripheral buildings created: ${count}`)
+  }
+
+  private createDistrictFeatures(): void {
+    // ===== A. 商業地区（中心部、半径1000m） =====
+    const COMMERCIAL_DISTRICT = {
+      center: { x: 0, z: 0 },
+      radius: 1000,
+    }
+
+    // ネオンサイン200個（消灯状態）
+    const neonMat = new THREE.MeshStandardMaterial({
+      color: 0x3344ff,
+      emissive: 0x001133,
+      emissiveIntensity: 0.3,
+      metalness: 0.7,
+      roughness: 0.3
+    })
+
+    let neonCount = 0
+    for (let i = 0; i < 200; i++) {
+      const angle = sr(i * 13.7) * Math.PI * 2
+      const r = sr(i * 7.3) * COMMERCIAL_DISTRICT.radius
+      const x = Math.cos(angle) * r
+      const z = Math.sin(angle) * r
+
+      const gy = NeoTokyoMapSystem.heightAt(x, z)
+      const signH = 30 + sr(i * 5.1) * 50  // 30-80m高さに配置
+
+      const sign = new THREE.Mesh(
+        new THREE.BoxGeometry(20 + sr(i * 3.2) * 15, 8 + sr(i * 4.1) * 6, 2),
+        neonMat
+      )
+      sign.position.set(x, gy + signH, z)
+      sign.rotation.y = sr(i * 2.1) * Math.PI * 2
+      this.scene.add(sign)
+      this.deco.push(sign)
+      neonCount++
+    }
+
+    // 大型スクリーン20個
+    const screenMat = new THREE.MeshStandardMaterial({
+      color: 0x1a1a22,
+      emissive: 0x111122,
+      emissiveIntensity: 0.2,
+      metalness: 0.9,
+      roughness: 0.1
+    })
+
+    for (let i = 0; i < 20; i++) {
+      const angle = sr(i * 17.3) * Math.PI * 2
+      const r = sr(i * 11.1) * COMMERCIAL_DISTRICT.radius * 0.8
+      const x = Math.cos(angle) * r
+      const z = Math.sin(angle) * r
+
+      const gy = NeoTokyoMapSystem.heightAt(x, z)
+      const screenH = 100 + sr(i * 6.7) * 80  // 100-180m高さ
+
+      const screen = new THREE.Mesh(
+        new THREE.BoxGeometry(40 + sr(i * 8.3) * 30, 25 + sr(i * 9.1) * 20, 3),
+        screenMat
+      )
+      screen.position.set(x, gy + screenH, z)
+      screen.rotation.y = Math.atan2(z, x) + Math.PI  // 中心を向く
+      this.scene.add(screen)
+      this.deco.push(screen)
+    }
+
+    // 広告看板500枚（小型）
+    const billboardMat = new THREE.MeshLambertMaterial({
+      color: 0x444455,
+      emissive: 0x111122,
+      emissiveIntensity: 0.15
+    })
+
+    for (let i = 0; i < 500; i++) {
+      const angle = sr(i * 23.7) * Math.PI * 2
+      const r = sr(i * 19.3) * COMMERCIAL_DISTRICT.radius
+      const x = Math.cos(angle) * r
+      const z = Math.sin(angle) * r
+
+      const gy = NeoTokyoMapSystem.heightAt(x, z)
+      const billH = 15 + sr(i * 7.7) * 100  // 15-115m高さ
+
+      const billboard = new THREE.Mesh(
+        new THREE.BoxGeometry(8 + sr(i * 3.9) * 6, 5 + sr(i * 4.3) * 4, 0.5),
+        billboardMat
+      )
+      billboard.position.set(x, gy + billH, z)
+      billboard.rotation.y = sr(i * 5.5) * Math.PI * 2
+      this.scene.add(billboard)
+      this.deco.push(billboard)
+    }
+
+    console.log(`✅ Commercial district features: ${neonCount} neon signs, 20 screens, 500 billboards`)
+
+    // ===== B. 住宅地区（外周、半径1000-2500m） =====
+    const RESIDENTIAL_DISTRICT = {
+      innerRadius: 1000,
+      outerRadius: 2500,
+    }
+
+    // 低層マンション300棟（5-10階）
+    const apartmentMat = new THREE.MeshLambertMaterial({
+      color: 0x2a3a4a,
+      emissive: 0x0f1f2f,
+      emissiveIntensity: 0.2
+    })
+
+    let apartmentCount = 0
+    for (let i = 0; i < 300; i++) {
+      const angle = sr(i * 31.3) * Math.PI * 2
+      const r = RESIDENTIAL_DISTRICT.innerRadius + sr(i * 27.7) * (RESIDENTIAL_DISTRICT.outerRadius - RESIDENTIAL_DISTRICT.innerRadius)
+      const x = Math.cos(angle) * r
+      const z = Math.sin(angle) * r
+
+      // 水域スキップ
+      if (isInWaterArea(x, z)) continue
+
+      const gy = NeoTokyoMapSystem.heightAt(x, z)
+      const floors = 5 + Math.floor(sr(i * 8.9) * 6)  // 5-10階
+      const h = floors * 3.5  // 17.5-35m
+
+      const apartment = new THREE.Mesh(
+        new THREE.BoxGeometry(18 + sr(i * 6.1) * 10, h, 12 + sr(i * 7.3) * 8),
+        apartmentMat
+      )
+      apartment.position.set(x, gy + h / 2, z)
+      apartment.rotation.y = sr(i * 4.7) * Math.PI * 2
+      this.scene.add(apartment)
+      this.deco.push(apartment)
+      apartmentCount++
+    }
+
+    // 一戸建て風の建物100棟（2-3階）
+    const houseMat = new THREE.MeshLambertMaterial({
+      color: 0x4a3a2a,
+      emissive: 0x1f0f0a,
+      emissiveIntensity: 0.1
+    })
+
+    for (let i = 0; i < 100; i++) {
+      const angle = sr(i * 41.7) * Math.PI * 2
+      const r = RESIDENTIAL_DISTRICT.innerRadius + sr(i * 37.3) * (RESIDENTIAL_DISTRICT.outerRadius - RESIDENTIAL_DISTRICT.innerRadius)
+      const x = Math.cos(angle) * r
+      const z = Math.sin(angle) * r
+
+      if (isInWaterArea(x, z)) continue
+
+      const gy = NeoTokyoMapSystem.heightAt(x, z)
+      const floors = 2 + Math.floor(sr(i * 9.7) * 2)  // 2-3階
+      const h = floors * 3.2  // 6.4-9.6m
+
+      const house = new THREE.Mesh(
+        new THREE.BoxGeometry(12 + sr(i * 5.3) * 6, h, 10 + sr(i * 6.7) * 5),
+        houseMat
+      )
+      house.position.set(x, gy + h / 2, z)
+      house.rotation.y = sr(i * 3.3) * Math.PI * 2
+      this.scene.add(house)
+      this.deco.push(house)
+    }
+
+    // 公園5箇所
+    const parkMat = new THREE.MeshLambertMaterial({ color: 0x1a2a1a })
+
+    const parkPositions = [
+      { x: -1800, z: -1800 },
+      { x: 1800, z: -1800 },
+      { x: -1800, z: 1800 },
+      { x: 1800, z: 1800 },
+      { x: 0, z: 2200 },
+    ]
+
+    for (const pos of parkPositions) {
+      const gy = NeoTokyoMapSystem.heightAt(pos.x, pos.z)
+      const park = new THREE.Mesh(
+        new THREE.BoxGeometry(80, 1, 80),
+        parkMat
+      )
+      park.position.set(pos.x, gy + 0.5, pos.z)
+      this.scene.add(park)
+      this.deco.push(park)
+    }
+
+    // 学校3箇所
+    const schoolMat = new THREE.MeshLambertMaterial({
+      color: 0x5a4a3a,
+      emissive: 0x2a1a0a,
+      emissiveIntensity: 0.1
+    })
+
+    const schoolPositions = [
+      { x: -1500, z: -1500 },
+      { x: 1500, z: -1500 },
+      { x: 0, z: -2000 },
+    ]
+
+    for (const pos of schoolPositions) {
+      const gy = NeoTokyoMapSystem.heightAt(pos.x, pos.z)
+      const school = new THREE.Mesh(
+        new THREE.BoxGeometry(60, 18, 40),  // 3階建て想定
+        schoolMat
+      )
+      school.position.set(pos.x, gy + 9, pos.z)
+      this.scene.add(school)
+      this.deco.push(school)
+    }
+
+    // 病院2箇所
+    const hospitalMat = new THREE.MeshLambertMaterial({
+      color: 0xeaeaea,
+      emissive: 0x3a3a3a,
+      emissiveIntensity: 0.15
+    })
+
+    const hospitalPositions = [
+      { x: -2000, z: 0 },
+      { x: 2000, z: 0 },
+    ]
+
+    for (const pos of hospitalPositions) {
+      const gy = NeoTokyoMapSystem.heightAt(pos.x, pos.z)
+      const hospital = new THREE.Mesh(
+        new THREE.BoxGeometry(70, 36, 50),  // 8階建て想定
+        hospitalMat
+      )
+      hospital.position.set(pos.x, gy + 18, pos.z)
+      this.scene.add(hospital)
+      this.deco.push(hospital)
+
+      // 屋上ヘリポート
+      const helipad = new THREE.Mesh(
+        new THREE.CylinderGeometry(12, 12, 1, 16),
+        new THREE.MeshLambertMaterial({ color: 0xff4444 })
+      )
+      helipad.position.set(pos.x, gy + 36.5, pos.z)
+      this.scene.add(helipad)
+      this.deco.push(helipad)
+    }
+
+    console.log(`✅ Residential district features: ${apartmentCount} apartments, 100 houses, 5 parks, 3 schools, 2 hospitals`)
+
+    // ===== C. 工業地区（南東部、特定エリア） =====
+    const INDUSTRIAL_DISTRICT = {
+      center: { x: 2000, z: 2000 },
+      radius: 1000,
+    }
+
+    // 工場10棟（煙突付き）
+    const factoryMat = new THREE.MeshLambertMaterial({
+      color: 0x3a3a3a,
+      emissive: 0x1a1a1a,
+      emissiveIntensity: 0.1
+    })
+
+    const chimneyMat = new THREE.MeshLambertMaterial({ color: 0x5a3a2a })
+
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2
+      const r = sr(i * 15.7) * INDUSTRIAL_DISTRICT.radius * 0.8
+      const x = INDUSTRIAL_DISTRICT.center.x + Math.cos(angle) * r
+      const z = INDUSTRIAL_DISTRICT.center.z + Math.sin(angle) * r
+
+      const gy = NeoTokyoMapSystem.heightAt(x, z)
+      const factoryH = 30 + sr(i * 8.3) * 20  // 30-50m
+
+      // 工場本体
+      const factory = new THREE.Mesh(
+        new THREE.BoxGeometry(80 + sr(i * 6.7) * 40, factoryH, 60 + sr(i * 7.9) * 30),
+        factoryMat
+      )
+      factory.position.set(x, gy + factoryH / 2, z)
+      factory.rotation.y = sr(i * 5.1) * Math.PI * 2
+      this.scene.add(factory)
+      this.deco.push(factory)
+
+      // 煙突
+      const chimneyH = 60 + sr(i * 9.1) * 40  // 60-100m
+      const chimney = new THREE.Mesh(
+        new THREE.CylinderGeometry(5, 6, chimneyH, 12),
+        chimneyMat
+      )
+      chimney.position.set(x + 20, gy + chimneyH / 2, z + 10)
+      this.scene.add(chimney)
+      this.deco.push(chimney)
+    }
+
+    // 倉庫50棟
+    const warehouseMat = new THREE.MeshLambertMaterial({ color: 0x4a4a4a })
+
+    for (let i = 0; i < 50; i++) {
+      const angle = sr(i * 29.3) * Math.PI * 2
+      const r = sr(i * 23.7) * INDUSTRIAL_DISTRICT.radius
+      const x = INDUSTRIAL_DISTRICT.center.x + Math.cos(angle) * r
+      const z = INDUSTRIAL_DISTRICT.center.z + Math.sin(angle) * r
+
+      const gy = NeoTokyoMapSystem.heightAt(x, z)
+      const warehouseH = 12 + sr(i * 7.7) * 8  // 12-20m
+
+      const warehouse = new THREE.Mesh(
+        new THREE.BoxGeometry(25 + sr(i * 5.3) * 15, warehouseH, 20 + sr(i * 6.1) * 10),
+        warehouseMat
+      )
+      warehouse.position.set(x, gy + warehouseH / 2, z)
+      warehouse.rotation.y = sr(i * 4.3) * Math.PI * 2
+      this.scene.add(warehouse)
+      this.deco.push(warehouse)
+    }
+
+    // クレーン15基
+    const craneMat = new THREE.MeshStandardMaterial({
+      color: 0xff8800,
+      metalness: 0.7,
+      roughness: 0.4
+    })
+
+    for (let i = 0; i < 15; i++) {
+      const angle = sr(i * 33.7) * Math.PI * 2
+      const r = sr(i * 27.1) * INDUSTRIAL_DISTRICT.radius * 0.9
+      const x = INDUSTRIAL_DISTRICT.center.x + Math.cos(angle) * r
+      const z = INDUSTRIAL_DISTRICT.center.z + Math.sin(angle) * r
+
+      const gy = NeoTokyoMapSystem.heightAt(x, z)
+
+      // クレーン支柱
+      const craneH = 50 + sr(i * 8.9) * 30  // 50-80m
+      const cranePole = new THREE.Mesh(
+        new THREE.BoxGeometry(6, craneH, 6),
+        craneMat
+      )
+      cranePole.position.set(x, gy + craneH / 2, z)
+      this.scene.add(cranePole)
+      this.deco.push(cranePole)
+
+      // クレーンアーム
+      const armLength = 30 + sr(i * 7.3) * 20  // 30-50m
+      const craneArm = new THREE.Mesh(
+        new THREE.BoxGeometry(armLength, 3, 3),
+        craneMat
+      )
+      craneArm.position.set(x + armLength / 2, gy + craneH, z)
+      craneArm.rotation.y = sr(i * 6.7) * Math.PI * 2
+      this.scene.add(craneArm)
+      this.deco.push(craneArm)
+    }
+
+    // タンク20基（石油タンク）
+    const tankMat = new THREE.MeshLambertMaterial({ color: 0x5a5a5a })
+
+    for (let i = 0; i < 20; i++) {
+      const angle = sr(i * 37.9) * Math.PI * 2
+      const r = sr(i * 31.3) * INDUSTRIAL_DISTRICT.radius * 0.7
+      const x = INDUSTRIAL_DISTRICT.center.x + Math.cos(angle) * r
+      const z = INDUSTRIAL_DISTRICT.center.z + Math.sin(angle) * r
+
+      const gy = NeoTokyoMapSystem.heightAt(x, z)
+      const tankR = 10 + sr(i * 5.7) * 8  // 半径10-18m
+      const tankH = 15 + sr(i * 6.3) * 10  // 高さ15-25m
+
+      const tank = new THREE.Mesh(
+        new THREE.CylinderGeometry(tankR, tankR, tankH, 16),
+        tankMat
+      )
+      tank.position.set(x, gy + tankH / 2, z)
+      this.scene.add(tank)
+      this.deco.push(tank)
+    }
+
+    // 貨物列車3編成（停止）
+    const trainMat = new THREE.MeshLambertMaterial({ color: 0x2a2a3a })
+    const locomotiveMat = new THREE.MeshLambertMaterial({
+      color: 0x4a4a6a,
+      emissive: 0x1a1a2a,
+      emissiveIntensity: 0.2
+    })
+
+    const trainPaths = [
+      { x: 1500, z: 2000, angle: 0, cars: 8 },
+      { x: 2000, z: 1500, angle: Math.PI / 2, cars: 10 },
+      { x: 2500, z: 2500, angle: Math.PI / 4, cars: 6 },
+    ]
+
+    for (const path of trainPaths) {
+      const gy = NeoTokyoMapSystem.heightAt(path.x, path.z)
+
+      // 機関車
+      const locomotive = new THREE.Mesh(
+        new THREE.BoxGeometry(8, 8, 15),
+        locomotiveMat
+      )
+      locomotive.position.set(path.x, gy + 4, path.z)
+      locomotive.rotation.y = path.angle
+      this.scene.add(locomotive)
+      this.deco.push(locomotive)
+
+      // 貨車
+      for (let i = 1; i <= path.cars; i++) {
+        const offsetX = Math.cos(path.angle + Math.PI) * i * 18
+        const offsetZ = Math.sin(path.angle + Math.PI) * i * 18
+
+        const car = new THREE.Mesh(
+          new THREE.BoxGeometry(7, 7, 16),
+          trainMat
+        )
+        car.position.set(path.x + offsetX, gy + 3.5, path.z + offsetZ)
+        car.rotation.y = path.angle
+        this.scene.add(car)
+        this.deco.push(car)
+      }
+    }
+
+    console.log(`✅ Industrial district features: 10 factories, 50 warehouses, 15 cranes, 20 tanks, 3 cargo trains`)
   }
 
   buildSkyRing(R: number, Y: number, roadW: number, N: number, _deckMat: THREE.Material, railMat: THREE.Material): void {
@@ -2570,6 +2984,158 @@ export class NeoTokyoMapSystem {
     // Arakawa river (far east)
     const arakawa = new THREE.Mesh(new THREE.PlaneGeometry(120, 8000), wMat)
     arakawa.rotation.x = -Math.PI / 2; arakawa.position.set(2600, WATER_LEVEL + 0.08, -500); this.scene.add(arakawa); this.deco.push(arakawa)
+  }
+
+  private createUndergroundStructure(): void {
+    // Tokyo地下5層構造
+    const undergroundMat = new THREE.MeshLambertMaterial({ color: 0x222222, emissive: 0x333333, emissiveIntensity: 0.3 })
+    const glowMat = new THREE.MeshLambertMaterial({ color: 0xffaa00, emissive: 0xff8800, emissiveIntensity: 1.0 })
+
+    // B1層（-10m）: 商業施設、駐車場
+    const b1Areas = [
+      { x: 0, z: 0, w: 800, d: 800 },
+      { x: 1000, z: 0, w: 600, d: 600 },
+      { x: -1000, z: 0, w: 600, d: 600 },
+      { x: 0, z: 1000, w: 500, d: 500 },
+      { x: 0, z: -1000, w: 500, d: 500 },
+    ]
+
+    for (const area of b1Areas) {
+      const floor = new THREE.Mesh(
+        new THREE.BoxGeometry(area.w, 1, area.d),
+        undergroundMat
+      )
+      floor.position.set(area.x, -10, area.z)
+      this.scene.add(floor)
+      this.deco.push(floor)
+
+      // 柱×16
+      for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+          const pillar = new THREE.Mesh(
+            new THREE.CylinderGeometry(2, 2, 8, 8),
+            undergroundMat
+          )
+          pillar.position.set(
+            area.x + (i - 1.5) * area.w / 4,
+            -10 + 4,
+            area.z + (j - 1.5) * area.d / 4
+          )
+          this.scene.add(pillar)
+          this.deco.push(pillar)
+        }
+      }
+    }
+
+    // B2層（-20m）: 地下鉄駅、通路
+    const b2Tunnels = [
+      { x1: -1500, z1: 0, x2: 1500, z2: 0 },  // 東西線
+      { x1: 0, z1: -1500, x2: 0, z2: 1500 },  // 南北線
+    ]
+
+    for (const tunnel of b2Tunnels) {
+      const length = Math.hypot(tunnel.x2 - tunnel.x1, tunnel.z2 - tunnel.z1)
+      const midX = (tunnel.x1 + tunnel.x2) / 2
+      const midZ = (tunnel.z1 + tunnel.z2) / 2
+      const angle = Math.atan2(tunnel.z2 - tunnel.z1, tunnel.x2 - tunnel.x1)
+
+      const tunnelMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(length, 6, 15),
+        undergroundMat
+      )
+      tunnelMesh.position.set(midX, -20, midZ)
+      tunnelMesh.rotation.y = angle
+      this.scene.add(tunnelMesh)
+      this.deco.push(tunnelMesh)
+
+      // 照明×20
+      for (let i = 0; i < 20; i++) {
+        const t = i / 19
+        const light = new THREE.Mesh(
+          new THREE.BoxGeometry(2, 0.5, 2),
+          glowMat
+        )
+        light.position.set(
+          tunnel.x1 + (tunnel.x2 - tunnel.x1) * t,
+          -17,
+          tunnel.z1 + (tunnel.z2 - tunnel.z1) * t
+        )
+        this.scene.add(light)
+        this.deco.push(light)
+      }
+    }
+
+    // B3層（-30m）: 下水道、配管
+    const b3Pipes = [
+      { x: -800, z: -800, x2: 800, z2: -800 },
+      { x: -800, z: 800, x2: 800, z2: 800 },
+      { x: -800, z: -800, x2: -800, z2: 800 },
+      { x: 800, z: -800, x2: 800, z2: 800 },
+    ]
+
+    for (const pipe of b3Pipes) {
+      const length = Math.hypot(pipe.x2 - pipe.x, pipe.z2 - pipe.z)
+      const midX = (pipe.x + pipe.x2) / 2
+      const midZ = (pipe.z + pipe.z2) / 2
+      const angle = Math.atan2(pipe.z2 - pipe.z, pipe.x2 - pipe.x)
+
+      const pipeMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(5, 5, length, 12),
+        new THREE.MeshLambertMaterial({ color: 0x444444 })
+      )
+      pipeMesh.position.set(midX, -30, midZ)
+      pipeMesh.rotation.set(0, 0, angle + Math.PI / 2)
+      this.scene.add(pipeMesh)
+      this.deco.push(pipeMesh)
+    }
+
+    // B4層（-40m）: シェルター
+    const shelters = [
+      { x: 0, z: 0, r: 100 },
+      { x: -500, z: -500, r: 60 },
+      { x: 500, z: -500, r: 60 },
+      { x: -500, z: 500, r: 60 },
+      { x: 500, z: 500, r: 60 },
+    ]
+
+    for (const shelter of shelters) {
+      const shelterMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(shelter.r, shelter.r, 8, 24),
+        new THREE.MeshLambertMaterial({ color: 0x555555 })
+      )
+      shelterMesh.position.set(shelter.x, -40, shelter.z)
+      this.scene.add(shelterMesh)
+      this.deco.push(shelterMesh)
+
+      // 入口標識
+      const sign = new THREE.Mesh(
+        new THREE.BoxGeometry(10, 3, 1),
+        glowMat
+      )
+      sign.position.set(shelter.x, -36, shelter.z + shelter.r)
+      this.scene.add(sign)
+      this.deco.push(sign)
+    }
+
+    // B5層（-50m）: 秘密施設（隠しエリア）
+    const secretFacility = new THREE.Mesh(
+      new THREE.BoxGeometry(200, 10, 150),
+      new THREE.MeshLambertMaterial({ color: 0x111111, emissive: 0x220000, emissiveIntensity: 0.5 })
+    )
+    secretFacility.position.set(-500, -50, 300)
+    this.scene.add(secretFacility)
+    this.deco.push(secretFacility)
+
+    // アクセストンネル（B1→B5）
+    const accessShaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(8, 8, 40, 12),
+      undergroundMat
+    )
+    accessShaft.position.set(-500, -30, 300)
+    this.scene.add(accessShaft)
+    this.deco.push(accessShaft)
+
+    console.log('✅ Tokyo underground structure created (5 layers, B1-B5)')
   }
 
 }
