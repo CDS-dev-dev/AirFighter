@@ -3529,25 +3529,44 @@ async function buildSpaceMap() {
   const obj = new THREE.Object3D()
 
   for (let i = 0; i < asteroidCount; i++) {
-    // MAP全体（6km×6km×0.9km）に3D的に均等配置
-    // Y座標：-400〜500mの範囲
-    const y = -400 + Math.random() * 900
-
-    // XZ座標：-3000〜3000mの範囲にランダム配置
-    let x = -3000 + Math.random() * 6000
-    let z = -3000 + Math.random() * 6000
-
-    // 中央補給ステーション周辺（0, 130, 420）は小惑星なし（半径200m）
-    const hubDist = Math.sqrt(x * x + (z - 420) * (z - 420))
-    if (hubDist < 200 && Math.abs(y - 130) < 100) {
-      // 外側に押し出す
-      const angle = Math.atan2(z - 420, x)
-      x = Math.cos(angle) * (250 + Math.random() * 200)
-      z = 420 + Math.sin(angle) * (250 + Math.random() * 200)
+    // レイヤー構造（各300m厚）
+    const layer = i % 3
+    let y = 0
+    if (layer === 0) {
+      y = -400 + Math.random() * 300  // 下層: -400〜-100m
+    } else if (layer === 1) {
+      y = -100 + Math.random() * 300  // 中層: -100〜+200m
+    } else {
+      y = 200 + Math.random() * 300   // 上層: +200〜+500m
     }
 
-    // サイズ：小〜中サイズ中心に配置
-    const s = 4 + Math.random() * 24  // 4〜28m
+    // XZ平面：MAP全体（6km×6km）に配置
+    const x = -2800 + Math.random() * 5600
+    const z = -2800 + Math.random() * 5600
+
+    // 中央補給ステーション周辺クリア（0,50,0）半径300m
+    const hubDist = Math.sqrt(x * x + z * z)
+    if (hubDist < 300 && Math.abs(y - 50) < 150) {
+      continue
+    }
+
+    // 主要ルート（幅400m）をクリア：補給→要塞→リング
+    if (Math.abs(x) < 200 && z < 200 && z > -2500 && Math.abs(y - 50) < 150) {
+      continue
+    }
+
+    // レイヤー別のサイズ分布
+    let s = 0
+    if (layer === 0) {
+      // 下層：中〜大型（密集感・カバー）
+      s = 12 + Math.random() * 35  // 12〜47m
+    } else if (layer === 1) {
+      // 中層：小〜中型（バランス）
+      s = 8 + Math.random() * 22   // 8〜30m
+    } else {
+      // 上層：小型主体（開放感）
+      s = 5 + Math.random() * 15   // 5〜20m
+    }
 
     // 位置に多少のランダムオフセットを追加
     obj.position.set(
@@ -3578,18 +3597,61 @@ async function buildSpaceMap() {
     for (const zone of spaceZones) {
       if (zone.zone_id === 'central_hub') continue // 補給ステーションは障害物なし
 
-      // ゾーン周囲に10-15個の小惑星を配置（カバーポイント）
-      const count = 10 + Math.floor(Math.random() * 6)
-      const radius = zone.layer === 'upper' ? 220 : zone.layer === 'lower' ? 200 : 180
+      // ゾーンごとの特徴的な小惑星配置
+      let count = 0
+      let radiusMin = 0
+      let radiusMax = 0
+      let sizeMin = 0
+      let sizeMax = 0
+
+      if (zone.zone_id === 'mining_colony') {
+        // 採掘コロニー：密集（半径300m内に80個）
+        count = 80
+        radiusMin = 50
+        radiusMax = 300
+        sizeMin = 20
+        sizeMax = 80
+      } else if (zone.zone_id === 'ship_graveyard') {
+        // 船墓場：中型デブリ散在
+        count = 40
+        radiusMin = 100
+        radiusMax = 350
+        sizeMin = 15
+        sizeMax = 50
+      } else if (zone.zone_id === 'fortress') {
+        // 要塞：外周に中型
+        count = 30
+        radiusMin = 150
+        radiusMax = 250
+        sizeMin = 15
+        sizeMax = 40
+      } else if (zone.zone_id === 'construction') {
+        // 建造現場：フレーム周辺
+        count = 40
+        radiusMin = 120
+        radiusMax = 280
+        sizeMin = 15
+        sizeMax = 40
+      } else if (zone.zone_id === 'orbital_ring') {
+        // 軌道リング：ほぼクリア
+        count = 15
+        radiusMin = 400
+        radiusMax = 600
+        sizeMin = 8
+        sizeMax = 20
+      } else {
+        // 補給ステーション：クリア
+        continue
+      }
 
       for (let j = 0; j < count; j++) {
-        const angle = (j / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.8
-        const dist = radius + Math.random() * 80
+        const angle = (j / count) * Math.PI * 2 + (Math.random() - 0.5) * 1.0
+        const dist = radiusMin + Math.random() * (radiusMax - radiusMin)
         const offsetX = Math.cos(angle) * dist
         const offsetZ = Math.sin(angle) * dist
-        const offsetY = (Math.random() - 0.5) * 100
+        const offsetY = (Math.random() - 0.5) * 150
 
-        const size = 18 + Math.random() * 28
+        const size = sizeMin + Math.random() * (sizeMax - sizeMin)
         const asteroid = new THREE.Mesh(zoneAsteroidGeo, zoneAsteroidMat)
         asteroid.position.set(
           zone.position.x + offsetX,
