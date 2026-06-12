@@ -7,9 +7,10 @@ import { MultiplayerClient } from './multiplayer'
 import { CollectibleSystem } from './collectibleSystem'
 import { loadLogsData, createLogVisuals, checkLogDiscovery, discoverLog, getLogsStats, type LogEntry } from './logsSystem'
 import { getStoryScenesByMap, createStorySceneVisuals } from './environmentalStorySystem'
+import { getDetailedAreasByMap, createRouteMarkers } from './detailedAreasSystem'
 
 // ===== VERSION =====
-const VERSION = '7.00.0'
+const VERSION = '7.10.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -148,6 +149,12 @@ let logsGroup: THREE.Group | null = null
 
 // 環境ストーリーシステム
 let storyGroup: THREE.Group | null = null
+
+// 詳細エリアシステム
+let routeMarkersGroup: THREE.Group | null = null
+
+// ゲームプレイ効果システム（バイオーム・地形戦術効果）
+// 将来の実装用：現在はシステム初期化のみ
 
 interface MapBounds {
   minX: number
@@ -2659,7 +2666,7 @@ for (let _ti = 0; _ti < TRAIL_POOL_SIZE; _ti++) {
   _trailPool.push(_tm)
 }
 let _trailPoolIdx = 0
-const playerMissileMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xff8800, emissiveIntensity: 12.0, roughness: 0.3, metalness: 0.7 })
+const playerMissileMat = new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xffff00, emissiveIntensity: 20.0, roughness: 0.2, metalness: 0.9 })
 const enemyMissileMat = new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xcc2200, emissiveIntensity: 2.0, roughness: 0.5, metalness: 0.3 })
 const allyMissileMat  = new THREE.MeshStandardMaterial({ color: 0x44ff88, emissive: 0x00cc44, emissiveIntensity: 3.0, roughness: 0.5, metalness: 0.3 })
 const _fwd = new THREE.Vector3(0, 0, -1)
@@ -3013,10 +3020,13 @@ function firePlayerMissile() {
   mesh.position.copy(player.position).add(new THREE.Vector3(0, -0.5, 2).applyQuaternion(player.quaternion))
   mesh.quaternion.copy(player.quaternion)
   scene.add(mesh)
-  // パフォーマンス最適化：PointLight削除（発射時のフリーズ防止）
+  // プレイヤーミサイルに明るい発光ライトを追加（視認性向上）
+  const missileLight = new THREE.PointLight(0xffff00, 15, 50)
+  missileLight.position.copy(mesh.position)
+  scene.add(missileLight)
   // ミサイル速度 = プレイヤー速度 + 相対速度200 m/s
   const missileAbsoluteSpeed = speed + 200
-  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(missileAbsoluteSpeed), life: 12, target, diverted: false, spd: missileAbsoluteSpeed, turnRate: 3.5, light: null })
+  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(missileAbsoluteSpeed), life: 12, target, diverted: false, spd: missileAbsoluteSpeed, turnRate: 3.5, light: missileLight })
   camShakeAmt = Math.max(camShakeAmt, 0.22)
   playMissileSound()
 }
@@ -7175,6 +7185,22 @@ async function switchMap(map: GameMap) {
     const totalObjects = storyScenes.reduce((sum, scene) => sum + scene.objects.length, 0)
     console.log(`📖 環境ストーリー初期化: ${storyScenes.length}シーン、${totalObjects}オブジェクト配置`)
   }
+
+  // 詳細エリアシステム初期化
+  if (routeMarkersGroup) {
+    scene.remove(routeMarkersGroup)
+  }
+  const detailedAreas = getDetailedAreasByMap(map)
+  routeMarkersGroup = createRouteMarkers(scene, detailedAreas)
+  if (import.meta.env.DEV) {
+    const totalRoutes = detailedAreas.reduce((sum, area) => sum + area.routes.length, 0)
+    console.log(`🗺️ 詳細エリア初期化: ${detailedAreas.length}エリア、${totalRoutes}ルート配置`)
+  }
+
+  // ゲームプレイ効果システム初期化（将来の実装用）
+  if (import.meta.env.DEV) {
+    console.log(`⚙️ ゲームプレイ効果システム: 準備完了（将来の実装用）`)
+  }
 }
 
 // MAP選択ハンドラー関数
@@ -7433,13 +7459,16 @@ function updateHoming(m: HomingMissile, dt: number) {
   if (m.light) m.light.position.copy(m.mesh.position)
   if (m.vel.lengthSq() > 0.01) m.mesh.quaternion.setFromUnitVectors(_fwd, m.vel.clone().normalize())
 
-  // ミサイル軌跡（プールから再利用）
-  if (Math.random() < 0.15) {
+  // ミサイル軌跡（プールから再利用）- プレイヤーミサイルは高頻度で視認性向上
+  const isPlayerMissile = playerMissiles.some(pm => pm.mesh === m.mesh)
+  const trailChance = isPlayerMissile ? 0.35 : 0.15  // プレイヤーミサイルは35%の確率でトレイル生成
+  if (Math.random() < trailChance) {
     const trailMesh = _trailPool[_trailPoolIdx % TRAIL_POOL_SIZE]
     _trailPoolIdx++
     trailMesh.position.copy(m.mesh.position)
     trailMesh.visible = true
-    ;(trailMesh.material as THREE.MeshBasicMaterial).opacity = 0.8
+    ;(trailMesh.material as THREE.MeshBasicMaterial).opacity = isPlayerMissile ? 1.0 : 0.8
+    ;(trailMesh.material as THREE.MeshBasicMaterial).color.setHex(isPlayerMissile ? 0xffff00 : 0xff8800)
     missileTrails.push({ mesh: trailMesh, life: 0.6 })
   }
 }
