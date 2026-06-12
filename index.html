@@ -477,47 +477,49 @@
       #pause-screen {
         position: fixed; inset: 0; z-index: 550;
         background: rgba(0,8,20,0.92); backdrop-filter: blur(12px);
-        display: none; flex-direction: column; align-items: center; justify-content: center; gap: 24px;
-        padding: 40px 20px;
+        display: none; flex-direction: column; align-items: center; justify-content: flex-start; gap: 16px;
+        padding: 20px 20px;
+        overflow-y: auto;
       }
       .pause-title {
-        font-size: 48px; font-weight: 100; letter-spacing: 14px;
+        font-size: 36px; font-weight: 100; letter-spacing: 10px;
         color: #e8f4ff; text-shadow: 0 0 50px rgba(60,160,255,0.6);
       }
       .pause-controls {
-        display: grid; grid-template-columns: repeat(2, 1fr); gap: 30px;
+        display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;
         max-width: 900px; width: 100%;
       }
       .ctrl-section {
         background: rgba(8,22,48,0.7);
         border: 1px solid rgba(60,140,255,0.25);
-        border-radius: 12px; padding: 20px;
+        border-radius: 12px; padding: 14px;
         color: #e8f4ff;
       }
       .ctrl-header {
-        font-size: 18px; font-weight: 700; letter-spacing: 2px;
-        margin-bottom: 16px; color: #4cf;
+        font-size: 16px; font-weight: 700; letter-spacing: 2px;
+        margin-bottom: 12px; color: #4cf;
         display: flex; align-items: center; gap: 10px;
       }
-      .ctrl-icon { font-size: 24px; }
-      .ctrl-list { display: flex; flex-direction: column; gap: 10px; }
+      .ctrl-icon { font-size: 20px; }
+      .ctrl-list { display: flex; flex-direction: column; gap: 6px; }
       .ctrl-item {
         display: flex; justify-content: space-between; align-items: center;
-        padding: 8px 12px; background: rgba(10,20,40,0.5);
-        border-radius: 6px; font-size: 12px;
+        padding: 6px 10px; background: rgba(10,20,40,0.5);
+        border-radius: 6px; font-size: 11px;
       }
       .ctrl-key {
         background: rgba(60,140,255,0.25);
         border: 1px solid rgba(80,170,255,0.4);
-        border-radius: 4px; padding: 4px 10px;
+        border-radius: 4px; padding: 3px 8px;
         font-family: monospace; font-weight: 700;
-        color: #8cf; min-width: 80px; text-align: center;
+        color: #8cf; min-width: 70px; text-align: center;
+        font-size: 10px;
       }
       .ctrl-action { color: rgba(200,235,255,0.85); }
       .pause-resume {
-        margin-top: 10px; padding: 14px 36px;
+        margin-top: 6px; padding: 12px 30px;
         background: rgba(20,60,140,0.8); border: 1px solid rgba(60,140,255,0.5);
-        border-radius: 10px; color: #e8f4ff; font-size: 14px; letter-spacing: 4px;
+        border-radius: 10px; color: #e8f4ff; font-size: 13px; letter-spacing: 3px;
         cursor: pointer; font-family: 'Segoe UI', system-ui;
         transition: background 0.15s, transform 0.1s;
       }
@@ -908,7 +910,7 @@
 
     <!-- ゲームモード＆MAP選択 -->
     <div id="mode-screen">
-      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v5.40.0</span></div>
+      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v5.41.0</span></div>
       <div class="ms-sub">SELECT MAP & MISSION MODE</div>
 
       <!-- MAP・音声・操作設定 -->

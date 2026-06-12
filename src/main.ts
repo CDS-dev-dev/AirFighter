@@ -1152,10 +1152,7 @@ const barrelRollState = {
   active: false,
   direction: 0,  // -1: 左, +1: 右
   progress: 0,   // 0 → 1
-  duration: 0.6,  // 継続時間（秒）
-  lateralAxis: new THREE.Vector3(),  // バレルロール開始時の横方向軸（固定）
-  forwardAxis: new THREE.Vector3(),  // バレルロール開始時の進行方向軸（固定）
-  savedVelocity: new THREE.Vector3() // バレルロール開始時の速度ベクトル（固定）
+  duration: 0.6  // 継続時間（秒）
 }
 
 // ===== INPUT =====
@@ -1201,11 +1198,6 @@ renderer.domElement.addEventListener('wheel', (e) => {
     barrelRollState.active = true
     barrelRollState.direction = e.deltaX > 0 ? 1 : -1  // 右: +1, 左: -1
     barrelRollState.progress = 0
-    // バレルロール開始時の横方向軸と進行方向軸を保存
-    barrelRollState.lateralAxis.set(1, 0, 0).applyQuaternion(player.quaternion)
-    barrelRollState.forwardAxis.set(0, 0, -1).applyQuaternion(player.quaternion)
-    // 現在の速度ベクトルを保存（進行方向を固定）
-    barrelRollState.savedVelocity.copy(barrelRollState.forwardAxis).multiplyScalar(speed)
   }
 }, { passive: true })
 
@@ -5742,10 +5734,8 @@ function loop() {
 
   // 移動前の位置を保存
   const prevPos = player.position.clone()
-  // バレルロール中は保存した速度ベクトルを使用（進行方向固定）
-  const moveVec = barrelRollState.active
-    ? barrelRollState.savedVelocity.clone().multiplyScalar(dt)
-    : _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(speed * dt)
+  // 常に機体の現在姿勢に基づいて前進（バレルロール中も同様）
+  const moveVec = _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(speed * dt)
   const newPos = prevPos.clone().add(moveVec)
 
   // 宇宙MAPでは地形衝突判定をスキップ
