@@ -5729,11 +5729,6 @@ function loop() {
       // Quaternionを使って機体ローカル座標系でロール回転
       const localRollQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, -1), rollAngle)
       player.quaternion.multiply(localRollQuat)
-
-      // 開始時に保存した横軸を使用（固定方向に移動）
-      const lateralDist = 40  // 横移動距離（m）
-      const lateralMove = barrelRollState.lateralAxis.clone().multiplyScalar(barrelRollState.direction * lateralDist * dt / barrelRollState.duration)
-      player.position.add(lateralMove)
     }
   }
 
