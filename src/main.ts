@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.10.1'
+const VERSION = '7.11.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -688,123 +688,107 @@ function makeMountainGeometry(radius: number, height: number, seed: number): THR
 
 // ===== TREES (instanced) =====
 const TREE_COUNT = isMobileDevice ? 400 : 1500
-const _treeMat = (c: number) => isMobileDevice
-  ? new THREE.MeshBasicMaterial({ color: c })
-  : new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 })
-const trunkIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.4,0.72,5.2,5), _treeMat(0x6b4423), TREE_COUNT)
-const foliIM  = new THREE.InstancedMesh(new THREE.ConeGeometry(4.4,10,6,2),         _treeMat(0x2f7d2b), TREE_COUNT)
-const foli2IM = new THREE.InstancedMesh(new THREE.ConeGeometry(3.2,7,6,2),          _treeMat(0x5f9d3a), TREE_COUNT)
-trunkIM.castShadow = foliIM.castShadow = foli2IM.castShadow = !isMobileDevice
-trunkIM.receiveShadow = foliIM.receiveShadow = foli2IM.receiveShadow = !isMobileDevice
+
+// GLBベースの樹木システム（プロシージャルジオメトリから移行）
+const treeGroupOriginal = new THREE.Group()
+treeGroupOriginal.name = 'OriginalTrees_GLB'
+scene.add(treeGroupOriginal)
 // 決定的な疑似ランダム関数（シード値ベース）
 function deterministicRandom(seed: number): number {
   const x = Math.sin(seed) * 10000
   return x - Math.floor(x)
 }
 
-const _d = new THREE.Object3D()
-let treeIndex = 0
-// グリッドベース配置（決定的）
-const gridSize = 40  // 40mグリッド
-const gridRange = 200  // -4000〜4000mを40mグリッドで分割
-for (let gx = -gridRange; gx < gridRange && treeIndex < TREE_COUNT; gx++) {
-  for (let gz = -gridRange; gz < gridRange && treeIndex < TREE_COUNT; gz++) {
-    const baseX = gx * gridSize
-    const baseZ = gz * gridSize
-    // グリッド内でのオフセット（決定的）
-    const seed = gx * 10000 + gz
-    const offsetX = (deterministicRandom(seed) - 0.5) * gridSize * 0.8
-    const offsetZ = (deterministicRandom(seed + 1) - 0.5) * gridSize * 0.8
-    const tx = baseX + offsetX
-    const tz = baseZ + offsetZ
+// GLBベースの樹木配置（非同期ロード）
+gltfLoader.load(import.meta.env.BASE_URL + 'models/tree_deciduous.glb', (gltf) => {
+  const treeTemplate = gltf.scene
+  treeTemplate.traverse((c: any) => { if (c.isMesh) { c.castShadow = !isMobileDevice; c.receiveShadow = !isMobileDevice } })
 
-    const ty = terrainH(tx, tz)
-    const treeSlope = Math.hypot(terrainH(tx + 16, tz) - terrainH(tx - 16, tz), terrainH(tx, tz + 16) - terrainH(tx, tz - 16)) / 32
+  let treeIndex = 0
+  const gridSize = 40
+  const gridRange = 200
 
-    // バイオーム遷移チェック
-    const transition = getBiomeTransition(tx, tz)
+  for (let gx = -gridRange; gx < gridRange && treeIndex < TREE_COUNT; gx++) {
+    for (let gz = -gridRange; gz < gridRange && treeIndex < TREE_COUNT; gz++) {
+      const baseX = gx * gridSize
+      const baseZ = gz * gridSize
+      const seed = gx * 10000 + gz
+      const offsetX = (deterministicRandom(seed) - 0.5) * gridSize * 0.8
+      const offsetZ = (deterministicRandom(seed + 1) - 0.5) * gridSize * 0.8
+      const tx = baseX + offsetX
+      const tz = baseZ + offsetZ
 
-    // 雪山エリアでは広葉樹を減らす（遷移帯では徐々に）
-    if (transition.biome === 'snow' && deterministicRandom(seed + 2) > transition.strength * 0.3) continue
+      const ty = terrainH(tx, tz)
+      const treeSlope = Math.hypot(terrainH(tx + 16, tz) - terrainH(tx - 16, tz), terrainH(tx, tz + 16) - terrainH(tx, tz - 16)) / 32
 
-    // 砂漠エリアでは広葉樹を大幅に減らす（遷移帯では徐々に）
-    if (transition.biome === 'desert' && deterministicRandom(seed + 3) > transition.strength * 0.1) continue
+      const transition = getBiomeTransition(tx, tz)
 
-    // ジャングル遷移帯では密度が上がる（スキップ率を下げる）
-    if (transition.biome === 'jungle' && deterministicRandom(seed + 4) < (1 - transition.strength) * 0.5) {
-      // ジャングルに近いほど配置確率が上がる
+      if (transition.biome === 'snow' && deterministicRandom(seed + 2) > transition.strength * 0.3) continue
+      if (transition.biome === 'desert' && deterministicRandom(seed + 3) > transition.strength * 0.1) continue
+      if (ty > 500) continue
+      if (ty < 4) continue
+      if (treeSlope > 6.0) continue
+      if (ty > 200 && deterministicRandom(seed + 5) < 0.6) continue
+      if (fbm(tx * 0.0015 + 8, tz * 0.0015 - 4, 3) < 0.34 && deterministicRandom(seed + 6) < 0.75) continue
+
+      const tree = treeTemplate.clone()
+      const s = 0.7 + deterministicRandom(seed + 7) * 0.7
+      tree.position.set(tx, ty, tz)
+      tree.scale.setScalar(s)
+      tree.rotation.y = deterministicRandom(seed + 8) * Math.PI * 2
+      treeGroupOriginal.add(tree)
+
+      treeIndex++
     }
-
-    // 標高別植生: 高地（500m-）には木を生やさない
-    if (ty > 500) continue
-    if (ty < 4) continue  // 水面下・峡谷底には植樹しない
-    if (treeSlope > 6.0) continue
-
-    // 中腹（200-500m）: まばらな木（60%の確率でスキップ）
-    if (ty > 200 && deterministicRandom(seed + 5) < 0.6) continue
-
-    // ノイズによる森林パターン
-    if (fbm(tx * 0.0015 + 8, tz * 0.0015 - 4, 3) < 0.34 && deterministicRandom(seed + 6) < 0.75) continue
-
-    const s = 0.7 + deterministicRandom(seed + 7) * 0.7
-    _d.position.set(tx, ty+2*s, tz); _d.scale.setScalar(s); _d.rotation.y = deterministicRandom(seed + 8) * Math.PI * 2; _d.updateMatrix()
-    trunkIM.setMatrixAt(treeIndex, _d.matrix)
-    _d.position.set(tx, ty+7.5*s, tz); _d.updateMatrix()
-    foliIM.setMatrixAt(treeIndex, _d.matrix)
-    _d.position.set(tx, ty+11.5*s, tz); _d.scale.setScalar(s * 0.78); _d.updateMatrix()
-    foli2IM.setMatrixAt(treeIndex, _d.matrix)
-
-    treeIndex++
   }
-}
-trunkIM.instanceMatrix.needsUpdate = true; foliIM.instanceMatrix.needsUpdate = true; foli2IM.instanceMatrix.needsUpdate = true
-trunkIM.name = 'OriginalTrees_Trunk'
-foliIM.name = 'OriginalTrees_Foliage1'
-foli2IM.name = 'OriginalTrees_Foliage2'
-scene.add(trunkIM); scene.add(foliIM); scene.add(foli2IM)
+  console.log(`✅ Deciduous trees loaded: ${treeIndex} trees`)
+})
 
 // ===== 高地植生（灌木・草地、500-800m） =====
 const HIGH_ALTITUDE_SHRUB_COUNT = isMobileDevice ? 200 : 500
-const shrubMat = _treeMat(0x4a6b3f)
-const shrubIM = new THREE.InstancedMesh(new THREE.SphereGeometry(1.5, 6, 4), shrubMat, HIGH_ALTITUDE_SHRUB_COUNT)
-shrubIM.castShadow = shrubIM.receiveShadow = !isMobileDevice
-let shrubIndex = 0
-const shrubGrid = 50  // 50mグリッド
-const shrubRange = 56  // -2800〜2800m
-for (let gx = -shrubRange; gx < shrubRange && shrubIndex < HIGH_ALTITUDE_SHRUB_COUNT; gx++) {
-  for (let gz = -shrubRange; gz < shrubRange && shrubIndex < HIGH_ALTITUDE_SHRUB_COUNT; gz++) {
-    const baseSx = gx * shrubGrid
-    const baseSz = gz * shrubGrid
-    const seed = gx * 20000 + gz + 50000  // 木とは異なるシード範囲
-    const offsetX = (deterministicRandom(seed) - 0.5) * shrubGrid * 0.7
-    const offsetZ = (deterministicRandom(seed + 1) - 0.5) * shrubGrid * 0.7
-    const sx = baseSx + offsetX
-    const sz = baseSz + offsetZ
-    const sy = terrainH(sx, sz)
+gltfLoader.load(import.meta.env.BASE_URL + 'models/vegetation_shrub.glb', (gltf) => {
+  const shrubTemplate = gltf.scene
+  shrubTemplate.traverse((c: any) => { if (c.isMesh) { c.castShadow = !isMobileDevice; c.receiveShadow = !isMobileDevice } })
 
-    // 高地（500-800m）のみ
-    if (sy < 500 || sy > 800) continue
+  let shrubIndex = 0
+  const shrubGrid = 50
+  const shrubRange = 56
 
-    const slope = Math.hypot(terrainH(sx + 16, sz) - terrainH(sx - 16, sz), terrainH(sx, sz + 16) - terrainH(sx, sz - 16)) / 32
-    if (slope > 8.0) continue
+  for (let gx = -shrubRange; gx < shrubRange && shrubIndex < HIGH_ALTITUDE_SHRUB_COUNT; gx++) {
+    for (let gz = -shrubRange; gz < shrubRange && shrubIndex < HIGH_ALTITUDE_SHRUB_COUNT; gz++) {
+      const baseSx = gx * shrubGrid
+      const baseSz = gz * shrubGrid
+      const seed = gx * 20000 + gz + 50000
+      const offsetX = (deterministicRandom(seed) - 0.5) * shrubGrid * 0.7
+      const offsetZ = (deterministicRandom(seed + 1) - 0.5) * shrubGrid * 0.7
+      const sx = baseSx + offsetX
+      const sz = baseSz + offsetZ
+      const sy = terrainH(sx, sz)
 
-    const s = 0.8 + deterministicRandom(seed + 2) * 0.6
-    _d.position.set(sx, sy + s, sz)
-    _d.scale.setScalar(s)
-    _d.rotation.y = deterministicRandom(seed + 3) * Math.PI * 2
-    _d.updateMatrix()
-    shrubIM.setMatrixAt(shrubIndex, _d.matrix)
-    shrubIndex++
+      if (sy < 500 || sy > 800) continue
+
+      const slope = Math.hypot(terrainH(sx + 16, sz) - terrainH(sx - 16, sz), terrainH(sx, sz + 16) - terrainH(sx, sz - 16)) / 32
+      if (slope > 8.0) continue
+
+      const shrub = shrubTemplate.clone()
+      const s = 0.8 + deterministicRandom(seed + 2) * 0.6
+      shrub.position.set(sx, sy, sz)
+      shrub.scale.setScalar(s)
+      shrub.rotation.y = deterministicRandom(seed + 3) * Math.PI * 2
+      treeGroupOriginal.add(shrub)
+
+      shrubIndex++
+    }
   }
-}
-shrubIM.instanceMatrix.needsUpdate = true
-shrubIM.name = 'HighAltitudeShrubs'
-scene.add(shrubIM)
-console.log(`✅ High altitude vegetation created: ${HIGH_ALTITUDE_SHRUB_COUNT} shrubs`)
+  console.log(`✅ High altitude shrubs loaded: ${shrubIndex} shrubs`)
+})
 
 // ===== バイオーム別植生（雪山・ジャングル・砂漠） =====
-gltfLoader.load(import.meta.env.BASE_URL + 'models/biome_assets.glb', (gltf) => {
-  // 雪山エリア: 針葉樹300本（決定的配置）
+// 針葉樹（雪山エリア）
+gltfLoader.load(import.meta.env.BASE_URL + 'models/tree_conifer.glb', (gltf) => {
+  const pineTemplate = gltf.scene
+  pineTemplate.traverse((c: any) => { if (c.isMesh) { c.castShadow = !isMobileDevice; c.receiveShadow = !isMobileDevice } })
+
   let pineCount = 0
   for (let gx = -15; gx < 15 && pineCount < 300; gx++) {
     for (let gz = -20; gz < 0 && pineCount < 300; gz++) {
@@ -815,25 +799,28 @@ gltfLoader.load(import.meta.env.BASE_URL + 'models/biome_assets.glb', (gltf) => 
       const y = terrainH(x, z)
 
       if (getBiome(x, z) !== 'snow') continue
-      if (y < 800) continue  // 標高800m以上
+      if (y < 800) continue
 
-      const pine = gltf.scene.children.find((c: any) => c.name === 'PineTrunk')?.clone()
-      if (pine) {
-        pine.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
-        pine.position.set(x, y, z)
-        pine.scale.setScalar(0.8 + deterministicRandom(seed + 2) * 0.4)
-        pine.rotation.y = deterministicRandom(seed + 3) * Math.PI * 2
-        scene.add(pine)
-        pineCount++
-      }
+      const pine = pineTemplate.clone()
+      pine.position.set(x, y, z)
+      pine.scale.setScalar(0.8 + deterministicRandom(seed + 2) * 0.4)
+      pine.rotation.y = deterministicRandom(seed + 3) * Math.PI * 2
+      treeGroupOriginal.add(pine)
+      pineCount++
     }
   }
+  console.log(`✅ Conifer trees loaded: ${pineCount} pines`)
+})
 
-  // ジャングルエリア: 巨大樹20本（決定的配置）
-  let giantCount = 0
-  for (let gx = 0; gx < 20 && giantCount < 20; gx++) {
-    for (let gz = -15; gz < 15 && giantCount < 20; gz++) {
-      const gridSize = 200
+// ジャングル植生
+gltfLoader.load(import.meta.env.BASE_URL + 'models/vegetation_jungle.glb', (gltf) => {
+  const jungleTemplate = gltf.scene
+  jungleTemplate.traverse((c: any) => { if (c.isMesh) { c.castShadow = !isMobileDevice; c.receiveShadow = !isMobileDevice } })
+
+  let jungleCount = 0
+  for (let gx = 0; gx < 20 && jungleCount < 100; gx++) {
+    for (let gz = -15; gz < 15 && jungleCount < 100; gz++) {
+      const gridSize = 100
       const seed = gx * 40000 + gz + 200000
       const x = 2500 + gx * gridSize + (deterministicRandom(seed) - 0.5) * gridSize * 0.8
       const z = gz * gridSize + (deterministicRandom(seed + 1) - 0.5) * gridSize * 0.8
@@ -841,19 +828,22 @@ gltfLoader.load(import.meta.env.BASE_URL + 'models/biome_assets.glb', (gltf) => 
 
       if (getBiome(x, z) !== 'jungle') continue
 
-      const giantTree = gltf.scene.children.find((c: any) => c.name === 'GiantTrunk')?.clone()
-      if (giantTree) {
-        giantTree.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
-        giantTree.position.set(x, y, z)
-        giantTree.scale.setScalar(0.8 + deterministicRandom(seed + 2) * 0.4)
-        giantTree.rotation.y = deterministicRandom(seed + 3) * Math.PI * 2
-        scene.add(giantTree)
-        giantCount++
-      }
+      const plant = jungleTemplate.clone()
+      plant.position.set(x, y, z)
+      plant.scale.setScalar(1.2 + deterministicRandom(seed + 2) * 0.8)
+      plant.rotation.y = deterministicRandom(seed + 3) * Math.PI * 2
+      treeGroupOriginal.add(plant)
+      jungleCount++
     }
   }
+  console.log(`✅ Jungle vegetation loaded: ${jungleCount} plants`)
+})
 
-  // 砂漠エリア: サボテン200本（決定的配置）
+// サボテン（砂漠エリア）
+gltfLoader.load(import.meta.env.BASE_URL + 'models/vegetation_cactus.glb', (gltf) => {
+  const cactusTemplate = gltf.scene
+  cactusTemplate.traverse((c: any) => { if (c.isMesh) { c.castShadow = !isMobileDevice; c.receiveShadow = !isMobileDevice } })
+
   let cactusCount = 0
   for (let gx = -15; gx < 15 && cactusCount < 200; gx++) {
     for (let gz = 0; gz < 20 && cactusCount < 200; gz++) {
@@ -865,19 +855,15 @@ gltfLoader.load(import.meta.env.BASE_URL + 'models/biome_assets.glb', (gltf) => 
 
       if (getBiome(x, z) !== 'desert') continue
 
-      const cactus = gltf.scene.children.find((c: any) => c.name === 'CactusBody')?.clone()
-      if (cactus) {
-        cactus.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true } })
-        cactus.position.set(x, y, z)
-        cactus.scale.setScalar(0.6 + deterministicRandom(seed + 2) * 0.8)
-        cactus.rotation.y = deterministicRandom(seed + 3) * Math.PI * 2
-        scene.add(cactus)
-        cactusCount++
-      }
+      const cactus = cactusTemplate.clone()
+      cactus.position.set(x, y, z)
+      cactus.scale.setScalar(0.8 + deterministicRandom(seed + 2) * 0.6)
+      cactus.rotation.y = deterministicRandom(seed + 3) * Math.PI * 2
+      treeGroupOriginal.add(cactus)
+      cactusCount++
     }
   }
-
-  console.log('✅ Biome vegetation loaded (snow: 300 pines, jungle: 20 giants, desert: 200 cacti) - deterministic placement')
+  console.log(`✅ Desert cacti loaded: ${cactusCount} cacti`)
 })
 
 // ===== ROCK PILLARS (Blender GLB) =====
@@ -955,6 +941,8 @@ gltfLoader.load(import.meta.env.BASE_URL + 'models/rock_arch.glb', (gltf) => {
 }, undefined, () => { /* fallback: no arches if GLB fails */ })
 
 // ===== SURFACE DETAIL =====
+const _d = new THREE.Object3D()  // InstancedMesh用のヘルパーオブジェクト
+
 const BOULDER_COUNT = 420
 const boulderIM = new THREE.InstancedMesh(
   new THREE.DodecahedronGeometry(1, 1),
@@ -6840,11 +6828,15 @@ async function switchMap(map: GameMap) {
     }
 
     // オリジナルMAPの水面・岩・木を削除
-    const originalMapMeshes = [waterMesh, boulderIM, trunkIM, foliIM, foli2IM]
+    const originalMapMeshes = [waterMesh, boulderIM]
     for (const mesh of originalMapMeshes) {
       if (mesh && mesh.parent) {
         scene.remove(mesh)
       }
+    }
+    // GLBベースの樹木グループも削除
+    if (treeGroupOriginal && treeGroupOriginal.parent) {
+      scene.remove(treeGroupOriginal)
     }
 
     // 名前で検索して削除（OriginalGround, OriginalRockPillar等）
@@ -7135,12 +7127,13 @@ async function switchMap(map: GameMap) {
 
     // 岩塔・巨岩・木々を復元（名前で検索して再追加）
     const namesToRestore = ['OriginalRockPillar', 'OriginalRockTower', 'OriginalRockArch',
-                            'OriginalBoulders', 'OriginalTrees']
+                            'OriginalBoulders', 'OriginalTrees_GLB']
     for (const key of namesToRestore) {
       if (!scene.getObjectByName(key) && !scene.getObjectByName(key + '_0_0')) {
-        // InstancedMesh（boulderIM, trunkIM等）を再追加
+        // InstancedMesh（boulderIM）を再追加
         if (key === 'OriginalBoulders') scene.add(boulderIM)
-        if (key === 'OriginalTrees') { scene.add(trunkIM); scene.add(foliIM); scene.add(foli2IM) }
+        // GLBベースの樹木グループを再追加
+        if (key === 'OriginalTrees_GLB') scene.add(treeGroupOriginal)
       }
     }
     // 岩塔・アーチはGLBロード済みインスタンスを持つグループとして保存されていないため、
