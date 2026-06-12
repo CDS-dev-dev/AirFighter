@@ -1603,7 +1603,18 @@ function spawnEnemyAt(sx: number, sz: number) {
 
 function spawnEnemy() {
   if (currentMap === 'space') {
-    // ドッグファイト開始時は前方600m-1200mに散らす
+    // スポーンポイントがあればゾーン相対座標を使用
+    if (spaceSpawnPoints && spaceSpawnPoints.enemy.length > 0) {
+      const spawnDef = spaceSpawnPoints.enemy[Math.floor(Math.random() * spaceSpawnPoints.enemy.length)]
+      const zone = spaceZones.find(z => z.zone_id === spawnDef.zone)
+      if (zone) {
+        const sx = zone.position.x + spawnDef.offset.x + (Math.random() - 0.5) * 80
+        const sz = zone.position.z + spawnDef.offset.z + (Math.random() - 0.5) * 80
+        spawnEnemyAt(sx, sz)
+        return
+      }
+    }
+    // フォールバック: 前方600m-1200mに散らす
     const fwdDir = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion)
     const dist = 600 + Math.random() * 600
     const spreadX = (Math.random() - 0.5) * 400
@@ -1910,7 +1921,17 @@ function triggerFlareBurst() {
  * MAP種別に応じた地形遮蔽判定（宇宙MAPではfalse）
  */
 function isBlockedByMapGeometry(raycaster: THREE.Raycaster): boolean {
-  if (currentMap === 'space') return false
+  if (currentMap === 'space') {
+    // 宇宙マップ: 小惑星とゾーン構造物で遮蔽判定
+    const hits: THREE.Intersection[] = []
+    if (spaceAsteroids) {
+      hits.push(...raycaster.intersectObject(spaceAsteroids, false))
+    }
+    if (spaceZoneGroups.length > 0) {
+      hits.push(...raycaster.intersectObjects(spaceZoneGroups, true))
+    }
+    return hits.length > 0
+  }
   if (currentMap === 'tokyo' && neoTokyoMapSystem) {
     return raycaster.intersectObjects(neoTokyoMapSystem.getCollisionObjects(), true).length > 0
   }
@@ -2835,9 +2856,27 @@ async function startGame(mode: GameMode) {
       if (import.meta.env.DEV) console.log(`Spawning ${dfAllyCount} allies`)
       for (let i = 0; i < dfAllyCount; i++) {
         if (spaceDogfightSpawn) {
-          const a = (Math.random() - 0.5) * 0.9
-          const r = 180 + Math.random() * 180
-          spawnAlly(Math.cos(a) * r, 260 + Math.sin(a) * r)
+          // スポーンポイントがあればゾーン相対座標を使用
+          if (spaceSpawnPoints && spaceSpawnPoints.ally.length > 0) {
+            const spawnDef = spaceSpawnPoints.ally[i % spaceSpawnPoints.ally.length]
+            const zone = spaceZones.find(z => z.zone_id === spawnDef.zone)
+            if (zone) {
+              const sx = zone.position.x + spawnDef.offset.x + (Math.random() - 0.5) * 60
+              const sz = zone.position.z + spawnDef.offset.z + (Math.random() - 0.5) * 60
+              spawnAlly(sx, sz)
+              if (import.meta.env.DEV) console.log(`Ally ${i+1} spawned at zone ${spawnDef.zone}`)
+            } else {
+              // フォールバック
+              const a = (Math.random() - 0.5) * 0.9
+              const r = 180 + Math.random() * 180
+              spawnAlly(Math.cos(a) * r, 260 + Math.sin(a) * r)
+            }
+          } else {
+            // フォールバック
+            const a = (Math.random() - 0.5) * 0.9
+            const r = 180 + Math.random() * 180
+            spawnAlly(Math.cos(a) * r, 260 + Math.sin(a) * r)
+          }
           if (import.meta.env.DEV) console.log(`Ally ${i+1} spawned in space sector`)
         } else if (tokyoDogfightSpawn) {
           const side = i % 2 === 0 ? -1 : 1
@@ -3113,6 +3152,8 @@ const SPACE_SUPPLY_POSITIONS = [
   new THREE.Vector3(0, 120, 50),       // 中央回廊・スタート付近
 ]
 let spaceMapGroup: THREE.Group | null = null
+let spaceAsteroids: THREE.InstancedMesh | null = null
+const spaceZoneGroups: THREE.Group[] = []
 const rotatingSpaceObjects: THREE.Object3D[] = []
 const spaceHazards: Array<{ pos: THREE.Vector3; radius: number }> = []
 const spaceGates: Array<{ pos: THREE.Vector3; radius: number; cooldown: number }> = []
@@ -3128,6 +3169,7 @@ interface SpaceZone {
 
 const spaceZones: SpaceZone[] = []
 const spaceBeacons: THREE.Group[] = []
+let spaceSpawnPoints: { enemy: Array<{ zone: string; offset: { x: number; y: number; z: number } }>; ally: Array<{ zone: string; offset: { x: number; y: number; z: number } }> } | null = null
 const ZONE_COLORS: Record<string, number> = {
   central_hub: 0x00ffff,  // cyan
   fortress: 0xff4444,      // red
@@ -3149,11 +3191,14 @@ function clearSpaceMap() {
     }
   })
   spaceMapGroup = null
+  spaceAsteroids = null
+  spaceZoneGroups.length = 0
   rotatingSpaceObjects.length = 0
   spaceHazards.length = 0
   spaceGates.length = 0
   spaceGateBoostTimer = 0
   spaceZones.length = 0
+  spaceSpawnPoints = null
   spaceBeacons.forEach(b => {
     scene.remove(b)
     b.traverse(child => {
@@ -3195,6 +3240,10 @@ async function loadSpaceZones(parentGroup: THREE.Group) {
         description: zone.description
       })
     }
+
+    // スポーンポイントを保存
+    spaceSpawnPoints = config.spawn_points
+    if (import.meta.env.DEV && spaceSpawnPoints) console.log(`🎯 スポーンポイント: 敵${spaceSpawnPoints.enemy.length}箇所、味方${spaceSpawnPoints.ally.length}箇所`)
 
     // モバイル環境ではGLBを読み込まない（パフォーマンス対策）
     if (isMobileDevice) {
@@ -3238,6 +3287,7 @@ async function loadSpaceZones(parentGroup: THREE.Group) {
           })
 
           parentGroup.add(zoneGroup)
+          spaceZoneGroups.push(zoneGroup)
 
           // デバッグ: バウンディングボックス情報
           const bbox = new THREE.Box3().setFromObject(zoneGroup)
@@ -3250,8 +3300,47 @@ async function loadSpaceZones(parentGroup: THREE.Group) {
             console.log(`   中心: (${center.x.toFixed(0)}, ${center.y.toFixed(0)}, ${center.z.toFixed(0)})`)
           }
         } catch (error) {
-          console.error(`❌ ${zone.name} の読み込みに失敗:`, error)
-          // エラーでも処理を続行（プロシージャル生成で代替）
+          console.error(`❌ ${zone.name} (${zone.glb_file}) の読み込みに失敗:`, error)
+          // フォールバック: プリミティブで代替
+          if (import.meta.env.DEV) console.log(`🔧 ${zone.name} のフォールバック生成中...`)
+
+          const fallbackGroup = new THREE.Group()
+          fallbackGroup.name = `Zone_${zoneId}_Fallback`
+
+          // ゾーンサイズに応じたプリミティブ生成
+          let geometry: THREE.BufferGeometry
+          let size = 100
+          if (zone.size === 'xlarge') {
+            geometry = new THREE.TorusGeometry(180, 30, 16, 48)
+            size = 180
+          } else if (zone.size === 'large') {
+            geometry = new THREE.BoxGeometry(150, 100, 150)
+            size = 150
+          } else {
+            geometry = new THREE.SphereGeometry(80, 16, 12)
+            size = 80
+          }
+
+          const material = new THREE.MeshStandardMaterial({
+            color: ZONE_COLORS[zoneId] || 0x888888,
+            roughness: 0.7,
+            metalness: 0.3,
+            wireframe: true
+          })
+          const mesh = new THREE.Mesh(geometry, material)
+          fallbackGroup.add(mesh)
+
+          // 位置・回転・スケールを適用
+          fallbackGroup.position.set(zone.position.x, zone.position.y, zone.position.z)
+          fallbackGroup.rotation.set(zone.rotation.x, zone.rotation.y, zone.rotation.z)
+          fallbackGroup.scale.setScalar(zone.scale)
+
+          parentGroup.add(fallbackGroup)
+          spaceZoneGroups.push(fallbackGroup)
+
+          if (import.meta.env.DEV) {
+            console.log(`✅ ${zone.name} フォールバック生成完了（${zone.size}, ${size}m）`)
+          }
         }
       })()
 
@@ -3456,15 +3545,15 @@ async function buildSpaceMap() {
     let x = Math.cos(angle) * distFromCenter
     let z = -200 + Math.sin(angle) * distFromCenter
 
-    // 中央回廊（X: -100 to 100、全Z）は小惑星なし
-    const isInCentralCorridor = Math.abs(x) < 100
+    // 中央回廊（X: -250 to 250、全Z）は小惑星なし（幅500m）
+    const isInCentralCorridor = Math.abs(x) < 250
     if (isInCentralCorridor) {
       // 回廊外に押し出す
-      x = x < 0 ? -120 - Math.random() * 200 : 120 + Math.random() * 200
+      x = x < 0 ? -270 - Math.random() * 200 : 270 + Math.random() * 200
     }
 
     // 左右に壁のように密集配置
-    const isWallZone = Math.abs(x) > 250 && Math.abs(x) < 500
+    const isWallZone = Math.abs(x) > 400 && Math.abs(x) < 700
     const distFactor = Math.abs(x) / 500
     const isLowerLayer = baseY < 0
 
@@ -3522,6 +3611,7 @@ async function buildSpaceMap() {
   asteroids.castShadow = !isMobileDevice
   asteroids.receiveShadow = !isMobileDevice
   space.add(asteroids)
+  spaceAsteroids = asteroids
 
   const railMat = new THREE.MeshStandardMaterial({ color: 0x9fb6c8, emissive: 0x14355a, emissiveIntensity: 0.9, roughness: 0.44, metalness: 0.72 })
   const glowCyan = new THREE.MeshStandardMaterial({ color: 0x6df7ff, emissive: 0x00b7ff, emissiveIntensity: 2.9, roughness: 0.25, metalness: 0.25 })
@@ -4271,11 +4361,41 @@ function createExplosion(pos: THREE.Vector3, scale = 1.0) {
 // ===== UPDATE =====
 function updateBullets(dt: number) {
   for (let i = bullets.length - 1; i >= 0; i--) {
-    bullets[i].life -= dt; bullets[i].mesh.position.addScaledVector(bullets[i].vel, dt)
+    bullets[i].life -= dt
+    const oldPos = bullets[i].mesh.position.clone()
+    bullets[i].mesh.position.addScaledVector(bullets[i].vel, dt)
+    // 宇宙MAPでの弾丸衝突判定
+    if (currentMap === 'space') {
+      const dir = bullets[i].vel.clone().normalize()
+      const dist = bullets[i].vel.length() * dt
+      _missileRaycaster.set(oldPos, dir)
+      _missileRaycaster.far = dist + 5
+      const hits: THREE.Intersection[] = []
+      if (spaceAsteroids) hits.push(..._missileRaycaster.intersectObject(spaceAsteroids, false))
+      if (spaceZoneGroups.length > 0) hits.push(..._missileRaycaster.intersectObjects(spaceZoneGroups, true))
+      if (hits.length > 0) {
+        scene.remove(bullets[i].mesh); bullets.splice(i, 1); continue
+      }
+    }
     if (bullets[i].life <= 0) { scene.remove(bullets[i].mesh); bullets.splice(i, 1) }
   }
   for (let i = enemyBullets.length - 1; i >= 0; i--) {
-    enemyBullets[i].life -= dt; enemyBullets[i].mesh.position.addScaledVector(enemyBullets[i].vel, dt)
+    enemyBullets[i].life -= dt
+    const oldPos = enemyBullets[i].mesh.position.clone()
+    enemyBullets[i].mesh.position.addScaledVector(enemyBullets[i].vel, dt)
+    // 宇宙MAPでの敵弾丸衝突判定
+    if (currentMap === 'space') {
+      const dir = enemyBullets[i].vel.clone().normalize()
+      const dist = enemyBullets[i].vel.length() * dt
+      _missileRaycaster.set(oldPos, dir)
+      _missileRaycaster.far = dist + 5
+      const hits: THREE.Intersection[] = []
+      if (spaceAsteroids) hits.push(..._missileRaycaster.intersectObject(spaceAsteroids, false))
+      if (spaceZoneGroups.length > 0) hits.push(..._missileRaycaster.intersectObjects(spaceZoneGroups, true))
+      if (hits.length > 0) {
+        scene.remove(enemyBullets[i].mesh); enemyBullets.splice(i, 1); continue
+      }
+    }
     if (enemyBullets[i].life <= 0) { scene.remove(enemyBullets[i].mesh); enemyBullets.splice(i, 1) }
   }
 }
@@ -4300,6 +4420,18 @@ function updateMissileArr(arr: HomingMissile[], dt: number, onExpire: (m: Homing
         if (_missileRaycaster.intersectObjects(colliders, true).length > 0) {
           onExpire(m); scene.remove(m.mesh); if (m.light) scene.remove(m.light!); arr.splice(i, 1); continue
         }
+      }
+    }
+
+    // 宇宙MAP 小惑星・ゾーン衝突
+    if (currentMap === 'space') {
+      _missileRaycaster.set(m.mesh.position, m.vel.clone().normalize())
+      _missileRaycaster.far = m.vel.length() * dt * 2 + 8
+      const hits: THREE.Intersection[] = []
+      if (spaceAsteroids) hits.push(..._missileRaycaster.intersectObject(spaceAsteroids, false))
+      if (spaceZoneGroups.length > 0) hits.push(..._missileRaycaster.intersectObjects(spaceZoneGroups, true))
+      if (hits.length > 0) {
+        onExpire(m); scene.remove(m.mesh); if (m.light) scene.remove(m.light!); arr.splice(i, 1); continue
       }
     }
 
@@ -5775,6 +5907,43 @@ function loop() {
       // 衝突時は視覚フィードバックのみ
       hitFlashTimer = 0.3
       camShakeAmt = Math.max(camShakeAmt, 0.5)
+    }
+  }
+
+  // 宇宙MAPの小惑星・ゾーン構造物との衝突
+  if (currentMap === 'space') {
+    // 小惑星との衝突判定（簡易版：レイキャスト）
+    if (spaceAsteroids && spaceAsteroids.count > 0) {
+      const raycaster = new THREE.Raycaster()
+      const moveDir = player.position.clone().sub(prevPos).normalize()
+      const moveDist = player.position.distanceTo(prevPos)
+      if (moveDist > 0.1) {
+        raycaster.set(prevPos, moveDir)
+        raycaster.far = moveDist + collisionRadius
+        const hits = raycaster.intersectObject(spaceAsteroids, false)
+        if (hits.length > 0 && hits[0].distance < moveDist + collisionRadius) {
+          // 衝突：元の位置に戻す
+          player.position.copy(prevPos)
+          hitFlashTimer = 0.3
+          camShakeAmt = Math.max(camShakeAmt, 0.6)
+        }
+      }
+    }
+    // ゾーン構造物との衝突判定
+    if (spaceZoneGroups.length > 0) {
+      for (const zoneGroup of spaceZoneGroups) {
+        const bbox = new THREE.Box3().setFromObject(zoneGroup)
+        const closest = bbox.clampPoint(player.position, new THREE.Vector3())
+        const dist = closest.distanceTo(player.position)
+        if (dist < collisionRadius) {
+          // 衝突：押し出し
+          const pushDir = player.position.clone().sub(closest).normalize()
+          if (pushDir.length() < 0.1) pushDir.set(0, 1, 0)
+          player.position.copy(closest).add(pushDir.multiplyScalar(collisionRadius + 1))
+          hitFlashTimer = 0.3
+          camShakeAmt = Math.max(camShakeAmt, 0.5)
+        }
+      }
     }
   }
 

@@ -206,249 +206,40 @@
     }
   ],
   "spawn_points": {
+    "comment": "相対座標: ゾーン中心からのオフセット",
     "enemy": [
-      {
-        "zone": "fortress",
-        "position": {
-          "x": -1900.0,
-          "y": -100,
-          "z": 0.0
-        }
-      },
-      {
-        "zone": "fortress",
-        "position": {
-          "x": -2200.0,
-          "y": -50,
-          "z": 300.0
-        }
-      },
-      {
-        "zone": "fortress",
-        "position": {
-          "x": -2500.0,
-          "y": 0,
-          "z": 3.6739403974420595e-14
-        }
-      },
-      {
-        "zone": "fortress",
-        "position": {
-          "x": -2200.0,
-          "y": 50,
-          "z": -300.0
-        }
-      },
-      {
-        "zone": "mining_colony",
-        "position": {
-          "x": -1300.0,
-          "y": -200,
-          "z": -1800.0
-        }
-      },
-      {
-        "zone": "mining_colony",
-        "position": {
-          "x": -1600.0,
-          "y": -150,
-          "z": -1500.0
-        }
-      },
-      {
-        "zone": "mining_colony",
-        "position": {
-          "x": -1900.0,
-          "y": -100,
-          "z": -1800.0
-        }
-      },
-      {
-        "zone": "mining_colony",
-        "position": {
-          "x": -1600.0,
-          "y": -50,
-          "z": -2100.0
-        }
-      },
-      {
-        "zone": "ship_graveyard",
-        "position": {
-          "x": 2300.0,
-          "y": -150,
-          "z": 1500.0
-        }
-      },
-      {
-        "zone": "ship_graveyard",
-        "position": {
-          "x": 2000.0,
-          "y": -100,
-          "z": 1800.0
-        }
-      },
-      {
-        "zone": "ship_graveyard",
-        "position": {
-          "x": 1700.0,
-          "y": -50,
-          "z": 1500.0
-        }
-      },
-      {
-        "zone": "ship_graveyard",
-        "position": {
-          "x": 2000.0,
-          "y": 0,
-          "z": 1200.0
-        }
-      },
-      {
-        "zone": "orbital_ring",
-        "position": {
-          "x": 2700.0,
-          "y": 0,
-          "z": -500.0
-        }
-      },
-      {
-        "zone": "orbital_ring",
-        "position": {
-          "x": 2400.0,
-          "y": 50,
-          "z": -200.0
-        }
-      },
-      {
-        "zone": "orbital_ring",
-        "position": {
-          "x": 2100.0,
-          "y": 100,
-          "z": -499.99999999999994
-        }
-      },
-      {
-        "zone": "orbital_ring",
-        "position": {
-          "x": 2400.0,
-          "y": 150,
-          "z": -800.0
-        }
-      },
-      {
-        "zone": "construction",
-        "position": {
-          "x": 2100.0,
-          "y": 100,
-          "z": -2000.0
-        }
-      },
-      {
-        "zone": "construction",
-        "position": {
-          "x": 1800.0,
-          "y": 150,
-          "z": -1700.0
-        }
-      },
-      {
-        "zone": "construction",
-        "position": {
-          "x": 1500.0,
-          "y": 200,
-          "z": -2000.0
-        }
-      },
-      {
-        "zone": "construction",
-        "position": {
-          "x": 1800.0,
-          "y": 250,
-          "z": -2300.0
-        }
-      }
+      { "zone": "fortress", "offset": { "x": -200, "y": 0, "z": 150 } },
+      { "zone": "fortress", "offset": { "x": 200, "y": 0, "z": -150 } },
+      { "zone": "fortress", "offset": { "x": 0, "y": 100, "z": 200 } },
+      { "zone": "fortress", "offset": { "x": 0, "y": -100, "z": -200 } },
+      { "zone": "mining_colony", "offset": { "x": -180, "y": 0, "z": 180 } },
+      { "zone": "mining_colony", "offset": { "x": 180, "y": 0, "z": -180 } },
+      { "zone": "mining_colony", "offset": { "x": 0, "y": 120, "z": 0 } },
+      { "zone": "mining_colony", "offset": { "x": -120, "y": -80, "z": 120 } },
+      { "zone": "ship_graveyard", "offset": { "x": 200, "y": 0, "z": 200 } },
+      { "zone": "ship_graveyard", "offset": { "x": -200, "y": 0, "z": -200 } },
+      { "zone": "ship_graveyard", "offset": { "x": 150, "y": 80, "z": -150 } },
+      { "zone": "ship_graveyard", "offset": { "x": -150, "y": -80, "z": 150 } },
+      { "zone": "orbital_ring", "offset": { "x": 0, "y": 150, "z": 0 } },
+      { "zone": "orbital_ring", "offset": { "x": 180, "y": -50, "z": 180 } },
+      { "zone": "orbital_ring", "offset": { "x": -180, "y": -50, "z": -180 } },
+      { "zone": "orbital_ring", "offset": { "x": 0, "y": -120, "z": 0 } },
+      { "zone": "construction", "offset": { "x": 160, "y": 60, "z": 160 } },
+      { "zone": "construction", "offset": { "x": -160, "y": 60, "z": -160 } },
+      { "zone": "construction", "offset": { "x": 0, "y": 120, "z": 0 } },
+      { "zone": "construction", "offset": { "x": 200, "y": -40, "z": -200 } }
     ],
     "ally": [
-      {
-        "zone": "fortress",
-        "position": {
-          "x": -2023.223304703363,
-          "y": -20.0,
-          "z": 176.77669529663686
-        }
-      },
-      {
-        "zone": "fortress",
-        "position": {
-          "x": -2376.7766952966367,
-          "y": 20.0,
-          "z": -176.77669529663686
-        }
-      },
-      {
-        "zone": "mining_colony",
-        "position": {
-          "x": -1423.223304703363,
-          "y": -120.0,
-          "z": -1623.223304703363
-        }
-      },
-      {
-        "zone": "mining_colony",
-        "position": {
-          "x": -1776.776695296637,
-          "y": -80.0,
-          "z": -1976.776695296637
-        }
-      },
-      {
-        "zone": "ship_graveyard",
-        "position": {
-          "x": 2176.7766952966367,
-          "y": -70.0,
-          "z": 1676.776695296637
-        }
-      },
-      {
-        "zone": "ship_graveyard",
-        "position": {
-          "x": 1823.223304703363,
-          "y": -30.0,
-          "z": 1323.223304703363
-        }
-      },
-      {
-        "zone": "orbital_ring",
-        "position": {
-          "x": 2576.7766952966367,
-          "y": 80.0,
-          "z": -323.22330470336317
-        }
-      },
-      {
-        "zone": "orbital_ring",
-        "position": {
-          "x": 2223.2233047033633,
-          "y": 120.0,
-          "z": -676.7766952966368
-        }
-      },
-      {
-        "zone": "construction",
-        "position": {
-          "x": 1976.776695296637,
-          "y": 180.0,
-          "z": -1823.223304703363
-        }
-      },
-      {
-        "zone": "construction",
-        "position": {
-          "x": 1623.223304703363,
-          "y": 220.0,
-          "z": -2176.7766952966367
-        }
-      }
+      { "zone": "fortress", "offset": { "x": -150, "y": 20, "z": 100 } },
+      { "zone": "fortress", "offset": { "x": 150, "y": 20, "z": -100 } },
+      { "zone": "mining_colony", "offset": { "x": -140, "y": 40, "z": 140 } },
+      { "zone": "mining_colony", "offset": { "x": 140, "y": 40, "z": -140 } },
+      { "zone": "ship_graveyard", "offset": { "x": 160, "y": 30, "z": 160 } },
+      { "zone": "ship_graveyard", "offset": { "x": -160, "y": 30, "z": -160 } },
+      { "zone": "orbital_ring", "offset": { "x": 0, "y": 100, "z": 140 } },
+      { "zone": "orbital_ring", "offset": { "x": 0, "y": 100, "z": -140 } },
+      { "zone": "construction", "offset": { "x": 130, "y": 80, "z": 130 } },
+      { "zone": "construction", "offset": { "x": -130, "y": 80, "z": -130 } }
     ]
   },
   "meta": {
