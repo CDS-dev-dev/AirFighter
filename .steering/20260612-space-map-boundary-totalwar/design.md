@@ -7,7 +7,7 @@
 const SPACE_MAP_BOUNDS = {
   minX: -3000, maxX: 3000,  // 6km
   minZ: -3000, maxZ: 3000,  // 6km
-  minY: -400, maxY: 500     // 0.9km
+  minY: -2400, maxY: 2400   // 4.8km vertical play space
 }
 ```
 

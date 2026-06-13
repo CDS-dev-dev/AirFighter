@@ -6,13 +6,13 @@
     "maxX": 3000,
     "minZ": -3000,
     "maxZ": 3000,
-    "minY": -400,
-    "maxY": 500
+    "minY": -2400,
+    "maxY": 2400
   },
   "layers": {
-    "upper": { "minY": 200, "maxY": 500, "description": "開放的高速エリア" },
-    "middle": { "minY": -100, "maxY": 200, "description": "メイン戦闘エリア" },
-    "lower": { "minY": -400, "maxY": -100, "description": "密集隠密エリア" }
+    "upper": { "minY": 700, "maxY": 2400, "description": "開放的高速エリア" },
+    "middle": { "minY": -700, "maxY": 700, "description": "メイン戦闘エリア" },
+    "lower": { "minY": -2400, "maxY": -700, "description": "密集隠密エリア" }
   },
   "zones": {
     "central_hub": {

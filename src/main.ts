@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.12.0'
+const VERSION = '7.13.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -171,13 +171,15 @@ interface MapBounds {
   maxX: number
   minZ: number
   maxZ: number
+  minY?: number
+  maxY?: number
   warningMargin: number
 }
 
 const MAP_BOUNDS: Record<GameMap, MapBounds> = {
   original: { minX: -8600, maxX: 8600, minZ: -8600, maxZ: 8600, warningMargin: 1100 },
   tokyo: { minX: -8600, maxX: 8600, minZ: -8600, maxZ: 8600, warningMargin: 1100 },
-  space: { minX: -6000, maxX: 6000, minZ: -6000, maxZ: 6000, warningMargin: 800 },
+  space: { minX: -6000, maxX: 6000, minZ: -6000, maxZ: 6000, minY: -2400, maxY: 2400, warningMargin: 800 },
 }
 
 // ===== TERRAIN =====
@@ -190,6 +192,14 @@ function clamp01(v: number): number {
 function smoothstep(edge0: number, edge1: number, v: number): number {
   const t = clamp01((v - edge0) / (edge1 - edge0))
   return t * t * (3 - 2 * t)
+}
+
+function getMapYBounds(map: GameMap): { minY: number; maxY: number } | null {
+  const bounds = MAP_BOUNDS[map]
+  if (typeof bounds.minY === 'number' && typeof bounds.maxY === 'number') {
+    return { minY: bounds.minY, maxY: bounds.maxY }
+  }
+  return null
 }
 
 function hash2(x: number, z: number): number {
@@ -4910,7 +4920,9 @@ function createMapBoundary(map: GameMap) {
 
   // 地上MAPは2D境界（上下なし）、宇宙MAPは3D境界
   if (map === 'space') {
-    const minY = -400, maxY = 500
+    const yBounds = getMapYBounds(map)
+    const minY = yBounds?.minY ?? -2400
+    const maxY = yBounds?.maxY ?? 2400
 
     // XZ平面の格子（上下2枚）
     for (let y of [minY, maxY]) {
@@ -5322,6 +5334,182 @@ async function buildSpaceMap() {
   spaceMapGroup = space
   scene.add(space)
 
+  const HUB_CLEAR_RADIUS = 520
+  const HUB_CLEAR_Y_RADIUS = 260
+  const SPACE_ROUTE_CORRIDORS = [
+    {
+      name: 'fortress_descent',
+      points: [
+        new THREE.Vector3(0, 80, 0),
+        new THREE.Vector3(180, 10, -650),
+        new THREE.Vector3(420, -260, -1500),
+        new THREE.Vector3(600, -760, -2400),
+      ],
+      clearRadius: 170,
+    },
+    {
+      name: 'orbital_ascent',
+      points: [
+        new THREE.Vector3(0, 80, 0),
+        new THREE.Vector3(-120, 220, -650),
+        new THREE.Vector3(-360, 620, -1380),
+        new THREE.Vector3(-600, 1140, -2200),
+      ],
+      clearRadius: 180,
+    },
+    {
+      name: 'graveyard_canyon',
+      points: [
+        new THREE.Vector3(0, 60, 0),
+        new THREE.Vector3(460, 120, 420),
+        new THREE.Vector3(1220, 260, 1180),
+        new THREE.Vector3(2200, 600, 2000),
+      ],
+      clearRadius: 210,
+    },
+    {
+      name: 'mining_dive',
+      points: [
+        new THREE.Vector3(0, 40, 0),
+        new THREE.Vector3(-520, -140, -260),
+        new THREE.Vector3(-1320, -760, -380),
+        new THREE.Vector3(-2300, -1800, -400),
+      ],
+      clearRadius: 185,
+    },
+    {
+      name: 'construction_arc',
+      points: [
+        new THREE.Vector3(0, 140, 0),
+        new THREE.Vector3(520, 360, -120),
+        new THREE.Vector3(1320, 980, -40),
+        new THREE.Vector3(2000, 1600, -100),
+      ],
+      clearRadius: 190,
+    },
+  ]
+  const spaceRouteCurves = SPACE_ROUTE_CORRIDORS.map(route => ({
+    ...route,
+    curve: new THREE.CatmullRomCurve3(route.points)
+  }))
+  const spaceYBounds = getMapYBounds('space') ?? { minY: -2400, maxY: 2400 }
+  const spaceYMin = spaceYBounds.minY
+  const spaceYMax = spaceYBounds.maxY
+  const spaceYSpan = spaceYMax - spaceYMin
+  const spaceAsteroidBands = [
+    { center: spaceYMin + spaceYSpan * 0.10, spread: 260, sizeMin: 16, sizeMax: 52, weight: 0.18 },
+    { center: spaceYMin + spaceYSpan * 0.28, spread: 360, sizeMin: 13, sizeMax: 38, weight: 0.24 },
+    { center: spaceYMin + spaceYSpan * 0.50, spread: 520, sizeMin: 8, sizeMax: 28, weight: 0.22 },
+    { center: spaceYMin + spaceYSpan * 0.70, spread: 380, sizeMin: 8, sizeMax: 24, weight: 0.20 },
+    { center: spaceYMin + spaceYSpan * 0.88, spread: 280, sizeMin: 10, sizeMax: 30, weight: 0.16 },
+  ]
+  const pickSpaceAsteroidBand = (seed: number) => {
+    let t = deterministicRandom(seed)
+    for (const band of spaceAsteroidBands) {
+      t -= band.weight
+      if (t <= 0) return band
+    }
+    return spaceAsteroidBands[spaceAsteroidBands.length - 1]
+  }
+  const sampleSpaceAsteroidY = (seed: number, bias = 0) => {
+    const band = pickSpaceAsteroidBand(seed)
+    const local = (deterministicRandom(seed + 1) - 0.5) * 2
+    const y = band.center + local * band.spread + bias
+    return THREE.MathUtils.clamp(y, spaceYMin + 40, spaceYMax - 40)
+  }
+
+  const distanceToSpaceRoute = (pos: THREE.Vector3) => {
+    let minDistance = Infinity
+    for (const route of spaceRouteCurves) {
+      const samples = route.curve.getSpacedPoints(28)
+      for (const sample of samples) {
+        const dist = sample.distanceTo(pos)
+        if (dist < minDistance) minDistance = dist
+      }
+    }
+    return minDistance
+  }
+
+  const isInsideSpaceRoute = (pos: THREE.Vector3, extraRadius = 0) => {
+    for (const route of spaceRouteCurves) {
+      const samples = route.curve.getSpacedPoints(28)
+      for (const sample of samples) {
+        if (sample.distanceTo(pos) < route.clearRadius + extraRadius) return true
+      }
+    }
+    return false
+  }
+
+  const createFlightGate = (
+    center: THREE.Vector3,
+    radiusX: number,
+    radiusY: number,
+    depth: number,
+    orientation: THREE.Vector3,
+    material: THREE.Material,
+    _glowMaterial: THREE.Material,
+    addHazard = true
+  ) => {
+    const gate = new THREE.Group()
+    const ringSegments = 10
+    for (let i = 0; i < ringSegments; i++) {
+      const t = (i / ringSegments) * Math.PI * 2
+      const nextT = ((i + 1) / ringSegments) * Math.PI * 2
+      const x1 = Math.cos(t) * radiusX
+      const y1 = Math.sin(t) * radiusY
+      const x2 = Math.cos(nextT) * radiusX
+      const y2 = Math.sin(nextT) * radiusY
+      const len = Math.hypot(x2 - x1, y2 - y1)
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(len, 7, depth * 0.55), material)
+      beam.position.set((x1 + x2) / 2, (y1 + y2) / 2, 0)
+      beam.rotation.z = Math.atan2(y2 - y1, x2 - x1)
+      gate.add(beam)
+    }
+    gate.position.copy(center)
+    gate.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), orientation.clone().normalize())
+    space.add(gate)
+    if (addHazard) spaceHazards.push({ pos: center.clone(), radius: Math.max(radiusX, radiusY) + 10 })
+    return gate
+  }
+
+  const createBrokenHullTunnel = (
+    center: THREE.Vector3,
+    length: number,
+    openingWidth: number,
+    openingHeight: number,
+    orientationY: number,
+    tiltX: number,
+    material: THREE.Material
+  ) => {
+    const hull = new THREE.Group()
+    const shellHeight = openingHeight + 90
+    const shellDepth = openingWidth + 70
+    const top = new THREE.Mesh(new THREE.BoxGeometry(length, 18, shellDepth), material)
+    top.position.y = shellHeight * 0.5
+    hull.add(top)
+    const bottom = new THREE.Mesh(new THREE.BoxGeometry(length, 16, shellDepth * 0.86), material)
+    bottom.position.y = -shellHeight * 0.5
+    hull.add(bottom)
+    const left = new THREE.Mesh(new THREE.BoxGeometry(length, openingHeight, 16), material)
+    left.position.z = -openingWidth * 0.5
+    hull.add(left)
+    const right = new THREE.Mesh(new THREE.BoxGeometry(length, openingHeight, 16), material)
+    right.position.z = openingWidth * 0.5
+    hull.add(right)
+
+    for (let i = -2; i <= 2; i++) {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(12, openingHeight + 40, openingWidth + 18), material)
+      rib.position.x = i * (length / 5)
+      hull.add(rib)
+    }
+
+    hull.position.copy(center)
+    hull.rotation.set(tiltX, orientationY, 0)
+    space.add(hull)
+    spaceHazards.push({ pos: center.clone(), radius: Math.max(length * 0.45, openingWidth * 0.7) })
+    return hull
+  }
+
   // GLBゾーンを読み込み
   await loadSpaceZones(space)
 
@@ -5413,54 +5601,38 @@ async function buildSpaceMap() {
 
   const asteroidGeo = new THREE.DodecahedronGeometry(1, 1)
   const asteroidMat = new THREE.MeshStandardMaterial({ color: 0x7b7780, roughness: 0.95, metalness: 0.04, flatShading: true })
-  const asteroidCount = isMobileDevice ? 480 : 1200  // デブリ密度2倍
+  const asteroidCount = isMobileDevice ? 260 : 620
   const asteroids = new THREE.InstancedMesh(asteroidGeo, asteroidMat, asteroidCount)
   const obj = new THREE.Object3D()
+  let asteroidIndex = 0
 
   for (let i = 0; i < asteroidCount; i++) {
-    // レイヤー構造（各300m厚）
-    const layer = i % 3
-    let y = 0
-    if (layer === 0) {
-      y = -400 + Math.random() * 300  // 下層: -400〜-100m
-    } else if (layer === 1) {
-      y = -100 + Math.random() * 300  // 中層: -100〜+200m
-    } else {
-      y = 200 + Math.random() * 300   // 上層: +200〜+500m
-    }
+    const band = pickSpaceAsteroidBand(i * 17 + 3000)
+    const y = sampleSpaceAsteroidY(i * 17 + 3000)
 
-    // XZ平面：MAP全体（6km×6km）に配置
-    const x = -2800 + Math.random() * 5600
-    const z = -2800 + Math.random() * 5600
+    // XZ平面：MAP全体に広く配置。高度が上がるほど水平スケールも少し広げる
+    const altitudeRatio = (y - spaceYMin) / Math.max(1, spaceYSpan)
+    const horizontalHalfExtent = 3200 + altitudeRatio * 1800
+    const x = -horizontalHalfExtent + Math.random() * horizontalHalfExtent * 2
+    const z = -horizontalHalfExtent + Math.random() * horizontalHalfExtent * 2
 
     // 中央補給ステーション周辺クリア（0,50,0）半径300m
+    const candidatePos = new THREE.Vector3(x, y, z)
     const hubDist = Math.sqrt(x * x + z * z)
-    if (hubDist < 300 && Math.abs(y - 50) < 150) {
+    if (hubDist < HUB_CLEAR_RADIUS && Math.abs(y - 50) < HUB_CLEAR_Y_RADIUS) {
       continue
     }
 
-    // 主要ルート（幅400m）をクリア：補給→要塞→リング
-    if (Math.abs(x) < 200 && z < 200 && z > -2500 && Math.abs(y - 50) < 150) {
+    if (isInsideSpaceRoute(candidatePos, 18)) {
       continue
     }
 
-    // レイヤー別のサイズ分布
-    let s = 0
-    if (layer === 0) {
-      // 下層：中〜大型（密集感・カバー）
-      s = 12 + Math.random() * 35  // 12〜47m
-    } else if (layer === 1) {
-      // 中層：小〜中型（バランス）
-      s = 8 + Math.random() * 22   // 8〜30m
-    } else {
-      // 上層：小型主体（開放感）
-      s = 5 + Math.random() * 15   // 5〜20m
-    }
+    const s = band.sizeMin + Math.random() * (band.sizeMax - band.sizeMin)
 
     // 位置に多少のランダムオフセットを追加
     obj.position.set(
       x + (Math.random() - 0.5) * 100,
-      y + (Math.random() - 0.5) * 80,
+      y + (Math.random() - 0.5) * 120,
       z + (Math.random() - 0.5) * 100
     )
 
@@ -5470,8 +5642,9 @@ async function buildSpaceMap() {
     obj.scale.set(s * (0.75 + Math.random() * 0.8), s * (0.55 + Math.random() * 0.65), s * (0.75 + Math.random() * 0.75))
     obj.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
     obj.updateMatrix()
-    asteroids.setMatrixAt(i, obj.matrix)
+    asteroids.setMatrixAt(asteroidIndex++, obj.matrix)
   }
+  asteroids.count = asteroidIndex
   asteroids.instanceMatrix.needsUpdate = true
   asteroids.castShadow = !isMobileDevice
   asteroids.receiveShadow = !isMobileDevice
@@ -5480,9 +5653,12 @@ async function buildSpaceMap() {
 
   // ===== 小惑星クラスター（密集エリア） =====
   const ASTEROID_CLUSTERS = [
-    { x: -1500, y: 100, z: -1000, count: 1500, radius: 500 },  // 採掘コロニー付近（10倍密度、拡張）
-    { x: 1000, y: -200, z: 800, count: 120, radius: 250 },    // 南東エリア
-    { x: -800, y: 400, z: 1200, count: 100, radius: 200 },    // 建造現場付近
+    { x: -2100, y: -1720, z: -500, count: isMobileDevice ? 110 : 240, radius: 420 }, // 採掘コロニー深部
+    { x: 2100, y: 720, z: 1900, count: isMobileDevice ? 90 : 190, radius: 420 },      // 船墓場周辺
+    { x: 1850, y: 1580, z: -100, count: isMobileDevice ? 70 : 140, radius: 340 },     // 建造現場周辺
+    { x: -900, y: 1880, z: -2200, count: isMobileDevice ? 60 : 120, radius: 320 },    // 軌道リング上層
+    { x: 900, y: -1280, z: -2350, count: isMobileDevice ? 60 : 130, radius: 360 },    // 要塞下層
+    { x: -2600, y: 320, z: 2200, count: isMobileDevice ? 50 : 100, radius: 300 },     // 外縁中層
   ]
 
   const clusterAsteroidCount = ASTEROID_CLUSTERS.reduce((sum, c) => sum + c.count, 0)
@@ -5500,11 +5676,11 @@ async function buildSpaceMap() {
       const offsetY = r * Math.sin(phi) * Math.sin(theta)
       const offsetZ = r * Math.cos(phi)
 
-      obj.position.set(
-        cluster.x + offsetX,
-        cluster.y + offsetY,
-        cluster.z + offsetZ
-      )
+      obj.position.set(cluster.x + offsetX, cluster.y + offsetY, cluster.z + offsetZ)
+
+      if (isInsideSpaceRoute(obj.position, 10) || Math.hypot(obj.position.x, obj.position.z) < HUB_CLEAR_RADIUS - 40) {
+        continue
+      }
 
       const s = 8 + Math.random() * 25  // サイズ8-33m
       obj.scale.set(s * (0.75 + Math.random() * 0.8), s * (0.55 + Math.random() * 0.65), s * (0.75 + Math.random() * 0.75))
@@ -5517,6 +5693,7 @@ async function buildSpaceMap() {
     }
   }
 
+  clusterAsteroids.count = clusterIndex
   clusterAsteroids.instanceMatrix.needsUpdate = true
   clusterAsteroids.castShadow = !isMobileDevice
   clusterAsteroids.receiveShadow = !isMobileDevice
@@ -5582,7 +5759,9 @@ async function buildSpaceMap() {
         const dist = radiusMin + Math.random() * (radiusMax - radiusMin)
         const offsetX = Math.cos(angle) * dist
         const offsetZ = Math.sin(angle) * dist
-        const offsetY = (Math.random() - 0.5) * 150
+        let offsetY = (Math.random() - 0.5) * 150
+        if (zone.zone_id === 'orbital_ring') offsetY = (Math.random() - 0.5) * 320
+        if (zone.zone_id === 'construction') offsetY = (Math.random() - 0.5) * 260
 
         const size = sizeMin + Math.random() * (sizeMax - sizeMin)
         const asteroid = new THREE.Mesh(zoneAsteroidGeo, zoneAsteroidMat)
@@ -5599,6 +5778,7 @@ async function buildSpaceMap() {
         asteroid.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
         asteroid.castShadow = !isMobileDevice
         asteroid.receiveShadow = !isMobileDevice
+        if (isInsideSpaceRoute(asteroid.position, 6)) continue
         space.add(asteroid)
         spaceIndividualAsteroids.push(asteroid) // 衝突判定用に登録
       }
@@ -5608,30 +5788,93 @@ async function buildSpaceMap() {
   const railMat = new THREE.MeshStandardMaterial({ color: 0x9fb6c8, emissive: 0x14355a, emissiveIntensity: 0.9, roughness: 0.44, metalness: 0.72 })
   const glowCyan = new THREE.MeshStandardMaterial({ color: 0x6df7ff, emissive: 0x00b7ff, emissiveIntensity: 2.9, roughness: 0.25, metalness: 0.25 })
   const glowViolet = new THREE.MeshBasicMaterial({ color: 0xb05cff, transparent: true, opacity: 0.42, side: THREE.DoubleSide })
-  const laneMat = new THREE.MeshBasicMaterial({ color: 0x5ce7ff, transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false })
 
-  const navPath = [
-    new THREE.Vector3(0, 50, 0),          // 補給ステーション
-    new THREE.Vector3(0, 30, -600),       // 要塞手前
-    new THREE.Vector3(0, 0, -1800),       // 要塞中心
-    new THREE.Vector3(-1000, -150, -1650), // 採掘コロニーへ
-    new THREE.Vector3(-2000, -250, -1500), // 採掘コロニー
-    new THREE.Vector3(0, -100, -1800),    // 要塞下層経由
-    new THREE.Vector3(1050, -150, -1700), // 船墓場へ
-    new THREE.Vector3(2100, -200, -1600), // 船墓場
-    new THREE.Vector3(0, 100, -2100),     // リング手前上昇
-    new THREE.Vector3(0, 350, -2400),     // 軌道リング
-    new THREE.Vector3(-900, 350, 0),      // 建造現場へ
-    new THREE.Vector3(-1800, 350, 1600),  // 建造現場
-  ]
-  for (let i = 0; i < navPath.length; i++) {
-    const navRing = new THREE.Mesh(new THREE.TorusGeometry(34 + i * 4, 1.6, 8, 56), laneMat)
-    const dir = (navPath[i + 1] ?? navPath[i]).clone().sub(navPath[Math.max(0, i - 1)])
-    navRing.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.lengthSq() > 0 ? dir.normalize() : new THREE.Vector3(0, 0, -1))
-    navRing.position.copy(navPath[i])
-    space.add(navRing)
-    rotatingSpaceObjects.push(navRing)
+  const routeFrameMat = new THREE.MeshStandardMaterial({
+    color: 0x7ea4d0,
+    emissive: 0x11284a,
+    emissiveIntensity: 0.8,
+    roughness: 0.45,
+    metalness: 0.78,
+    transparent: true,
+    opacity: 0.92
+  })
+  const routeGlowMat = new THREE.MeshBasicMaterial({
+    color: 0x7cecff,
+    transparent: true,
+    opacity: 0.20,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  })
+  for (const route of spaceRouteCurves) {
+    const routePoints = route.curve.getSpacedPoints(10)
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(route.curve.getSpacedPoints(40))
+    const line = new THREE.Line(
+      lineGeo,
+      new THREE.LineBasicMaterial({ color: 0x66d8ff, transparent: true, opacity: 0.18 })
+    )
+    space.add(line)
+    for (let i = 1; i < routePoints.length - 1; i++) {
+      const point = routePoints[i]
+      if (Math.hypot(point.x, point.z) < HUB_CLEAR_RADIUS + 420) continue
+      const tangent = route.curve.getTangent(i / (routePoints.length - 1)).normalize()
+      const ringRadius = route.name === 'graveyard_canyon' ? 90 : route.name === 'orbital_ascent' ? 104 : 82
+      const tubeRadius = route.name === 'orbital_ascent' ? 4.5 : 3.5
+      const frame = new THREE.Mesh(new THREE.TorusGeometry(ringRadius, tubeRadius, 10, 36), routeFrameMat)
+      frame.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent)
+      frame.position.copy(point)
+      space.add(frame)
+      rotatingSpaceObjects.push(frame)
+
+      if (i % 2 === 0) {
+        const halo = new THREE.Mesh(new THREE.RingGeometry(ringRadius * 0.82, ringRadius * 1.14, 32), routeGlowMat)
+        halo.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent)
+        halo.position.copy(point)
+        space.add(halo)
+      }
+    }
   }
+
+  const routeHullMat = new THREE.MeshStandardMaterial({
+    color: 0x697487,
+    emissive: 0x16243d,
+    emissiveIntensity: 0.45,
+    roughness: 0.62,
+    metalness: 0.68,
+    transparent: true,
+    opacity: 0.62,
+  })
+  const routeHaloMat = new THREE.MeshBasicMaterial({
+    color: 0x93e7ff,
+    transparent: true,
+    opacity: 0.16,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  })
+
+  // 要塞侵入ゲート: 落下しながら潜る連続導線
+  createFlightGate(new THREE.Vector3(320, -200, -1240), 128, 98, 16, new THREE.Vector3(0.18, -0.22, -1), routeHullMat, routeHaloMat)
+  createFlightGate(new THREE.Vector3(520, -520, -1980), 152, 116, 18, new THREE.Vector3(0.10, -0.32, -1), routeHullMat, routeHaloMat)
+  createFlightGate(new THREE.Vector3(620, -880, -2520), 176, 138, 20, new THREE.Vector3(0.04, -0.25, -1), routeHullMat, routeHaloMat)
+
+  // 採掘コロニー下降シャフト: 高低差を感じる縦の導線
+  createFlightGate(new THREE.Vector3(-920, -460, -300), 138, 108, 18, new THREE.Vector3(-0.45, -0.34, -0.15), routeHullMat, routeHaloMat)
+  createFlightGate(new THREE.Vector3(-1640, -1120, -380), 166, 138, 18, new THREE.Vector3(-0.55, -0.56, -0.06), routeHullMat, routeHaloMat)
+  createFlightGate(new THREE.Vector3(-2140, -1670, -430), 190, 160, 22, new THREE.Vector3(-0.3, -0.86, 0), routeHullMat, routeHaloMat)
+
+  // 軌道リング上昇アーチ: 視界の中で上方向へ導く
+  createFlightGate(new THREE.Vector3(-260, 420, -980), 126, 102, 16, new THREE.Vector3(-0.1, 0.26, -1), routeHullMat, routeHaloMat)
+  createFlightGate(new THREE.Vector3(-420, 920, -1650), 150, 126, 18, new THREE.Vector3(-0.12, 0.5, -1), routeHullMat, routeHaloMat)
+  createFlightGate(new THREE.Vector3(-620, 1460, -2220), 210, 170, 24, new THREE.Vector3(-0.04, 0.72, -1), routeHullMat, routeHaloMat)
+
+  // 船墓場峡谷: 巨大残骸を縦にもずらして立体的な峡谷にする
+  createBrokenHullTunnel(new THREE.Vector3(1460, 260, 1220), 480, 180, 120, -0.76, 0.16, routeHullMat)
+  createBrokenHullTunnel(new THREE.Vector3(1780, 460, 1560), 640, 220, 150, -0.64, -0.12, routeHullMat)
+  createBrokenHullTunnel(new THREE.Vector3(2320, 760, 2080), 700, 240, 170, -0.58, 0.1, routeHullMat)
+  createBrokenHullTunnel(new THREE.Vector3(2600, 1020, 2360), 420, 180, 120, -0.35, -0.18, routeHullMat)
+
+  // 建造現場への立体フレーム: 斜め上に抜けていく感覚を強める
+  createFlightGate(new THREE.Vector3(980, 760, -60), 124, 92, 14, new THREE.Vector3(0.42, 0.22, -0.06), routeHullMat, routeHaloMat)
+  createFlightGate(new THREE.Vector3(1540, 1260, -20), 154, 122, 16, new THREE.Vector3(0.56, 0.5, -0.02), routeHullMat, routeHaloMat)
 
 
   const station = new THREE.Group()
@@ -5646,7 +5889,7 @@ async function buildSpaceMap() {
     pod.position.set(Math.cos(i * Math.PI / 2) * 100, Math.sin(i * Math.PI / 2) * 100, 0)
     station.add(pod)
   }
-  station.position.set(-1200, 200, 500)  // 建造現場近く
+  station.position.set(1450, 1180, 140)  // 建造現場へ上昇する高層導線上
   station.rotation.set(0.3, -0.4, 0.5)
   space.add(station)
   rotatingSpaceObjects.push(station)
@@ -5655,7 +5898,7 @@ async function buildSpaceMap() {
   space.add(stationLight)
 
   const rift = new THREE.Mesh(new THREE.RingGeometry(110, 190, 96), glowViolet)
-  rift.position.set(1400, -150, -1200)  // 船墓場近く
+  rift.position.set(1720, 420, 1580)  // 船墓場導線の入口側
   rift.rotation.set(0.3, -0.5, 0.2)
   space.add(rift)
   rotatingSpaceObjects.push(rift)
@@ -5688,27 +5931,27 @@ async function buildSpaceMap() {
   // ゾーンごとの特徴的ライト
   // 採掘コロニー: オレンジ色の採掘ライト
   const miningLight = new THREE.PointLight(0xff8800, 8, 600)
-  miningLight.position.set(-2000, -250, -1500)
+  miningLight.position.set(-2250, -1480, -420)
   space.add(miningLight)
 
   // 船墓場: 赤い警告灯
   const graveyardLight = new THREE.PointLight(0xff3300, 6, 550)
-  graveyardLight.position.set(2100, -200, -1600)
+  graveyardLight.position.set(2180, 520, 1900)
   space.add(graveyardLight)
 
   // 軌道リング: 白い構造ライト
   const ringLight = new THREE.PointLight(0xffffff, 12, 900)
-  ringLight.position.set(0, 350, -2400)
+  ringLight.position.set(-600, 1120, -2200)
   space.add(ringLight)
 
   // 要塞: 青白い非常灯
   const fortressLight = new THREE.PointLight(0x88aaff, 7, 650)
-  fortressLight.position.set(0, 0, -1800)
+  fortressLight.position.set(600, -760, -2400)
   space.add(fortressLight)
 
   // 建造現場: 黄色い作業灯
   const constructionLight = new THREE.PointLight(0xffdd00, 7, 600)
-  constructionLight.position.set(-1800, 350, 1600)
+  constructionLight.position.set(2000, 1600, -100)
   space.add(constructionLight)
 
   // ===== ランドマーク: Mothership Wreck（マザーシップ残骸 - 全長1500m） =====
@@ -6527,18 +6770,21 @@ async function buildSpaceMap() {
   const smallSatMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.5, metalness: 0.6 })
 
   // 小型デブリ2000個（1m以下）- 決定的配置
-  const smallDebrisCount = isMobileDevice ? 800 : 2000
+  const smallDebrisCount = isMobileDevice ? 220 : 520
   for (let i = 0; i < smallDebrisCount; i++) {
     const seed = i + 800000
     const dx = (deterministicRandom(seed) - 0.5) * 11000
-    const dy = (deterministicRandom(seed + 1) - 0.5) * 1000
+    const dy = spaceYMin + deterministicRandom(seed + 1) * spaceYSpan
     const dz = (deterministicRandom(seed + 2) - 0.5) * 11000
 
+    const debrisPos = new THREE.Vector3(dx, dy, dz)
+    if (Math.hypot(dx, dz) < HUB_CLEAR_RADIUS + 180) continue
+    if (isInsideSpaceRoute(debrisPos, 44)) continue
     const debris = new THREE.Mesh(
       new THREE.DodecahedronGeometry(0.3 + deterministicRandom(seed + 3) * 0.7, 0),
       smallDebrisMat
     )
-    debris.position.set(dx, dy, dz)
+    debris.position.copy(debrisPos)
     debris.rotation.set(
       deterministicRandom(seed + 4) * Math.PI,
       deterministicRandom(seed + 5) * Math.PI,
@@ -6548,11 +6794,11 @@ async function buildSpaceMap() {
   }
 
   // 浮遊ケーブル300本 - 決定的配置
-  const cableCount = isMobileDevice ? 120 : 300
+  const cableCount = isMobileDevice ? 40 : 90
   for (let i = 0; i < cableCount; i++) {
     const seed = i + 900000
     const startX = (deterministicRandom(seed) - 0.5) * 10000
-    const startY = (deterministicRandom(seed + 1) - 0.5) * 800
+    const startY = spaceYMin + deterministicRandom(seed + 1) * spaceYSpan
     const startZ = (deterministicRandom(seed + 2) - 0.5) * 10000
 
     const points: THREE.Vector3[] = []
@@ -6563,19 +6809,25 @@ async function buildSpaceMap() {
       y += (deterministicRandom(seed + j * 3 + 4) - 0.5) * 20
       z += (deterministicRandom(seed + j * 3 + 5) - 0.5) * 20
     }
+    const midCablePos = points[Math.floor(points.length / 2)]
+    if (Math.hypot(midCablePos.x, midCablePos.z) < HUB_CLEAR_RADIUS + 120) continue
+    if (distanceToSpaceRoute(midCablePos) < 70) continue
     const cableGeo = new THREE.BufferGeometry().setFromPoints(points)
     const cable = new THREE.Line(cableGeo, cableMat)
     space.add(cable)
   }
 
   // パネル破片400個 - 決定的配置
-  const panelCount = isMobileDevice ? 160 : 400
+  const panelCount = isMobileDevice ? 50 : 120
   for (let i = 0; i < panelCount; i++) {
     const seed = i + 1000000
     const px = (deterministicRandom(seed) - 0.5) * 10000
-    const py = (deterministicRandom(seed + 1) - 0.5) * 800
+    const py = spaceYMin + deterministicRandom(seed + 1) * spaceYSpan
     const pz = (deterministicRandom(seed + 2) - 0.5) * 10000
 
+    const panelPos = new THREE.Vector3(px, py, pz)
+    if (Math.hypot(px, pz) < HUB_CLEAR_RADIUS + 120) continue
+    if (isInsideSpaceRoute(panelPos, 55)) continue
     const panel = new THREE.Mesh(
       new THREE.BoxGeometry(
         3 + deterministicRandom(seed + 3) * 4,
@@ -6584,7 +6836,7 @@ async function buildSpaceMap() {
       ),
       debrisPanelMat
     )
-    panel.position.set(px, py, pz)
+    panel.position.copy(panelPos)
     panel.rotation.set(
       deterministicRandom(seed + 5) * Math.PI,
       deterministicRandom(seed + 6) * Math.PI,
@@ -6594,18 +6846,21 @@ async function buildSpaceMap() {
   }
 
   // 貨物コンテナ200個 - 決定的配置
-  const containerCount = isMobileDevice ? 80 : 200
+  const containerCount = isMobileDevice ? 24 : 60
   for (let i = 0; i < containerCount; i++) {
     const seed = i + 1100000
     const cx = (deterministicRandom(seed) - 0.5) * 10000
-    const cy = (deterministicRandom(seed + 1) - 0.5) * 800
+    const cy = spaceYMin + deterministicRandom(seed + 1) * spaceYSpan
     const cz = (deterministicRandom(seed + 2) - 0.5) * 10000
 
+    const containerPos = new THREE.Vector3(cx, cy, cz)
+    if (Math.hypot(cx, cz) < HUB_CLEAR_RADIUS + 140) continue
+    if (isInsideSpaceRoute(containerPos, 55)) continue
     const container = new THREE.Mesh(
       new THREE.BoxGeometry(8, 3, 3),
       containerMat
     )
-    container.position.set(cx, cy, cz)
+    container.position.copy(containerPos)
     container.rotation.set(
       deterministicRandom(seed + 3) * Math.PI,
       deterministicRandom(seed + 4) * Math.PI,
@@ -6615,19 +6870,22 @@ async function buildSpaceMap() {
   }
 
   // 小型衛星50個 - 決定的配置
-  const smallSatCount = isMobileDevice ? 20 : 50
+  const smallSatCount = isMobileDevice ? 10 : 24
   for (let i = 0; i < smallSatCount; i++) {
     const seed = i + 1200000
     const sx = (deterministicRandom(seed) - 0.5) * 11000
-    const sy = (deterministicRandom(seed + 1) - 0.5) * 900
+    const sy = spaceYMin + deterministicRandom(seed + 1) * spaceYSpan
     const sz = (deterministicRandom(seed + 2) - 0.5) * 11000
 
     // 本体
+    const satPos = new THREE.Vector3(sx, sy, sz)
+    if (Math.hypot(sx, sz) < HUB_CLEAR_RADIUS + 200) continue
+    if (isInsideSpaceRoute(satPos, 70)) continue
     const satBody = new THREE.Mesh(
       new THREE.BoxGeometry(2, 2, 2),
       smallSatMat
     )
-    satBody.position.set(sx, sy, sz)
+    satBody.position.copy(satPos)
     satBody.rotation.set(
       deterministicRandom(seed + 3) * Math.PI,
       deterministicRandom(seed + 4) * Math.PI,
@@ -6648,18 +6906,21 @@ async function buildSpaceMap() {
   }
 
   // 浮遊工具100個 - 決定的配置
-  const toolCount = isMobileDevice ? 40 : 100
+  const toolCount = isMobileDevice ? 10 : 28
   for (let i = 0; i < toolCount; i++) {
     const seed = i + 1300000
     const tx = (deterministicRandom(seed) - 0.5) * 10000
-    const ty = (deterministicRandom(seed + 1) - 0.5) * 800
+    const ty = spaceYMin + deterministicRandom(seed + 1) * spaceYSpan
     const tz = (deterministicRandom(seed + 2) - 0.5) * 10000
 
+    const toolPos = new THREE.Vector3(tx, ty, tz)
+    if (Math.hypot(tx, tz) < HUB_CLEAR_RADIUS + 200) continue
+    if (isInsideSpaceRoute(toolPos, 60)) continue
     const tool = new THREE.Mesh(
       new THREE.CylinderGeometry(0.2, 0.2, 1.5, 8),
       new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.7, roughness: 0.4 })
     )
-    tool.position.set(tx, ty, tz)
+    tool.position.copy(toolPos)
     tool.rotation.set(
       deterministicRandom(seed + 3) * Math.PI,
       deterministicRandom(seed + 4) * Math.PI,
@@ -7845,10 +8106,10 @@ function updateEnemies(dt: number) {
     if (enemy.group.position.z < bounds.minZ) enemy.group.position.z = bounds.minZ
     if (enemy.group.position.z > bounds.maxZ) enemy.group.position.z = bounds.maxZ
 
-    // 宇宙MAPは上下の境界も制限
-    if (currentMap === 'space') {
-      if (enemy.group.position.y < -400) enemy.group.position.y = -400
-      if (enemy.group.position.y > 500) enemy.group.position.y = 500
+    const enemyYBounds = getMapYBounds(currentMap)
+    if (enemyYBounds) {
+      if (enemy.group.position.y < enemyYBounds.minY) enemy.group.position.y = enemyYBounds.minY
+      if (enemy.group.position.y > enemyYBounds.maxY) enemy.group.position.y = enemyYBounds.maxY
     }
 
     // 高度制御
@@ -8231,10 +8492,13 @@ function enforceMapBounds() {
   const bounds = MAP_BOUNDS[currentMap]
   const clampedX = THREE.MathUtils.clamp(player.position.x, bounds.minX, bounds.maxX)
   const clampedZ = THREE.MathUtils.clamp(player.position.z, bounds.minZ, bounds.maxZ)
-  const outside = clampedX !== player.position.x || clampedZ !== player.position.z
+  const yBounds = getMapYBounds(currentMap)
+  const clampedY = yBounds ? THREE.MathUtils.clamp(player.position.y, yBounds.minY, yBounds.maxY) : player.position.y
+  const outside = clampedX !== player.position.x || clampedZ !== player.position.z || clampedY !== player.position.y
   if (outside) {
     player.position.x = clampedX
     player.position.z = clampedZ
+    player.position.y = clampedY
     speed = Math.min(speed, 180)
     wheelSpeedTarget = Math.min(wheelSpeedTarget, 150)
     boundaryWarningTimer = 1.2
@@ -8248,6 +8512,7 @@ function enforceMapBounds() {
     bounds.maxX - player.position.x,
     player.position.z - bounds.minZ,
     bounds.maxZ - player.position.z,
+    ...(yBounds ? [player.position.y - yBounds.minY, yBounds.maxY - player.position.y] : []),
   )
   if (distanceToEdge < bounds.warningMargin) boundaryWarningTimer = Math.max(boundaryWarningTimer, 0.35)
 }
@@ -8565,9 +8830,10 @@ function updateMapBoundary() {
   ]
 
   // 宇宙MAPは上下の面も考慮
-  if (currentMap === 'space') {
-    distToEdges.push(500 - pos.y)    // 上
-    distToEdges.push(pos.y - (-400)) // 下
+  const yBounds = getMapYBounds(currentMap)
+  if (yBounds) {
+    distToEdges.push(yBounds.maxY - pos.y) // 上
+    distToEdges.push(pos.y - yBounds.minY) // 下
   }
 
   const minDistToEdge = Math.min(...distToEdges)
@@ -9071,18 +9337,13 @@ function loop() {
 
   // MAP境界制限（全MAP共通：プレイヤーが戦闘エリアから出られない）
   const bounds = MAP_BOUNDS[currentMap]
-  if (player.position.x < bounds.minX) player.position.x = bounds.minX
-  if (player.position.x > bounds.maxX) player.position.x = bounds.maxX
-  if (player.position.z < bounds.minZ) player.position.z = bounds.minZ
-  if (player.position.z > bounds.maxZ) player.position.z = bounds.maxZ
-
-  // 宇宙MAPは上下の境界も制限
   if (currentMap === 'space') {
-    if (player.position.y < -400) player.position.y = -400
-    if (player.position.y > 500) player.position.y = 500
-  }
-
-  if (currentMap === 'space') {
+    newPos.x = THREE.MathUtils.clamp(newPos.x, bounds.minX, bounds.maxX)
+    newPos.z = THREE.MathUtils.clamp(newPos.z, bounds.minZ, bounds.maxZ)
+    const playerYBounds = getMapYBounds(currentMap)
+    if (playerYBounds) {
+      newPos.y = THREE.MathUtils.clamp(newPos.y, playerYBounds.minY, playerYBounds.maxY)
+    }
     player.position.copy(newPos)
     updateSpaceHazards(dt)
 
