@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.15.0'
+const VERSION = '7.15.1'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -899,12 +899,13 @@ gltfLoader.load(import.meta.env.BASE_URL + 'models/rock_pillar.glb', (gltf) => {
       const ph = terrainH(px, pz)
       const ht = 150 + deterministicRandom(seed + 2) * 150  // 150-300m
       const rb = 15 + deterministicRandom(seed + 3) * 25    // 15-40m
-      const inst = proto.clone()
-      inst.position.set(px, ph, pz)
-      inst.scale.set(rb/0.26, ht, rb/0.26)
-      inst.rotation.y = deterministicRandom(seed + 4) * Math.PI * 2
-      inst.name = `OriginalRockPillar_${cl.cx}_${j}`
-      scene.add(inst)
+    const inst = proto.clone()
+    inst.position.set(px, ph, pz)
+    inst.scale.set(rb/0.26, ht, rb/0.26)
+    inst.rotation.y = deterministicRandom(seed + 4) * Math.PI * 2
+    inst.name = `OriginalRockPillar_${cl.cx}_${j}`
+    scene.add(inst)
+    registerOriginalMapCollider(inst)
     }
   }
   // 孤立高塔（決定的配置）
@@ -918,6 +919,7 @@ gltfLoader.load(import.meta.env.BASE_URL + 'models/rock_pillar.glb', (gltf) => {
     inst.rotation.y = deterministicRandom(seed) * Math.PI * 2
     inst.name = `OriginalRockTower_${idx}`
     scene.add(inst)
+    registerOriginalMapCollider(inst)
   }
 }, undefined, () => { /* fallback: no pillars if GLB fails */ })
 
@@ -947,6 +949,7 @@ gltfLoader.load(import.meta.env.BASE_URL + 'models/rock_arch.glb', (gltf) => {
     inst.rotation.y = rotY
     inst.name = `OriginalRockArch_${idx}`
     scene.add(inst)
+    registerOriginalMapCollider(inst)
   }
 }, undefined, () => { /* fallback: no arches if GLB fails */ })
 
@@ -1149,6 +1152,7 @@ function buildWorldStructures() {
     titanPeak.position.set(0, base, 0)
     titanPeak.name = 'TitanPeak'
     scene.add(titanPeak)
+    registerOriginalMapCollider(titanPeak)
     console.log('✅ Titan Peak loaded (1200m landmark)')
   })
 
@@ -1185,6 +1189,7 @@ function buildWorldStructures() {
       inst.rotation.y = Math.random() * Math.PI
       inst.name = 'OriginalMonolith'
       scene.add(inst)
+      registerOriginalMapCollider(inst)
     }
   })
 
@@ -1223,6 +1228,7 @@ function buildWorldStructures() {
       inst.rotation.y = Math.random() * Math.PI
       inst.name = 'NaturalBridge'
       scene.add(inst)
+      registerOriginalMapCollider(inst)
     }
   })
 
@@ -1257,6 +1263,7 @@ function buildWorldStructures() {
       ruins.rotation.y = pos.rotation
       ruins.name = 'AncientRuins'
       scene.add(ruins)
+      registerOriginalMapCollider(ruins)
     }
     console.log('✅ Ancient Ruins loaded (5 locations)')
   })
@@ -1405,11 +1412,6 @@ function addColossalSkeletonFlightPath() {
   sternum.name = 'ColossalSternum'
   originalMapGroup.add(sternum)
   registerOriginalMapCollider(sternum)
-  registerOriginalSegmentCollider(
-    sternumCenter.clone().add(new THREE.Vector3(0, 110, 0)),
-    sternumCenter.clone().add(new THREE.Vector3(0, -110, 0)),
-    30
-  )
 }
 
 // ===== 地下洞窟ネットワーク（3層構造） =====
@@ -1781,6 +1783,7 @@ function addUndergroundCaveNetwork() {
     canyonWall.rotation.y = Math.random() * 0.3
     canyonWall.name = 'GrandCanyon_Wall'
     originalMapGroup.add(canyonWall)
+    registerOriginalMapCollider(canyonWall)
   }
 
   // 峡谷底に川
@@ -1835,6 +1838,7 @@ function addUndergroundCaveNetwork() {
   caveEntrance.rotation.z = Math.PI / 2
   caveEntrance.name = 'GiantCaveEntrance'
   originalMapGroup.add(caveEntrance)
+  registerOriginalMapCollider(caveEntrance)
 
   // 洞窟の開口部マーキング
   const caveOpening = new THREE.Mesh(
@@ -1863,6 +1867,7 @@ function addUndergroundCaveNetwork() {
     pillar.position.set(NATURAL_ARCH.x + side * (NATURAL_ARCH.width / 2), archY + NATURAL_ARCH.height / 2, NATURAL_ARCH.z)
     pillar.name = 'NaturalArch_Pillar'
     originalMapGroup.add(pillar)
+    registerOriginalMapCollider(pillar)
   }
 
   // アーチの天井
@@ -1874,6 +1879,7 @@ function addUndergroundCaveNetwork() {
   archTop.position.set(NATURAL_ARCH.x, archY + NATURAL_ARCH.height, NATURAL_ARCH.z)
   archTop.rotation.z = Math.PI / 2
   originalMapGroup.add(archTop)
+  registerOriginalMapCollider(archTop)
 
   // 5. 高山湖（Alpine Lake）
   const ALPINE_LAKE = { x: 500, z: -2500, radius: 250, altitude: 1000 }
@@ -2744,7 +2750,6 @@ interface GroundTarget {
 interface SmokeParticle { mesh: THREE.Mesh; vel: THREE.Vector3; life: number; maxLife: number }
 interface MissileTrail { mesh: THREE.Mesh; life: number }
 type LockableTarget = Enemy | GroundTarget
-interface OriginalSegmentCollider { start: THREE.Vector3; end: THREE.Vector3; radius: number }
 
 const bullets: Projectile[] = []
 const enemyBullets: Projectile[] = []
@@ -2825,7 +2830,6 @@ const AIR_LOCK_CONE_DOT = Math.cos(THREE.MathUtils.degToRad(30))
 const GROUND_LOCK_CONE_DOT = Math.cos(THREE.MathUtils.degToRad(42))
 const MULTI_LOCK_CONE_DOT = Math.cos(THREE.MathUtils.degToRad(36))
 const originalMapCollisionMeshes: THREE.Object3D[] = []
-const originalMapSegmentColliders: OriginalSegmentCollider[] = []
 
 function showLockStatus(text: string, duration = 1.05) {
   lockStatusText = text
@@ -3286,7 +3290,7 @@ function triggerFlareBurst() {
  * MAP種別に応じた地形遮蔽判定（宇宙MAPではfalse）
  */
 function isBlockedByOriginalFlightGeometry(raycaster: THREE.Raycaster): boolean {
-  return originalMapCollisionMeshes.length > 0 && raycaster.intersectObjects(originalMapCollisionMeshes, false).length > 0
+  return originalMapCollisionMeshes.length > 0 && raycaster.intersectObjects(originalMapCollisionMeshes, true).length > 0
 }
 
 function isBlockedByMapGeometry(raycaster: THREE.Raycaster): boolean {
@@ -3409,6 +3413,7 @@ function addHangar(cx: number, cz: number, w: number, h: number, d: number, rotY
     inst.position.set(cx, baseY, cz)
     inst.rotation.y = rotY
     scene.add(inst)
+    registerOriginalMapCollider(inst)
     return
   }
   const g2 = new THREE.Group()
@@ -3422,6 +3427,7 @@ function addHangar(cx: number, cz: number, w: number, h: number, d: number, rotY
     new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.8, metalness: 0.5 }))
   frame.position.set(0, h * 0.26, -d / 2); g2.add(frame)
   g2.position.set(cx, baseY, cz); g2.rotation.y = rotY; scene.add(g2)
+  registerOriginalMapCollider(g2)
 }
 
 function addControlTower(cx: number, cz: number, baseY: number): void {
@@ -3431,6 +3437,7 @@ function addControlTower(cx: number, cz: number, baseY: number): void {
     inst.scale.setScalar(1.5)  // scale up to match procedural proportions
     inst.position.set(cx, baseY, cz)
     scene.add(inst)
+    registerOriginalMapCollider(inst)
     // Navigation light on top
     const navL = new THREE.Mesh(new THREE.SphereGeometry(0.4, 6, 6),
       new THREE.MeshStandardMaterial({ color: 0xff1100, emissive: 0xff1100, emissiveIntensity: 14 }))
@@ -3456,6 +3463,7 @@ function addControlTower(cx: number, cz: number, baseY: number): void {
     new THREE.MeshStandardMaterial({ color: 0xff1100, emissive: 0xff1100, emissiveIntensity: 14 }))
   navL.position.y = 50.5; g2.add(navL)
   g2.position.set(cx, baseY, cz); scene.add(g2)
+  registerOriginalMapCollider(g2)
 }
 
 function addRadarDish(cx: number, cz: number, baseY: number): void {
@@ -3464,6 +3472,7 @@ function addRadarDish(cx: number, cz: number, baseY: number): void {
     inst.scale.setScalar(1.4)
     inst.position.set(cx, baseY, cz)
     scene.add(inst)
+    registerOriginalMapCollider(inst)
     // Keep a spinning group reference (GLB dish root rotates in updateRadarDishes)
     radarDishes.push(inst)
     return
@@ -3482,6 +3491,7 @@ function addRadarDish(cx: number, cz: number, baseY: number): void {
   feed.rotation.z = Math.PI / 2; feed.position.x = 7; rotGrp.add(feed)
   g2.add(rotGrp); radarDishes.push(rotGrp)
   g2.position.set(cx, baseY, cz); scene.add(g2)
+  registerOriginalMapCollider(g2)
 }
 
 function addFuelTanks(cx: number, cz: number, baseY: number, count: number): void {
@@ -3495,6 +3505,7 @@ function addFuelTanks(cx: number, cz: number, baseY: number, count: number): voi
       inst.position.set(cx + ox, baseY, cz + oz)
       inst.rotation.y = (i * Math.PI) / 3
       scene.add(inst)
+      registerOriginalMapCollider(inst)
     })
     return
   }
@@ -3505,11 +3516,11 @@ function addFuelTanks(cx: number, cz: number, baseY: number, count: number): voi
     const a = (i / specs.length) * Math.PI * 2, dist = 20 + i * 5
     const tx = cx + Math.cos(a) * dist, tz = cz + Math.sin(a) * dist
     const berm = new THREE.Mesh(new THREE.CylinderGeometry(r+5, r+8, 2.8, 10), bermMat)
-    berm.position.set(tx, baseY + 1.4, tz); scene.add(berm)
+    berm.position.set(tx, baseY + 1.4, tz); scene.add(berm); registerOriginalMapCollider(berm)
     const tank = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), tankMat2)
-    tank.position.set(tx, baseY + h/2 + 2.5, tz); tank.castShadow = true; scene.add(tank)
+    tank.position.set(tx, baseY + h/2 + 2.5, tz); tank.castShadow = true; scene.add(tank); registerOriginalMapCollider(tank)
     const top2 = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 6, 0, Math.PI*2, 0, Math.PI/2), tankMat2)
-    top2.position.set(tx, baseY + h + 2.5, tz); scene.add(top2)
+    top2.position.set(tx, baseY + h + 2.5, tz); scene.add(top2); registerOriginalMapCollider(top2)
   })
 }
 
@@ -3523,17 +3534,17 @@ function addPerimeterWall(cx: number, cz: number, baseY: number, rx: number, rz:
     const cos = Math.cos(rotY), sin = Math.sin(rotY)
     const wall = new THREE.Mesh(new THREE.BoxGeometry(wallT, wallH, len), concMat)
     wall.position.set(cx + mx*cos - mz*sin, baseY + wallH/2, cz + mx*sin + mz*cos)
-    wall.rotation.y = rotY + angle; wall.castShadow = true; wall.receiveShadow = true; scene.add(wall)
+    wall.rotation.y = rotY + angle; wall.castShadow = true; wall.receiveShadow = true; scene.add(wall); registerOriginalMapCollider(wall)
   }
   // 四隅の番兵塔
   corners.forEach(([wx,wz]) => {
     const cos = Math.cos(rotY), sin = Math.sin(rotY)
     const tower = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.8, wallH+7, 8), concMat)
     tower.position.set(cx + wx*cos - wz*sin, baseY + (wallH+7)/2, cz + wx*sin + wz*cos)
-    tower.castShadow = true; scene.add(tower)
+    tower.castShadow = true; scene.add(tower); registerOriginalMapCollider(tower)
     const top3 = new THREE.Mesh(new THREE.BoxGeometry(8, 1.5, 8), concMat)
     top3.position.set(cx + wx*cos - wz*sin, baseY + wallH + 7.5, cz + wx*sin + wz*cos)
-    scene.add(top3)
+    scene.add(top3); registerOriginalMapCollider(top3)
   })
 }
 
@@ -3567,7 +3578,7 @@ function buildBridge(cx: number, cz: number, span: number, rotY: number): void {
   const deckMat2 = new THREE.MeshStandardMaterial({ color: 0x606270, roughness: 0.88, metalness: 0.08 })
   const deck = new THREE.Mesh(new THREE.BoxGeometry(w, 1.8, span), deckMat2)
   deck.position.set(cx, bY, cz); deck.rotation.y = rotY
-  deck.castShadow = true; deck.receiveShadow = true; scene.add(deck)
+  deck.castShadow = true; deck.receiveShadow = true; scene.add(deck); registerOriginalMapCollider(deck)
 
   // アーチ（左右一対）
   const archMat3 = new THREE.MeshStandardMaterial({ color: 0x708090, roughness: 0.48, metalness: 0.80 })
@@ -3578,7 +3589,7 @@ function buildBridge(cx: number, cz: number, span: number, rotY: number): void {
     const arch = new THREE.Mesh(new THREE.TorusGeometry(archR, 2, 9, 36, Math.PI), archMat3)
     arch.position.set(lx, bY + 1, lz)
     arch.rotation.z = Math.PI / 2; if (rotY !== 0) arch.rotation.y = rotY
-    arch.castShadow = true; scene.add(arch)
+    arch.castShadow = true; scene.add(arch); registerOriginalMapCollider(arch)
     // ハンガー（吊り材）
     for (let t = -0.38; t <= 0.38; t += 0.12) {
       const hx = Math.sin(t * Math.PI) * archR
@@ -3590,20 +3601,20 @@ function buildBridge(cx: number, cz: number, span: number, rotY: number): void {
       const hangerX = rotY === 0 ? lx : cx + t * span
       const hangerZ = rotY === 0 ? cz + t * span : lz
       hanger.position.set(hangerX, bY + hangerH/2, hangerZ)
-      scene.add(hanger)
+      scene.add(hanger); registerOriginalMapCollider(hanger)
     }
   }
   // 橋台（両端）
   for (const end of [-span/2, span/2]) {
     const ex = cx + (rotY===0 ? 0 : end), ez = cz + (rotY===0 ? end : 0)
     const abt = new THREE.Mesh(new THREE.BoxGeometry(w + 10, 10, 14), concMat)
-    abt.position.set(ex, bY - 3.5, ez); abt.castShadow = true; scene.add(abt)
+    abt.position.set(ex, bY - 3.5, ez); abt.castShadow = true; scene.add(abt); registerOriginalMapCollider(abt)
   }
   // ガードレール
   for (const side of [-w/2 - 0.5, w/2 + 0.5]) {
     const rlx = cx + (rotY===0 ? side : 0), rlz = cz + (rotY===0 ? 0 : side)
     const rail = new THREE.Mesh(new THREE.BoxGeometry(0.45, 1.6, span), steelMat)
-    rail.position.set(rlx, bY + 1.8, rlz); scene.add(rail)
+    rail.position.set(rlx, bY + 1.8, rlz); scene.add(rail); registerOriginalMapCollider(rail)
   }
 }
 
@@ -3619,6 +3630,7 @@ function addDam(cx: number, cz: number, width: number, rotY: number): void {
   const baseWidth = 90  // Blenderでの基準幅
   dam.scale.setScalar(width / baseWidth)
   scene.add(dam)
+  registerOriginalMapCollider(dam)
 
   // 水面エフェクト（下流側）
   const waterSurf = new THREE.Mesh(
@@ -3659,6 +3671,7 @@ function addCityArea(cx: number, cz: number, radius: number, buildingCount: numb
     const scale = 0.8 + deterministicRandom(seed + 4) * 0.4
     building.scale.setScalar(scale)
     scene.add(building)
+    registerOriginalMapCollider(building)
 
     // 屋上ライト（夜間用、現在は昼間なので控えめ）
     // パフォーマンス改善：装飾ライト削除
@@ -3716,6 +3729,7 @@ function createRockFormations(): void {
     pillar.receiveShadow = true
     pillar.name = `CanyonPillar_${pillarCount++}`
     scene.add(pillar)
+    registerOriginalMapCollider(pillar)
   }
 
   // ===== 戦略2: 放射峡谷の縁に岩塔を配置（30本）=====
@@ -3748,6 +3762,7 @@ function createRockFormations(): void {
     pillar.receiveShadow = true
     pillar.name = `RadialPillar_${pillarCount++}`
     scene.add(pillar)
+    registerOriginalMapCollider(pillar)
   }
 
   // ===== 戦略3: 山の頂上付近に岩塔（20本）=====
@@ -3784,6 +3799,7 @@ function createRockFormations(): void {
       pillar.receiveShadow = true
       pillar.name = `MountainPillar_${pillarCount++}`
       scene.add(pillar)
+      registerOriginalMapCollider(pillar)
     }
   }
 
@@ -3812,6 +3828,7 @@ function createRockFormations(): void {
     boulder.receiveShadow = true
     boulder.name = `CanyonBoulder_${boulderCount++}`
     scene.add(boulder)
+    registerOriginalMapCollider(boulder)
   }
 
   // 戦略2: 全域に散在（150個）
@@ -3838,6 +3855,7 @@ function createRockFormations(): void {
     boulder.receiveShadow = true
     boulder.name = `ScatteredBoulder_${boulderCount++}`
     scene.add(boulder)
+    registerOriginalMapCollider(boulder)
   }
 
   if (import.meta.env.DEV) {
@@ -4799,15 +4817,10 @@ scene.add(originalMapGroup)
 
 function clearOriginalMapFlightColliders() {
   originalMapCollisionMeshes.length = 0
-  originalMapSegmentColliders.length = 0
 }
 
 function registerOriginalMapCollider(mesh: THREE.Object3D) {
   originalMapCollisionMeshes.push(mesh)
-}
-
-function registerOriginalSegmentCollider(start: THREE.Vector3, end: THREE.Vector3, radius: number) {
-  originalMapSegmentColliders.push({ start: start.clone(), end: end.clone(), radius })
 }
 
 function addOriginalBoneSegment(start: THREE.Vector3, end: THREE.Vector3, radius: number, material: THREE.Material, name: string) {
@@ -4821,37 +4834,6 @@ function addOriginalBoneSegment(start: THREE.Vector3, end: THREE.Vector3, radius
   mesh.name = name
   originalMapGroup.add(mesh)
   registerOriginalMapCollider(mesh)
-  registerOriginalSegmentCollider(start, end, radius + 6)
-}
-
-function closestPointOnSegment(point: THREE.Vector3, start: THREE.Vector3, end: THREE.Vector3, out: THREE.Vector3) {
-  _sv4.copy(end).sub(start)
-  const lenSq = Math.max(_sv4.lengthSq(), 0.0001)
-  const t = THREE.MathUtils.clamp(_sv3.copy(point).sub(start).dot(_sv4) / lenSq, 0, 1)
-  return out.copy(start).addScaledVector(_sv4, t)
-}
-
-function resolveOriginalSegmentCollisions(collisionRadius: number) {
-  let collided = false
-  for (const collider of originalMapSegmentColliders) {
-    closestPointOnSegment(player.position, collider.start, collider.end, _sv3)
-    _sv4.copy(player.position).sub(_sv3)
-    const minDistance = collider.radius + collisionRadius
-    const distSq = _sv4.lengthSq()
-    if (distSq >= minDistance * minDistance) continue
-
-    if (distSq < 0.0001) {
-      _sv4.copy(player.position).sub(collider.start)
-      if (_sv4.lengthSq() < 0.0001) _sv4.set(0, 1, 0)
-    }
-
-    _sv4.normalize()
-    player.position.copy(_sv3).addScaledVector(_sv4, minDistance)
-    hitFlashTimer = 0.22
-    camShakeAmt = Math.max(camShakeAmt, 0.35)
-    collided = true
-  }
-  return collided
 }
 const SPACE_SUPPLY_POSITIONS = [
   new THREE.Vector3(-320, 240, -400),  // 上層・建造現場内
@@ -9772,49 +9754,35 @@ function loop() {
 
     const collisionObjects = neoTokyoMapSystem.getCollisionObjects()
     if (!insideTube && !nearTubeOpening) {
-      for (const obj of collisionObjects) {
-        const box = new THREE.Box3().setFromObject(obj)
-        if (box.isEmpty()) continue
-        const center = box.getCenter(new THREE.Vector3())
-        const size = box.getSize(new THREE.Vector3())
-
-        const dx = player.position.x - center.x
-        const dy = player.position.y - center.y
-        const dz = player.position.z - center.z
-        const distXZ = Math.sqrt(dx * dx + dz * dz)
-
-        if (distXZ < collisionRadius + size.x / 2 && Math.abs(dy) < size.y / 2) {
-          const pushDir = new THREE.Vector3(dx, 0, dz).normalize()
-          player.position.x = center.x + pushDir.x * (collisionRadius + size.x / 2)
-          player.position.z = center.z + pushDir.z * (collisionRadius + size.z / 2)
-          // 衝突時は視覚フィードバックのみ
+      const moveDir = player.position.clone().sub(prevPos)
+      const moveDist = moveDir.length()
+      if (collisionObjects.length > 0 && moveDist > 0.1) {
+        moveDir.normalize()
+        _originalCollisionRaycaster.set(prevPos, moveDir)
+        _originalCollisionRaycaster.far = moveDist + collisionRadius
+        const hits = _originalCollisionRaycaster.intersectObjects(collisionObjects, true)
+        if (hits.length > 0) {
+          player.position.copy(prevPos)
           hitFlashTimer = 0.3
           camShakeAmt = Math.max(camShakeAmt, 0.5)
-          break
         }
       }
     }
   }
 
-  // オリジナルMAPの建物との衝突
+  // オリジナルMAPの主要構造物との衝突
   if (currentMap === 'original') {
-    resolveOriginalSegmentCollisions(collisionRadius)
-
-    for (const obj of tokyoObjects) {
-      const dx = player.position.x - obj.position.x
-      const dz = player.position.z - obj.position.z
-      const distXZ = Math.sqrt(dx * dx + dz * dz)
-
-      if (distXZ < collisionRadius + 15) {
-        const buildingHeight = obj.scale.y * 40
-        if (player.position.y < obj.position.y + buildingHeight) {
-          const pushDir = new THREE.Vector3(dx, 0, dz).normalize()
-          player.position.x = obj.position.x + pushDir.x * (collisionRadius + 15)
-          player.position.z = obj.position.z + pushDir.z * (collisionRadius + 15)
-          // 衝突時は視覚フィードバックのみ
-          hitFlashTimer = 0.3
-          camShakeAmt = Math.max(camShakeAmt, 0.5)
-        }
+    const moveDir = player.position.clone().sub(prevPos)
+    const moveDist = moveDir.length()
+    if (originalMapCollisionMeshes.length > 0 && moveDist > 0.1) {
+      moveDir.normalize()
+      _originalCollisionRaycaster.set(prevPos, moveDir)
+      _originalCollisionRaycaster.far = moveDist + collisionRadius
+      const hits = _originalCollisionRaycaster.intersectObjects(originalMapCollisionMeshes, true)
+      if (hits.length > 0) {
+        player.position.copy(prevPos)
+        hitFlashTimer = 0.3
+        camShakeAmt = Math.max(camShakeAmt, 0.5)
       }
     }
   }
@@ -9858,18 +9826,19 @@ function loop() {
     }
 
     // 個別小惑星との衝突判定（ゾーン周辺）
-    for (const asteroid of spaceIndividualAsteroids) {
-      const dist = player.position.distanceTo(asteroid.position)
-      // ジオメトリ半径1に対してスケールをかけるが、衝突判定は0.7倍に縮小
-      const asteroidRadius = Math.max(asteroid.scale.x, asteroid.scale.y, asteroid.scale.z) * 0.35
-      if (dist < adjustedCollisionRadius + asteroidRadius) {
-        // 衝突：押し出し
-        const pushDir = player.position.clone().sub(asteroid.position).normalize()
-        if (pushDir.length() < 0.1) pushDir.set(0, 1, 0)
-        player.position.copy(asteroid.position).add(pushDir.multiplyScalar(adjustedCollisionRadius + asteroidRadius + 2))
-        hitFlashTimer = 0.3
-        camShakeAmt = Math.max(camShakeAmt, 0.6)
-        break
+    if (spaceIndividualAsteroids.length > 0) {
+      const raycaster = new THREE.Raycaster()
+      const moveDir = player.position.clone().sub(prevPos).normalize()
+      const moveDist = player.position.distanceTo(prevPos)
+      if (moveDist > 0.1) {
+        raycaster.set(prevPos, moveDir)
+        raycaster.far = moveDist + adjustedCollisionRadius
+        const hits = raycaster.intersectObjects(spaceIndividualAsteroids, false)
+        if (hits.length > 0 && hits[0].distance < moveDist + adjustedCollisionRadius) {
+          player.position.copy(prevPos)
+          hitFlashTimer = 0.3
+          camShakeAmt = Math.max(camShakeAmt, 0.6)
+        }
       }
     }
 

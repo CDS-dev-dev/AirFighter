@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [7.15.1] - 2026-06-13
+
+### Changed
+
+- Original / Tokyo / Space の3MAPで、見えている構造物と当たり判定の整合を改善
+- Original MAP の主要構造物を衝突対象へ登録し、通り抜けや不自然なすり抜けを減少
+- Tokyo MAP の建物衝突判定を `Box3` 近似押し戻しから実メッシュ寄りのレイ判定へ調整
+- Space MAP の個別小惑星衝突を距離近似から見た目ベースのレイ判定へ寄せて、視覚とのズレを軽減
+
+### Notes
+
+- 今回のパッチは「通れそうなのに通れない / 通れなさそうなのに通れる」を減らすための、全MAP横断のコリジョン整合リリース
+
 ## [7.15.0] - 2026-06-13
 
 ### Added
