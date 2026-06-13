@@ -24,7 +24,7 @@
       "id": "tokyo.flight_gate_set",
       "map": "tokyo",
       "category": "hero_structure",
-      "status": "procedural_migrate",
+      "status": "implemented_glb",
       "publicPath": "public/models/neo_tokyo_flight_gate.glb",
       "sourceScript": "blender/gen_neo_tokyo_flight_gate.py",
       "collisionPolicy": "visible-mesh"
@@ -33,7 +33,7 @@
       "id": "tokyo.ascent_tube",
       "map": "tokyo",
       "category": "hero_structure",
-      "status": "procedural_migrate",
+      "status": "implemented_glb",
       "publicPath": "public/models/neo_tokyo_ascent_tube.glb",
       "sourceScript": "blender/gen_neo_tokyo_ascent_tube.py",
       "collisionPolicy": "visible-mesh"

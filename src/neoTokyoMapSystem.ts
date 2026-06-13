@@ -282,6 +282,8 @@ export class NeoTokyoMapSystem {
   private tubeCorridors: TubeCorridor[] = []
   private ringTubeCorridors: RingTubeCorridor[] = []
   private tubeOpenings: TubeOpening[] = []
+  private flightGateTemplate: THREE.Group | null = null
+  private ascentTubeTemplate: THREE.Group | null = null
 
   constructor(scene: THREE.Scene, isMobile = false, gltfLoader: GLTFLoader | null = null) {
     this.scene = scene
@@ -290,6 +292,7 @@ export class NeoTokyoMapSystem {
   }
 
   async initialize(): Promise<void> {
+    await this.loadHeroAssets()
     this.createTerrain()
     this.createUrbanFabric()
     this.createBuildings()
@@ -311,6 +314,31 @@ export class NeoTokyoMapSystem {
     this.createHolograms()
     this.createWater()
     this.createUndergroundStructure()
+  }
+
+  private async loadHeroAssets(): Promise<void> {
+    if (!this.gltfLoader) return
+    const loadOptional = async (path: string): Promise<THREE.Group | null> => {
+      try {
+        const gltf = await this.gltfLoader!.loadAsync(import.meta.env.BASE_URL + path)
+        const group = gltf.scene
+        group.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.castShadow = !this.mobile
+            child.receiveShadow = !this.mobile
+          }
+        })
+        return group
+      } catch {
+        return null
+      }
+    }
+    const [flightGate, ascentTube] = await Promise.all([
+      loadOptional('models/neo_tokyo_flight_gate.glb'),
+      loadOptional('models/neo_tokyo_ascent_tube.glb'),
+    ])
+    this.flightGateTemplate = flightGate
+    this.ascentTubeTemplate = ascentTube
   }
 
   // Tokyo topography: Musashino Plateau (west, high), CBD (center), Bay (east-south, low)
@@ -1048,11 +1076,23 @@ export class NeoTokyoMapSystem {
       const g = new THREE.Group()
       g.name = 'NeoTokyoFlightCanyonGate'
       const groundY = NeoTokyoMapSystem.heightAt(gate.x, gate.z)
+      const deckY = Math.max(gate.y + gate.h / 2, 760)
+      const sideH = deckY - groundY
+
+      if (this.flightGateTemplate) {
+        const glbGate = this.flightGateTemplate.clone()
+        glbGate.name = 'NeoTokyoFlightCanyonGateGLB'
+        glbGate.position.set(gate.x, groundY, gate.z)
+        glbGate.rotation.y = angle
+        glbGate.scale.set(gate.w / 760, sideH / 900, 1)
+        this.scene.add(glbGate)
+        this.landmarks.push(glbGate)
+        continue
+      }
+
       g.position.set(gate.x, groundY, gate.z)
       g.rotation.y = angle
 
-      const deckY = Math.max(gate.y + gate.h / 2, 760)
-      const sideH = deckY - groundY
       for (const side of [-1, 1]) {
         const pylon = new THREE.Mesh(new THREE.BoxGeometry(176, sideH, 190), bodyMat)
         pylon.position.set(side * gate.w / 2, sideH / 2, 0)
@@ -2746,16 +2786,6 @@ export class NeoTokyoMapSystem {
     this.tubeOpenings.push({ x: points[0].x, y: points[0].y, z: points[0].z, radius: 320 })
     this.tubeOpenings.push({ x: points[points.length - 1].x, y: points[points.length - 1].y, z: points[points.length - 1].z, radius: 320 })
 
-    const guide = new THREE.Mesh(new THREE.TubeGeometry(curve, 128, innerRadius * 0.08, 10, false), innerMat)
-    guide.name = 'NeoTokyoRainbowAscentTubeGuide'
-    this.scene.add(guide)
-    this.deco.push(guide)
-
-    const shell = new THREE.Mesh(new THREE.TubeGeometry(curve, 128, outerRadius, 18, false), shellMat)
-    shell.name = 'NeoTokyoRainbowAscentTubeShell'
-    this.scene.add(shell)
-    this.deco.push(shell)
-
     for (let i = 0; i < samples.length - 1; i++) {
       const a = samples[i]
       const b = samples[i + 1]
@@ -2771,7 +2801,29 @@ export class NeoTokyoMapSystem {
         entrySpacing: 999999,
         entryLength: 0
       })
+    }
 
+    if (this.ascentTubeTemplate) {
+      const tube = this.ascentTubeTemplate.clone()
+      tube.name = 'NeoTokyoRainbowAscentTubeGLB'
+      this.scene.add(tube)
+      this.landmarks.push(tube)
+      return
+    }
+
+    const guide = new THREE.Mesh(new THREE.TubeGeometry(curve, 128, innerRadius * 0.08, 10, false), innerMat)
+    guide.name = 'NeoTokyoRainbowAscentTubeGuide'
+    this.scene.add(guide)
+    this.deco.push(guide)
+
+    const shell = new THREE.Mesh(new THREE.TubeGeometry(curve, 128, outerRadius, 18, false), shellMat)
+    shell.name = 'NeoTokyoRainbowAscentTubeShell'
+    this.scene.add(shell)
+    this.deco.push(shell)
+
+    for (let i = 0; i < samples.length - 1; i++) {
+      const a = samples[i]
+      const b = samples[i + 1]
       const dir = new THREE.Vector3().subVectors(b, a)
       const len = dir.length()
       if (len < 1) continue

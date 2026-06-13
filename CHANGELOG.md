@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [7.17.0] - 2026-06-14
+
+### Added
+
+- Tokyo MAP のフライトゲートを Blender 生成GLB化
+- Tokyo MAP のレインボーブリッジ上昇チューブを Blender 生成GLB化
+- `blender/gen_neo_tokyo_flight_gate.py` と `blender/gen_neo_tokyo_ascent_tube.py` を追加
+
+### Changed
+
+- NEO Tokyo 初期化時に hero GLB を任意読み込みし、存在する場合はコード生成プロキシより優先して使用
+- 上昇チューブは既存の飛行可能判定を維持しつつ、外壁/リブ/レール表現を Blender 側へ移行
+- 資産台帳上で Tokyo の主役導線2種を `implemented_glb` に更新
+
+### Notes
+
+- 今回のリリースは、Tokyo MAP の「コードで頑張った感じ」を減らし、飛行体験の主役になるゲート/チューブを Blender 正本へ寄せるための更新
+
 ## [7.16.0] - 2026-06-13
 
 ### Added

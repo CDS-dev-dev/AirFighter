@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.16.0'
+const VERSION = '7.17.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
