@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [7.16.0] - 2026-06-13
+
+### Added
+
+- Blender 正本の運用を始めるため、巨大骨格回廊の Blender 生成スクリプトを追加
+- `blender/asset-registry.json` と `npm run assets:audit` による資産監査を追加
+- Blender 資産運用ドキュメント `docs/7_blender-asset-pipeline.md` を追加
+
+### Changed
+
+- Original MAP の巨大骨格回廊を、`original_colossal_skeleton.glb` が存在する場合はそちらを優先して使用するよう変更
+
+### Notes
+
+- 今回のリリースで、Codex から Blender を直接確認・起動できる状態まで到達し、主役構造物の Blender 正本化を実運用へ乗せ始めた
+
 ## [7.15.1] - 2026-06-13
 
 ### Changed

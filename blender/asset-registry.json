@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "source_of_truth": "blender",
+  "assets": [
+    {
+      "id": "original.story.colossal_skeleton_route",
+      "map": "original",
+      "category": "hero_structure",
+      "status": "implemented_glb",
+      "publicPath": "public/models/original_colossal_skeleton.glb",
+      "sourceScript": "blender/gen_original_colossal_skeleton.py",
+      "collisionPolicy": "visible-mesh"
+    },
+    {
+      "id": "original.terrain",
+      "map": "original",
+      "category": "terrain",
+      "status": "implemented_glb",
+      "publicPath": "public/terrain.glb",
+      "sourceScript": "blender/gen_terrain.py",
+      "collisionPolicy": "terrain-mesh-and-height-function"
+    },
+    {
+      "id": "tokyo.flight_gate_set",
+      "map": "tokyo",
+      "category": "hero_structure",
+      "status": "procedural_migrate",
+      "publicPath": "public/models/neo_tokyo_flight_gate.glb",
+      "sourceScript": "blender/gen_neo_tokyo_flight_gate.py",
+      "collisionPolicy": "visible-mesh"
+    },
+    {
+      "id": "tokyo.ascent_tube",
+      "map": "tokyo",
+      "category": "hero_structure",
+      "status": "procedural_migrate",
+      "publicPath": "public/models/neo_tokyo_ascent_tube.glb",
+      "sourceScript": "blender/gen_neo_tokyo_ascent_tube.py",
+      "collisionPolicy": "visible-mesh"
+    },
+    {
+      "id": "space.zone.orbital_ring",
+      "map": "space",
+      "category": "zone",
+      "status": "implemented_glb",
+      "publicPath": "public/space_orbital_ring.glb",
+      "sourceScript": "blender/generate_orbital_ring.py",
+      "collisionPolicy": "visible-mesh"
+    }
+  ]
+}

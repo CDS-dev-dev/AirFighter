@@ -40,7 +40,12 @@ AirFighter/
 │   │                          # terrain_h() は main.ts の terrainH() と完全一致が必須
 │   ├── gen_aircraft.py        # fighter / heli / bomber GLB 生成
 │   ├── gen_buildings.py       # hangar 等の建物 GLB 生成
-│   └── gen_carrier.py         # carrier.glb（ボス）生成
+│   ├── gen_carrier.py         # carrier.glb（ボス）生成
+│   ├── gen_original_colossal_skeleton.py # 巨大骨格回廊 GLB 生成
+│   └── asset-registry.json    # Blender資産台帳
+│
+├── tools/
+│   └── audit-blender-assets.mjs # Blender資産の整合監査
 │
 ├── docs/                      # 設計ドキュメント（本ドキュメント群）
 │   ├── 1_product-requirements.md
@@ -48,7 +53,8 @@ AirFighter/
 │   ├── 3_architecture.md
 │   ├── 4_repository-structure.md   ← このファイル
 │   ├── 5_development-guidelines.md
-│   └── 6_glossary.md
+│   ├── 6_glossary.md
+│   └── 7_blender-asset-pipeline.md
 │
 ├── .steering/
 │   └── UI-DESIGN-RULES.md     # UI 設計ルール（スマホ横画面対応など）

@@ -1,12 +1,13 @@
 {
   "name": "airfighter",
   "private": true,
-  "version": "7.15.1",
+  "version": "7.16.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "assets:audit": "node tools/audit-blender-assets.mjs"
   },
   "devDependencies": {
     "typescript": "~6.0.2",

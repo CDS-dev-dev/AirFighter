@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.15.1'
+const VERSION = '7.16.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -1061,10 +1061,11 @@ let glbCityBuilding02: THREE.Group | null = null
 let glbCityBuilding03: THREE.Group | null = null
 let glbCityBuilding04: THREE.Group | null = null
 let glbCityBuilding05: THREE.Group | null = null
+let glbOriginalColossalSkeleton: THREE.Group | null = null
 // Tokyo MAP用のGLBはTokyoMapSystemが管理するため、ここでは不要
 
 let _bldgGLBsLoaded = 0
-const _totalBuildingGLBs = 10  // オリジナルMAP用のビルディングGLB数
+const _totalBuildingGLBs = 11  // オリジナルMAP用のビルディングGLB数
 function _onBuildingGLBLoaded() {
   _bldgGLBsLoaded++
   if (_bldgGLBsLoaded >= _totalBuildingGLBs) {
@@ -1321,6 +1322,15 @@ function addMountainCave() {
 }
 
 function addColossalSkeletonFlightPath() {
+  if (glbOriginalColossalSkeleton) {
+    const skeleton = glbOriginalColossalSkeleton.clone()
+    skeleton.name = 'OriginalColossalSkeleton'
+    _glbSetShadow(skeleton)
+    originalMapGroup.add(skeleton)
+    registerOriginalMapCollider(skeleton)
+    return
+  }
+
   const fossilMat = new THREE.MeshStandardMaterial({
     color: 0xd9cfbc,
     emissive: 0x8f7b52,
@@ -2177,6 +2187,7 @@ function _glbSetShadow(g: THREE.Group) {
   ['models/city_building_03.glb',      (g: THREE.Group) => { glbCityBuilding03     = g }],
   ['models/city_building_04.glb',      (g: THREE.Group) => { glbCityBuilding04     = g }],
   ['models/city_building_05.glb',      (g: THREE.Group) => { glbCityBuilding05     = g }],
+  ['models/original_colossal_skeleton.glb', (g: THREE.Group) => { glbOriginalColossalSkeleton = g }],
 ].forEach(([url, setter]) => {
   gltfLoader.load(import.meta.env.BASE_URL + (url as string), (gltf) => {
     const g = gltf.scene; _glbSetShadow(g); (setter as (g: THREE.Group) => void)(g)

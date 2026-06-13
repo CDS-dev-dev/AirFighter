@@ -1,8 +1,8 @@
-# AirFighter v7.15.1
+# AirFighter v7.16.0
 
 **BotW級の完璧なオープンワールド3Dアクションゲーム**
 
-[![Version](https://img.shields.io/badge/version-7.15.1-blue.svg)](https://github.com/cds-dev-dev/AirFighter)
+[![Version](https://img.shields.io/badge/version-7.16.0-blue.svg)](https://github.com/cds-dev-dev/AirFighter)
 [![Built with Three.js](https://img.shields.io/badge/Built%20with-Three.js-000000.svg)](https://threejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178c6.svg)](https://www.typescriptlang.org/)
 
@@ -10,7 +10,7 @@
 
 ## 🎮 概要
 
-AirFighterは、Three.jsで作られた本格的な3D空中戦闘ゲームです。v7.15.1時点では、**v7.00.0で到達したBotW級の手作り感と探索価値**を土台に、Original MAPの巨大骨格飛行回廊に加えて、3MAP横断のコリジョン整合改善まで進んでいます。
+AirFighterは、Three.jsで作られた本格的な3D空中戦闘ゲームです。v7.16.0時点では、**v7.00.0で到達したBotW級の手作り感と探索価値**を土台に、Original MAPの巨大骨格飛行回廊に加えて、3MAP横断のコリジョン整合改善、そして Blender 正本化の運用開始まで進んでいます。
 
 ### 主な特徴
 
@@ -22,11 +22,11 @@ AirFighterは、Three.jsで作られた本格的な3D空中戦闘ゲームです
 
 ---
 
-## 🚀 v7.15.1 現行リリース概要（2026-06-13）
+## 🚀 v7.16.0 現行リリース概要（2026-06-13）
 
 ### 現在の正式版について
 
-このリポジトリの正式な現行バージョンは **v7.15.1** です。  
+このリポジトリの正式な現行バージョンは **v7.16.0** です。  
 直近の開発では、以下の内容が `v7.00.0` の基盤に積み上がっています。
 
 - **ゲームプレイ演出の統合**: `gameplayEffectsSystem` をゲームループへ統合
@@ -217,6 +217,18 @@ npm run build
 # プレビュー
 npm run preview
 ```
+
+## 🧰 Blenderアセット運用
+
+主役構造物は Blender を正本にする方針です。現在の資産台帳と生成物の有無は次で確認できます。
+
+```bash
+npm run assets:audit
+```
+
+- `blender/asset-registry.json`
+- `docs/7_blender-asset-pipeline.md`
+- `tools/audit-blender-assets.mjs`
 
 ---
 
