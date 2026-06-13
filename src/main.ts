@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.13.0'
+const VERSION = '7.14.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -5341,9 +5341,9 @@ async function buildSpaceMap() {
       name: 'fortress_descent',
       points: [
         new THREE.Vector3(0, 80, 0),
-        new THREE.Vector3(180, 10, -650),
-        new THREE.Vector3(420, -260, -1500),
-        new THREE.Vector3(600, -760, -2400),
+        new THREE.Vector3(220, -20, -920),
+        new THREE.Vector3(560, -420, -2080),
+        new THREE.Vector3(900, -980, -3200),
       ],
       clearRadius: 170,
     },
@@ -5798,13 +5798,6 @@ async function buildSpaceMap() {
     transparent: true,
     opacity: 0.92
   })
-  const routeGlowMat = new THREE.MeshBasicMaterial({
-    color: 0x7cecff,
-    transparent: true,
-    opacity: 0.20,
-    side: THREE.DoubleSide,
-    depthWrite: false
-  })
   for (const route of spaceRouteCurves) {
     const routePoints = route.curve.getSpacedPoints(10)
     const lineGeo = new THREE.BufferGeometry().setFromPoints(route.curve.getSpacedPoints(40))
@@ -5815,7 +5808,7 @@ async function buildSpaceMap() {
     space.add(line)
     for (let i = 1; i < routePoints.length - 1; i++) {
       const point = routePoints[i]
-      if (Math.hypot(point.x, point.z) < HUB_CLEAR_RADIUS + 420) continue
+      if (Math.hypot(point.x, point.z) < HUB_CLEAR_RADIUS + 760) continue
       const tangent = route.curve.getTangent(i / (routePoints.length - 1)).normalize()
       const ringRadius = route.name === 'graveyard_canyon' ? 90 : route.name === 'orbital_ascent' ? 104 : 82
       const tubeRadius = route.name === 'orbital_ascent' ? 4.5 : 3.5
@@ -5824,13 +5817,6 @@ async function buildSpaceMap() {
       frame.position.copy(point)
       space.add(frame)
       rotatingSpaceObjects.push(frame)
-
-      if (i % 2 === 0) {
-        const halo = new THREE.Mesh(new THREE.RingGeometry(ringRadius * 0.82, ringRadius * 1.14, 32), routeGlowMat)
-        halo.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent)
-        halo.position.copy(point)
-        space.add(halo)
-      }
     }
   }
 
@@ -5843,28 +5829,20 @@ async function buildSpaceMap() {
     transparent: true,
     opacity: 0.62,
   })
-  const routeHaloMat = new THREE.MeshBasicMaterial({
-    color: 0x93e7ff,
-    transparent: true,
-    opacity: 0.16,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-  })
-
   // 要塞侵入ゲート: 落下しながら潜る連続導線
-  createFlightGate(new THREE.Vector3(320, -200, -1240), 128, 98, 16, new THREE.Vector3(0.18, -0.22, -1), routeHullMat, routeHaloMat)
-  createFlightGate(new THREE.Vector3(520, -520, -1980), 152, 116, 18, new THREE.Vector3(0.10, -0.32, -1), routeHullMat, routeHaloMat)
-  createFlightGate(new THREE.Vector3(620, -880, -2520), 176, 138, 20, new THREE.Vector3(0.04, -0.25, -1), routeHullMat, routeHaloMat)
+  createFlightGate(new THREE.Vector3(420, -240, -1560), 128, 98, 16, new THREE.Vector3(0.18, -0.22, -1), routeHullMat, routeHullMat)
+  createFlightGate(new THREE.Vector3(720, -640, -2460), 152, 116, 18, new THREE.Vector3(0.10, -0.32, -1), routeHullMat, routeHullMat)
+  createFlightGate(new THREE.Vector3(920, -1080, -3260), 176, 138, 20, new THREE.Vector3(0.04, -0.25, -1), routeHullMat, routeHullMat)
 
   // 採掘コロニー下降シャフト: 高低差を感じる縦の導線
-  createFlightGate(new THREE.Vector3(-920, -460, -300), 138, 108, 18, new THREE.Vector3(-0.45, -0.34, -0.15), routeHullMat, routeHaloMat)
-  createFlightGate(new THREE.Vector3(-1640, -1120, -380), 166, 138, 18, new THREE.Vector3(-0.55, -0.56, -0.06), routeHullMat, routeHaloMat)
-  createFlightGate(new THREE.Vector3(-2140, -1670, -430), 190, 160, 22, new THREE.Vector3(-0.3, -0.86, 0), routeHullMat, routeHaloMat)
+  createFlightGate(new THREE.Vector3(-920, -460, -300), 138, 108, 18, new THREE.Vector3(-0.45, -0.34, -0.15), routeHullMat, routeHullMat)
+  createFlightGate(new THREE.Vector3(-1640, -1120, -380), 166, 138, 18, new THREE.Vector3(-0.55, -0.56, -0.06), routeHullMat, routeHullMat)
+  createFlightGate(new THREE.Vector3(-2140, -1670, -430), 190, 160, 22, new THREE.Vector3(-0.3, -0.86, 0), routeHullMat, routeHullMat)
 
   // 軌道リング上昇アーチ: 視界の中で上方向へ導く
-  createFlightGate(new THREE.Vector3(-260, 420, -980), 126, 102, 16, new THREE.Vector3(-0.1, 0.26, -1), routeHullMat, routeHaloMat)
-  createFlightGate(new THREE.Vector3(-420, 920, -1650), 150, 126, 18, new THREE.Vector3(-0.12, 0.5, -1), routeHullMat, routeHaloMat)
-  createFlightGate(new THREE.Vector3(-620, 1460, -2220), 210, 170, 24, new THREE.Vector3(-0.04, 0.72, -1), routeHullMat, routeHaloMat)
+  createFlightGate(new THREE.Vector3(-260, 420, -980), 126, 102, 16, new THREE.Vector3(-0.1, 0.26, -1), routeHullMat, routeHullMat)
+  createFlightGate(new THREE.Vector3(-420, 920, -1650), 150, 126, 18, new THREE.Vector3(-0.12, 0.5, -1), routeHullMat, routeHullMat)
+  createFlightGate(new THREE.Vector3(-620, 1460, -2220), 210, 170, 24, new THREE.Vector3(-0.04, 0.72, -1), routeHullMat, routeHullMat)
 
   // 船墓場峡谷: 巨大残骸を縦にもずらして立体的な峡谷にする
   createBrokenHullTunnel(new THREE.Vector3(1460, 260, 1220), 480, 180, 120, -0.76, 0.16, routeHullMat)
@@ -5873,8 +5851,8 @@ async function buildSpaceMap() {
   createBrokenHullTunnel(new THREE.Vector3(2600, 1020, 2360), 420, 180, 120, -0.35, -0.18, routeHullMat)
 
   // 建造現場への立体フレーム: 斜め上に抜けていく感覚を強める
-  createFlightGate(new THREE.Vector3(980, 760, -60), 124, 92, 14, new THREE.Vector3(0.42, 0.22, -0.06), routeHullMat, routeHaloMat)
-  createFlightGate(new THREE.Vector3(1540, 1260, -20), 154, 122, 16, new THREE.Vector3(0.56, 0.5, -0.02), routeHullMat, routeHaloMat)
+  createFlightGate(new THREE.Vector3(980, 760, -60), 124, 92, 14, new THREE.Vector3(0.42, 0.22, -0.06), routeHullMat, routeHullMat)
+  createFlightGate(new THREE.Vector3(1540, 1260, -20), 154, 122, 16, new THREE.Vector3(0.56, 0.5, -0.02), routeHullMat, routeHullMat)
 
 
   const station = new THREE.Group()
@@ -5946,7 +5924,7 @@ async function buildSpaceMap() {
 
   // 要塞: 青白い非常灯
   const fortressLight = new THREE.PointLight(0x88aaff, 7, 650)
-  fortressLight.position.set(600, -760, -2400)
+  fortressLight.position.set(900, -940, -3200)
   space.add(fortressLight)
 
   // 建造現場: 黄色い作業灯
@@ -6196,7 +6174,7 @@ async function buildSpaceMap() {
   })
 
   // ===== 要塞内部構造（3層） =====
-  const fortressCenter = { x: 600, y: -800, z: -2400 }
+  const fortressCenter = { x: 900, y: -980, z: -3200 }
   const fortressMat = new THREE.MeshStandardMaterial({ color: 0x333344, metalness: 0.7, roughness: 0.5 })
   const fortressLightMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 2.0 })
 
@@ -6523,7 +6501,7 @@ async function buildSpaceMap() {
     { x: 0, y: 350, z: -2400 },               // 軌道リング
     { x: 2100, y: -200, z: -1600 },           // 船墓場
     { x: -2300, y: -1800, z: -400 },          // 採掘コロニー
-    { x: 600, y: -800, z: -2400 },            // 要塞
+    { x: 900, y: -980, z: -3200 },            // 要塞
     { x: 0, y: 0, z: 0 },                     // 中央ハブに戻る
   ]
 
@@ -6562,7 +6540,7 @@ async function buildSpaceMap() {
   const HIDDEN_AREAS_SPACE = [
     // 既存10個
     { name: 'Mothership艦橋の隠し部屋', x: 0, y: -400, z: -3000, size: 20 },
-    { name: '要塞コア制御室', x: 600, y: -1000, z: -2400, size: 18 },
+    { name: '要塞コア制御室', x: 900, y: -1180, z: -3200, size: 18 },
     { name: '小惑星内部の採掘施設', x: -1500, y: 100, z: -1000, size: 25 },
     { name: '廃棄戦艦のブラックボックス', x: 2400, y: -300, z: -1800, size: 15 },
     { name: '宇宙ステーションの秘密ドック', x: -1000, y: 500, z: 1500, size: 22 },
@@ -6576,9 +6554,9 @@ async function buildSpaceMap() {
     { name: 'Mothership司令室', x: -10, y: -350, z: -3010, size: 17 },
     { name: 'Mothership艦長室', x: 15, y: -420, z: -2995, size: 14 },
     { name: 'Mothership脱出ポッド格納庫', x: -50, y: -380, z: -3050, size: 18 },
-    { name: '要塞第1層司令室', x: 600, y: -850, z: -2400, size: 16 },
-    { name: '要塞第2層動力炉', x: 600, y: -950, z: -2400, size: 19 },
-    { name: '要塞兵器庫', x: 620, y: -880, z: -2420, size: 15 },
+    { name: '要塞第1層司令室', x: 900, y: -1030, z: -3200, size: 16 },
+    { name: '要塞第2層動力炉', x: 900, y: -1130, z: -3200, size: 19 },
+    { name: '要塞兵器庫', x: 920, y: -1060, z: -3220, size: 15 },
     { name: '採掘コロニー司令室', x: -2300, y: -1750, z: -400, size: 17 },
     { name: '採掘コロニー鉱夫宿舎', x: -2320, y: -1800, z: -420, size: 14 },
     { name: 'Cruiser艦橋', x: -2000, y: -295, z: 1500, size: 16 },
@@ -7218,8 +7196,8 @@ async function switchMap(map: GameMap) {
 
     // プレイヤーを宇宙MAP開始位置に配置
     // 中央ハブ近くでスポーン、要塞・リング方向を向く（南西）
-    player.position.set(200, 160, 600)
-    const lookAngle = Math.atan2(-350 - 600, 0 - 200)  // fortress方向
+    player.position.set(120, 180, 680)
+    const lookAngle = Math.atan2(-900 - 680, 900 - 120)  // fortress方向
     player.rotation.y = lookAngle
     player.quaternion.setFromEuler(new THREE.Euler(0, lookAngle, 0, 'YXZ'))
     camQuat.copy(player.quaternion)

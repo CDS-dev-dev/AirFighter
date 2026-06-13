@@ -41,9 +41,9 @@
     "fortress": {
       "zone_id": "fortress",
       "position": {
-        "x": 600,
-        "y": -800,
-        "z": -2400
+        "x": 900,
+        "y": -980,
+        "z": -3200
       },
       "rotation": {
         "x": 0,
