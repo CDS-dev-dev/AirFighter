@@ -102,6 +102,19 @@
         backdrop-filter: blur(2px);
         z-index: 80;
       }
+      #lock-status {
+        position: fixed; top: 30%; left: 50%;
+        transform: translateX(-50%);
+        pointer-events: none; display: none;
+        font-size: 10px; font-weight: 700; letter-spacing: 3px;
+        color: rgba(170,235,255,0.92); text-shadow: 0 0 14px rgba(40,180,255,0.6);
+        padding: 6px 16px;
+        border: 1px solid rgba(80,180,255,0.32);
+        border-radius: 999px;
+        background: rgba(6,24,52,0.32);
+        backdrop-filter: blur(6px);
+        z-index: 80;
+      }
 
       /* ── ヒットフラッシュ ── */
       #hit-overlay {
@@ -182,6 +195,36 @@
         transform: translateX(-50%); color: #0f0;
         font-size: 9px; font-family: monospace; letter-spacing: 2px; white-space: nowrap;
       }
+      #missile-reticle {
+        position: fixed; width: 30px; height: 30px;
+        pointer-events: none; display: none; z-index: 98;
+        transform: translate(-50%, -50%);
+      }
+      #missile-reticle .mr-ring {
+        position: absolute; inset: 3px;
+        border: 1px solid rgba(255, 214, 122, 0.45);
+        border-radius: 50%;
+        box-shadow: 0 0 10px rgba(255, 196, 92, 0.16);
+      }
+      #missile-reticle .mr-dot {
+        position: absolute; top: 50%; left: 50%;
+        width: 3px; height: 3px; margin: -1.5px 0 0 -1.5px;
+        border-radius: 50%;
+        background: rgba(255, 222, 140, 0.8);
+      }
+      #missile-reticle .mr-arm {
+        position: absolute; background: rgba(255, 214, 122, 0.72);
+      }
+      #missile-reticle .mr-top, #missile-reticle .mr-bottom {
+        width: 1px; height: 8px; left: 50%; margin-left: -0.5px;
+      }
+      #missile-reticle .mr-left, #missile-reticle .mr-right {
+        width: 8px; height: 1px; top: 50%; margin-top: -0.5px;
+      }
+      #missile-reticle .mr-top { top: 0; }
+      #missile-reticle .mr-bottom { bottom: 0; }
+      #missile-reticle .mr-left { left: 0; }
+      #missile-reticle .mr-right { right: 0; }
       @keyframes reticle-spin { to { transform: rotate(360deg); } }
 
       /* ── 操作ガイド ── */
@@ -682,12 +725,21 @@
       <div class="warn-text">&#9651; MISSILE INCOMING &#9651;</div>
     </div>
     <div id="boundary-warning">RETURN TO COMBAT AREA</div>
+    <div id="lock-status"></div>
 
     <div id="reticle">
       <div class="arc"></div>
       <div class="arc2"></div>
       <div class="dot"></div>
       <span>LOCK</span>
+    </div>
+    <div id="missile-reticle">
+      <div class="mr-ring"></div>
+      <div class="mr-arm mr-top"></div>
+      <div class="mr-arm mr-right"></div>
+      <div class="mr-arm mr-bottom"></div>
+      <div class="mr-arm mr-left"></div>
+      <div class="mr-dot"></div>
     </div>
 
     <!-- 飛行データ (左下) -->
@@ -918,7 +970,7 @@
 
     <!-- ゲームモード＆MAP選択 -->
     <div id="mode-screen">
-      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v7.14.0</span></div>
+      <div class="ms-title">AirFighter <span style="font-size: 0.4em; opacity: 0.7;">v7.15.0</span></div>
       <div class="ms-sub">SELECT MAP & MISSION MODE</div>
 
       <!-- MAP・音声・操作設定 -->

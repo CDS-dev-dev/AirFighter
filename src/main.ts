@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.14.0'
+const VERSION = '7.15.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -1072,6 +1072,8 @@ function _onBuildingGLBLoaded() {
   }
 }
 function buildWorldStructures() {
+  clearOriginalMapFlightColliders()
+
   // ===== 橋梁（20本）=====
   // 主要峡谷横断橋（大型）
   buildBridge(   80, -185, 220, 0)             // 東西峡谷橋 #1
@@ -1230,6 +1232,9 @@ function buildWorldStructures() {
   // ===== 中央岩山の洞窟（内部飛行可能）=====
   addMountainCave()
 
+  // ===== 巨大生物の骨格飛行回廊 =====
+  addColossalSkeletonFlightPath()
+
   // ===== 地下洞窟ネットワーク（3層構造） =====
   addUndergroundCaveNetwork()
 
@@ -1306,6 +1311,105 @@ function addMountainCave() {
   )
   coreOrb.position.set(0, terrainH(0, 0) + 200, 0)
   originalMapGroup.add(coreOrb)
+}
+
+function addColossalSkeletonFlightPath() {
+  const fossilMat = new THREE.MeshStandardMaterial({
+    color: 0xd9cfbc,
+    emissive: 0x8f7b52,
+    emissiveIntensity: 0.08,
+    roughness: 0.94,
+    metalness: 0.04
+  })
+  const marrowMat = new THREE.MeshStandardMaterial({
+    color: 0xf3ead8,
+    emissive: 0xc6a878,
+    emissiveIntensity: 0.16,
+    roughness: 0.86,
+    metalness: 0.02,
+    transparent: true,
+    opacity: 0.92
+  })
+
+  const spinePlan = [
+    { x: -2600, z: -1100, lift: 180 },
+    { x: -2000, z: -760, lift: 240 },
+    { x: -1320, z: -360, lift: 290 },
+    { x: -540, z: 120, lift: 340 },
+    { x: 220, z: 520, lift: 360 },
+    { x: 980, z: 900, lift: 330 },
+    { x: 1760, z: 1180, lift: 290 },
+    { x: 2460, z: 1460, lift: 230 }
+  ]
+  const spinePoints = spinePlan.map((node) =>
+    new THREE.Vector3(node.x, terrainH(node.x, node.z) + node.lift, node.z)
+  )
+
+  for (let i = 0; i < spinePoints.length - 1; i++) {
+    const start = spinePoints[i]
+    const end = spinePoints[i + 1]
+    const radius = 28 + (1 - Math.abs(i - (spinePoints.length - 2) * 0.5) / spinePoints.length) * 10
+    addOriginalBoneSegment(start, end, radius, fossilMat, 'ColossalSpine')
+
+    const tangent = _sv3.copy(end).sub(start).normalize()
+    const vertebra = new THREE.Mesh(
+      new THREE.TorusGeometry(radius * 0.95, Math.max(4, radius * 0.16), 10, 20),
+      marrowMat
+    )
+    vertebra.position.copy(start).lerp(end, 0.5)
+    vertebra.quaternion.setFromUnitVectors(_sv4.set(0, 0, 1), tangent)
+    vertebra.castShadow = !isMobileDevice
+    vertebra.receiveShadow = !isMobileDevice
+    vertebra.name = 'ColossalVertebra'
+    originalMapGroup.add(vertebra)
+    registerOriginalMapCollider(vertebra)
+  }
+
+  for (let i = 1; i < spinePoints.length - 1; i++) {
+    const base = spinePoints[i]
+    const prev = spinePoints[i - 1]
+    const next = spinePoints[i + 1]
+    const tangent = _sv3.copy(next).sub(prev).normalize()
+    const side = _sv4.copy(tangent).cross(new THREE.Vector3(0, 1, 0)).normalize()
+    const span = 280 + i * 22
+    const crown = 150 + Math.abs(3 - i) * 18
+    const sway = (i % 2 === 0 ? 1 : -1) * 70
+
+    for (const sideSign of [-1, 1]) {
+      const ribEndX = base.x + side.x * span * sideSign + tangent.x * sway * sideSign * 0.35
+      const ribEndZ = base.z + side.z * span * sideSign + tangent.z * sway * sideSign * 0.35
+      const ribEnd = new THREE.Vector3(ribEndX, terrainH(ribEndX, ribEndZ) + 34, ribEndZ)
+      const arcPoints = [
+        base.clone(),
+        base.clone().add(side.clone().multiplyScalar(span * 0.28 * sideSign)).add(tangent.clone().multiplyScalar(sway * 0.22 * sideSign)).add(new THREE.Vector3(0, crown * 0.35, 0)),
+        base.clone().add(side.clone().multiplyScalar(span * 0.68 * sideSign)).add(tangent.clone().multiplyScalar(sway * 0.18 * sideSign)).add(new THREE.Vector3(0, crown * 0.08, 0)),
+        ribEnd
+      ]
+
+      for (let j = 0; j < arcPoints.length - 1; j++) {
+        const taper = THREE.MathUtils.lerp(20, 11, j / (arcPoints.length - 2))
+        addOriginalBoneSegment(arcPoints[j], arcPoints[j + 1], taper, fossilMat, 'ColossalRib')
+      }
+    }
+  }
+
+  const sternumCenter = spinePoints[4].clone().lerp(spinePoints[5], 0.45).add(new THREE.Vector3(0, -70, 0))
+  const sternum = new THREE.Mesh(
+    new THREE.CylinderGeometry(24, 32, 220, 12),
+    marrowMat
+  )
+  sternum.position.copy(sternumCenter)
+  sternum.rotation.z = Math.PI * 0.08
+  sternum.castShadow = !isMobileDevice
+  sternum.receiveShadow = !isMobileDevice
+  sternum.name = 'ColossalSternum'
+  originalMapGroup.add(sternum)
+  registerOriginalMapCollider(sternum)
+  registerOriginalSegmentCollider(
+    sternumCenter.clone().add(new THREE.Vector3(0, 110, 0)),
+    sternumCenter.clone().add(new THREE.Vector3(0, -110, 0)),
+    30
+  )
 }
 
 // ===== 地下洞窟ネットワーク（3層構造） =====
@@ -2608,7 +2712,7 @@ let modeObjectiveTotal = 0
 let modeObjectiveKilled = 0
 
 interface Projectile { mesh: THREE.Object3D; vel: THREE.Vector3; life: number }
-interface HomingMissile extends Projectile { mesh: THREE.Group; target: THREE.Object3D | null; diverted: boolean; spd: number; turnRate: number; light: THREE.PointLight | null }
+interface HomingMissile extends Projectile { mesh: THREE.Group; target: THREE.Object3D | null; diverted: boolean; spd: number; turnRate: number; light: THREE.PointLight | null; kind: 'player' | 'enemy' | 'ally' }
 interface Enemy {
   group: THREE.Group;
   health: number;
@@ -2639,6 +2743,8 @@ interface GroundTarget {
 }
 interface SmokeParticle { mesh: THREE.Mesh; vel: THREE.Vector3; life: number; maxLife: number }
 interface MissileTrail { mesh: THREE.Mesh; life: number }
+type LockableTarget = Enemy | GroundTarget
+interface OriginalSegmentCollider { start: THREE.Vector3; end: THREE.Vector3; radius: number }
 
 const bullets: Projectile[] = []
 const enemyBullets: Projectile[] = []
@@ -2669,9 +2775,12 @@ let gunCooldown = 0, pMissileCooldown = 0, flareCooldown = 0
 let gunFireTime = 0  // マシンガンを連続発射している時間
 let gunLeadPosition: THREE.Vector3 | null = null  // マシンガン予測位置（表示用）
 let hitFlashTimer = 0, gunSoundCooldown = 0, trailFrame = 0, radarFrame = 0
-let lockedTarget: { group: THREE.Group } | null = null  // Enemy | GroundTarget どちらもロック可能
+let lockedTarget: LockableTarget | null = null
 let playerHP = 3, invincibleTimer = 0, respawnFlash = 0, respawnTimer = 0
 let boundaryWarningTimer = 0
+let lockStatusTimer = 0
+let lockStatusText = ''
+let trackedPlayerMissile: HomingMissile | null = null
 const MAX_HP = 3
 
 const bulletMat = new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xffdd00, emissiveIntensity: 28.0, roughness: 0.1, metalness: 0 })
@@ -2684,6 +2793,8 @@ const _enemyBulletGeo  = new THREE.SphereGeometry(0.4, 6, 6)
 // ===== SCRATCH VECTORS / QUATERNIONS (avoid per-frame allocation) =====
 const _sv1    = new THREE.Vector3()
 const _sv2    = new THREE.Vector3()
+const _sv3    = new THREE.Vector3()
+const _sv4    = new THREE.Vector3()
 const _sq1    = new THREE.Quaternion()
 const _sEuler = new THREE.Euler()
 
@@ -2708,18 +2819,71 @@ const playerMissileMat = new THREE.MeshStandardMaterial({ color: 0xffff00, emiss
 const enemyMissileMat = new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xcc2200, emissiveIntensity: 2.0, roughness: 0.5, metalness: 0.3 })
 const allyMissileMat  = new THREE.MeshStandardMaterial({ color: 0x44ff88, emissive: 0x00cc44, emissiveIntensity: 3.0, roughness: 0.5, metalness: 0.3 })
 const _fwd = new THREE.Vector3(0, 0, -1)
+const _lockRaycaster = new THREE.Raycaster()
+const _originalCollisionRaycaster = new THREE.Raycaster()
+const AIR_LOCK_CONE_DOT = Math.cos(THREE.MathUtils.degToRad(30))
+const GROUND_LOCK_CONE_DOT = Math.cos(THREE.MathUtils.degToRad(42))
+const MULTI_LOCK_CONE_DOT = Math.cos(THREE.MathUtils.degToRad(36))
+const originalMapCollisionMeshes: THREE.Object3D[] = []
+const originalMapSegmentColliders: OriginalSegmentCollider[] = []
+
+function showLockStatus(text: string, duration = 1.05) {
+  lockStatusText = text
+  lockStatusTimer = Math.max(lockStatusTimer, duration)
+}
+
+function getAllLockTargets(): LockableTarget[] {
+  const targets: LockableTarget[] = [...enemies]
+  if (groundTargets.length > 0) targets.push(...groundTargets)
+  return targets
+}
+
+function getLockConeDot(target: LockableTarget, multi = false) {
+  if (multi) return MULTI_LOCK_CONE_DOT
+  return groundTargets.includes(target as GroundTarget) ? GROUND_LOCK_CONE_DOT : AIR_LOCK_CONE_DOT
+}
+
+function getConeLockCandidates(multi = false): Array<{ target: LockableTarget; score: number }> {
+  const fwdWorld = _sv1.set(0, 0, -1).applyQuaternion(player.quaternion)
+  const candidates: Array<{ target: LockableTarget; score: number }> = []
+
+  for (const target of getAllLockTargets()) {
+    _sv2.copy(target.group.position).sub(player.position)
+    const dist = _sv2.length()
+    if (dist > MISSILE_LOCK_RANGE || dist < 20) continue
+
+    _sv2.multiplyScalar(1 / dist)
+    const dot = _sv2.dot(fwdWorld)
+    if (dot < getLockConeDot(target, multi)) continue
+
+    _lockRaycaster.set(player.position, _sv2)
+    _lockRaycaster.far = dist - 8
+    if (isBlockedByMapGeometry(_lockRaycaster)) continue
+
+    let score = dot * 1.18 - dist / MISSILE_LOCK_RANGE * 0.22
+    if (lockedTarget === target) score += 0.04
+    candidates.push({ target, score })
+  }
+
+  candidates.sort((a, b) => b.score - a.score)
+  return candidates
+}
 
 // ===== LOCK-ON =====
 function cycleLock() {
-  const allTargets: Array<{ group: THREE.Group }> = [...enemies, ...groundTargets]
-  if (!allTargets.length) { lockedTarget = null; return }
-  if (!lockedTarget || !allTargets.includes(lockedTarget)) {
-    lockedTarget = allTargets.reduce((n, t) =>
-      t.group.position.distanceTo(player.position) < n.group.position.distanceTo(player.position) ? t : n)
+  const candidates = getConeLockCandidates()
+  if (!candidates.length) {
+    showLockStatus(lockedTarget ? '前方に次の候補なし' : '前方にロック対象なし')
     return
   }
-  const idx = allTargets.indexOf(lockedTarget)
-  lockedTarget = idx >= allTargets.length - 1 ? null : allTargets[idx + 1]
+  if (!lockedTarget) {
+    lockedTarget = candidates[0].target
+    return
+  }
+  const idx = candidates.findIndex(candidate => candidate.target === lockedTarget)
+  lockedTarget = idx === -1 || idx >= candidates.length - 1
+    ? candidates[0].target
+    : candidates[idx + 1].target
 }
 
 // ===== ENEMIES =====
@@ -2865,7 +3029,7 @@ function fireAllyMissile(ally: Ally, target: Enemy) {
   const toTarget = target.group.position.clone().sub(ally.group.position).normalize()
   mesh.quaternion.setFromUnitVectors(_fwd, toTarget)
   scene.add(mesh)
-  allyMissiles.push({ mesh, vel: toTarget.clone().multiplyScalar(90), life: 14, target: target.group, diverted: false, spd: 140, turnRate: 3.5, light: null })  // 追尾性能向上: spd 110→140, turnRate 2.5→3.5
+  allyMissiles.push({ mesh, vel: toTarget.clone().multiplyScalar(90), life: 14, target: target.group, diverted: false, spd: 140, turnRate: 3.5, light: null, kind: 'ally' })  // 追尾性能向上: spd 110→140, turnRate 2.5→3.5
 }
 
 function killEnemy(ei: number) {
@@ -3039,7 +3203,20 @@ function fireGun() {
   // 砲口フラッシュ削除（パフォーマンス最適化：ミサイル発射時のフリーズ防止）
 }
 
-function firePlayerMissile() {
+function getNearestLockableGroup(): THREE.Object3D | null {
+  let nearest: THREE.Object3D | null = null
+  let minD = Infinity
+  for (const target of getAllLockTargets()) {
+    const d = target.group.position.distanceTo(player.position)
+    if (d < minD) {
+      minD = d
+      nearest = target.group
+    }
+  }
+  return nearest
+}
+
+function firePlayerMissile(targetOverride: THREE.Object3D | null = null) {
   if (pMissileCooldown > 0 || missileAmmo <= 0) return
   if (!audioReady) initAudio()
   pMissileCooldown = 1.5; missileAmmo--
@@ -3047,24 +3224,17 @@ function firePlayerMissile() {
   updatePips(missilePips, missileAmmo, 'on')
   updateMobileAmmo()  // スマホ版ボタン内の残量更新
 
-  const target: THREE.Object3D | null = lockedTarget?.group ?? (() => {
-    let nearest: THREE.Object3D | null = null, minD = Infinity
-    for (const e of enemies) { const d = e.group.position.distanceTo(player.position); if (d < minD) { minD = d; nearest = e.group } }
-    for (const gt of groundTargets) { const d = gt.group.position.distanceTo(player.position); if (d < minD) { minD = d; nearest = gt.group } }
-    return nearest
-  })()
+  const target: THREE.Object3D | null = targetOverride ?? lockedTarget?.group ?? getNearestLockableGroup()
 
   const mesh = createMissileModel(playerMissileMat)
   mesh.position.copy(player.position).add(new THREE.Vector3(0, -0.5, 2).applyQuaternion(player.quaternion))
   mesh.quaternion.copy(player.quaternion)
   scene.add(mesh)
-  // プレイヤーミサイルに明るい発光ライトを追加（視認性向上）
-  const missileLight = new THREE.PointLight(0xffff00, 15, 50)
-  missileLight.position.copy(mesh.position)
-  scene.add(missileLight)
   // ミサイル速度 = プレイヤー速度 + 相対速度200 m/s
   const missileAbsoluteSpeed = speed + 200
-  playerMissiles.push({ mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(missileAbsoluteSpeed), life: 12, target, diverted: false, spd: missileAbsoluteSpeed, turnRate: 3.5, light: missileLight })
+  const missile = { mesh, vel: _fwd.clone().applyQuaternion(player.quaternion).multiplyScalar(missileAbsoluteSpeed), life: 12, target, diverted: false, spd: missileAbsoluteSpeed, turnRate: 3.5, light: null, kind: 'player' as const }
+  playerMissiles.push(missile)
+  trackedPlayerMissile = missile
   camShakeAmt = Math.max(camShakeAmt, 0.22)
   playMissileSound()
 }
@@ -3084,7 +3254,7 @@ function fireEnemyMissile(enemy: Enemy) {
   scene.add(mesh)
   // 敵ミサイル速度 = 敵速度180 + 相対速度120 = 300 m/s
   const enemyMissileSpeed = 180 + 120
-  enemyMissiles.push({ mesh, vel: toTarget.clone().multiplyScalar(enemyMissileSpeed), life: 15, target, diverted: false, spd: enemyMissileSpeed, turnRate: 0.85, light: null })
+  enemyMissiles.push({ mesh, vel: toTarget.clone().multiplyScalar(enemyMissileSpeed), life: 15, target, diverted: false, spd: enemyMissileSpeed, turnRate: 0.85, light: null, kind: 'enemy' })
 }
 
 function _dropSingleFlare() {
@@ -3115,6 +3285,10 @@ function triggerFlareBurst() {
 /**
  * MAP種別に応じた地形遮蔽判定（宇宙MAPではfalse）
  */
+function isBlockedByOriginalFlightGeometry(raycaster: THREE.Raycaster): boolean {
+  return originalMapCollisionMeshes.length > 0 && raycaster.intersectObjects(originalMapCollisionMeshes, false).length > 0
+}
+
 function isBlockedByMapGeometry(raycaster: THREE.Raycaster): boolean {
   if (currentMap === 'space') {
     // 宇宙マップ: 小惑星とゾーン構造物で遮蔽判定
@@ -3134,6 +3308,9 @@ function isBlockedByMapGeometry(raycaster: THREE.Raycaster): boolean {
   if (currentMap === 'tokyo' && neoTokyoMapSystem) {
     return raycaster.intersectObjects(neoTokyoMapSystem.getCollisionObjects(), true).length > 0
   }
+  if (currentMap === 'original') {
+    if (isBlockedByOriginalFlightGeometry(raycaster)) return true
+  }
   if (!ground || !ground.parent) return false
   return raycaster.intersectObject(ground, false).length > 0
 }
@@ -3141,32 +3318,12 @@ function isBlockedByMapGeometry(raycaster: THREE.Raycaster): boolean {
 function handleRightLock() {
   if (!currentMode || missionComplete) return
   if (lockedTarget) { lockedTarget = null; return }
-  const fwdWorld = _fwd.clone().applyQuaternion(player.quaternion)
-  let best: { group: THREE.Group } | null = null, bestScore = -Infinity
-  const allTargets: Array<{ group: THREE.Group }> = [...enemies, ...groundTargets]
-
-  // レイキャスター for地形遮蔽判定
-  const raycaster = new THREE.Raycaster()
-
-  for (const t of allTargets) {
-    const toT = t.group.position.clone().sub(player.position)
-    const dist = toT.length()
-    if (dist > MISSILE_LOCK_RANGE) continue
-    const toTNorm = toT.normalize()
-    const dot = toTNorm.dot(fwdWorld)
-    // 地上目標は前方90度（dot > 0）、航空機は前方60度（dot > 0.5）
-    const isGround = groundTargets.some(gt => gt === t)
-    const minDot = isGround ? 0 : 0.5
-    if (dot > minDot) {
-      raycaster.set(player.position, toTNorm)
-      raycaster.far = dist - 5
-      if (isBlockedByMapGeometry(raycaster)) continue
-
-      const sc = dot - dist / MISSILE_LOCK_RANGE * 0.25
-      if (sc > bestScore) { bestScore = sc; best = t }
-    }
+  const candidates = getConeLockCandidates()
+  if (!candidates.length) {
+    showLockStatus('前方にロック対象なし')
+    return
   }
-  lockedTarget = best
+  lockedTarget = candidates[0].target
 }
 
 function handleLeftRelease(holdTime: number) {
@@ -3174,22 +3331,18 @@ function handleLeftRelease(holdTime: number) {
   if (holdTime >= 2.0) {
     // Multi-lock: add up to 4 enemies in front arc
     multiLockTargets.length = 0
-    const fwdWorld = _fwd.clone().applyQuaternion(player.quaternion)
-    const raycaster = new THREE.Raycaster()
-    const sorted = enemies.slice().filter(e => {
-      const toE = e.group.position.clone().sub(player.position)
-      const dist = toE.length()
-      if (dist > MISSILE_LOCK_RANGE || toE.normalize().dot(fwdWorld) <= 0.2) return false
-      // 地形遮蔽チェック
-      raycaster.set(player.position, toE.normalize())
-      raycaster.far = dist - 5
-      return !isBlockedByMapGeometry(raycaster)
-    }).sort((a, b) => a.group.position.distanceTo(player.position) - b.group.position.distanceTo(player.position))
+    const sorted = getConeLockCandidates(true)
+      .map(candidate => candidate.target)
+      .filter((target): target is Enemy => enemies.includes(target as Enemy))
+    if (!sorted.length) {
+      showLockStatus('前方にロック対象なし')
+      return
+    }
     multiLockTargets.push(...sorted.slice(0, 4))
     // Sequential fire
     multiLockTargets.forEach((e, i) => {
       setTimeout(() => {
-        if (missileAmmo > 0 && enemies.includes(e)) firePlayerMissile()
+        if (missileAmmo > 0 && enemies.includes(e)) firePlayerMissile(e.group)
       }, i * 320)
     })
   } else {
@@ -3991,6 +4144,8 @@ function stopGame() {
   explosions.length = 0
 
   lockedTarget = null
+  trackedPlayerMissile = null
+  lockStatusTimer = 0
   document.getElementById('objective-hud')!.style.display = 'none'
 }
 
@@ -4501,7 +4656,7 @@ function updateGroundTargets(dt: number) {
         const vel = player.position.clone().sub(m.position).normalize().multiplyScalar(175)
         enemyMissiles.push({
           mesh: m, vel, life: 0,
-          target: player, diverted: false, spd: 175, turnRate: 0.55, light: null
+          target: player, diverted: false, spd: 175, turnRate: 0.55, light: null, kind: 'enemy'
         })
         gt.fireCooldown = 14 + Math.random() * 8
         playMissileSound()
@@ -4641,6 +4796,63 @@ const tokyoObjects: THREE.Object3D[] = []
 const originalMapGroup = new THREE.Group()
 originalMapGroup.name = 'OriginalMapStructures'
 scene.add(originalMapGroup)
+
+function clearOriginalMapFlightColliders() {
+  originalMapCollisionMeshes.length = 0
+  originalMapSegmentColliders.length = 0
+}
+
+function registerOriginalMapCollider(mesh: THREE.Object3D) {
+  originalMapCollisionMeshes.push(mesh)
+}
+
+function registerOriginalSegmentCollider(start: THREE.Vector3, end: THREE.Vector3, radius: number) {
+  originalMapSegmentColliders.push({ start: start.clone(), end: end.clone(), radius })
+}
+
+function addOriginalBoneSegment(start: THREE.Vector3, end: THREE.Vector3, radius: number, material: THREE.Material, name: string) {
+  const length = start.distanceTo(end)
+  const shaftLength = Math.max(2, length - radius * 2)
+  const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(radius, shaftLength, 6, 14), material)
+  mesh.position.copy(start).add(end).multiplyScalar(0.5)
+  mesh.quaternion.setFromUnitVectors(_sv3.set(0, 1, 0), _sv4.copy(end).sub(start).normalize())
+  mesh.castShadow = !isMobileDevice
+  mesh.receiveShadow = !isMobileDevice
+  mesh.name = name
+  originalMapGroup.add(mesh)
+  registerOriginalMapCollider(mesh)
+  registerOriginalSegmentCollider(start, end, radius + 6)
+}
+
+function closestPointOnSegment(point: THREE.Vector3, start: THREE.Vector3, end: THREE.Vector3, out: THREE.Vector3) {
+  _sv4.copy(end).sub(start)
+  const lenSq = Math.max(_sv4.lengthSq(), 0.0001)
+  const t = THREE.MathUtils.clamp(_sv3.copy(point).sub(start).dot(_sv4) / lenSq, 0, 1)
+  return out.copy(start).addScaledVector(_sv4, t)
+}
+
+function resolveOriginalSegmentCollisions(collisionRadius: number) {
+  let collided = false
+  for (const collider of originalMapSegmentColliders) {
+    closestPointOnSegment(player.position, collider.start, collider.end, _sv3)
+    _sv4.copy(player.position).sub(_sv3)
+    const minDistance = collider.radius + collisionRadius
+    const distSq = _sv4.lengthSq()
+    if (distSq >= minDistance * minDistance) continue
+
+    if (distSq < 0.0001) {
+      _sv4.copy(player.position).sub(collider.start)
+      if (_sv4.lengthSq() < 0.0001) _sv4.set(0, 1, 0)
+    }
+
+    _sv4.normalize()
+    player.position.copy(_sv3).addScaledVector(_sv4, minDistance)
+    hitFlashTimer = 0.22
+    camShakeAmt = Math.max(camShakeAmt, 0.35)
+    collided = true
+  }
+  return collided
+}
 const SPACE_SUPPLY_POSITIONS = [
   new THREE.Vector3(-320, 240, -400),  // 上層・建造現場内
   new THREE.Vector3(360, -40, -570),   // 下層・墓場エリア
@@ -7083,6 +7295,7 @@ async function switchMap(map: GameMap) {
       })
       originalMapGroup.clear()
     }
+    clearOriginalMapFlightColliders()
 
     // オリジナルMAPの地面を削除
     if (ground) {
@@ -7732,7 +7945,7 @@ function updateHoming(m: HomingMissile, dt: number) {
   if (m.vel.lengthSq() > 0.01) m.mesh.quaternion.setFromUnitVectors(_fwd, m.vel.clone().normalize())
 
   // ミサイル軌跡（プールから再利用）- プレイヤーミサイルは高頻度で視認性向上
-  const isPlayerMissile = playerMissiles.some(pm => pm.mesh === m.mesh)
+  const isPlayerMissile = m.kind === 'player'
   const trailChance = isPlayerMissile ? 0.35 : 0.15  // プレイヤーミサイルは35%の確率でトレイル生成
   if (Math.random() < trailChance) {
     const trailMesh = _trailPool[_trailPoolIdx % TRAIL_POOL_SIZE]
@@ -7790,6 +8003,15 @@ function updateBullets(dt: number) {
         scene.remove(bullets[i].mesh); bullets.splice(i, 1); continue
       }
     }
+    if (currentMap === 'original' && originalMapCollisionMeshes.length > 0) {
+      const dir = bullets[i].vel.clone().normalize()
+      const dist = bullets[i].vel.length() * dt
+      _originalCollisionRaycaster.set(oldPos, dir)
+      _originalCollisionRaycaster.far = dist + 5
+      if (isBlockedByOriginalFlightGeometry(_originalCollisionRaycaster)) {
+        scene.remove(bullets[i].mesh); bullets.splice(i, 1); continue
+      }
+    }
     if (bullets[i].life <= 0) { scene.remove(bullets[i].mesh); bullets.splice(i, 1) }
   }
   for (let i = enemyBullets.length - 1; i >= 0; i--) {
@@ -7806,6 +8028,15 @@ function updateBullets(dt: number) {
       if (spaceAsteroids) hits.push(..._missileRaycaster.intersectObject(spaceAsteroids, false))
       if (spaceZoneGroups.length > 0) hits.push(..._missileRaycaster.intersectObjects(spaceZoneGroups, true))
       if (hits.length > 0) {
+        scene.remove(enemyBullets[i].mesh); enemyBullets.splice(i, 1); continue
+      }
+    }
+    if (currentMap === 'original' && originalMapCollisionMeshes.length > 0) {
+      const dir = enemyBullets[i].vel.clone().normalize()
+      const dist = enemyBullets[i].vel.length() * dt
+      _originalCollisionRaycaster.set(oldPos, dir)
+      _originalCollisionRaycaster.far = dist + 5
+      if (isBlockedByOriginalFlightGeometry(_originalCollisionRaycaster)) {
         scene.remove(enemyBullets[i].mesh); enemyBullets.splice(i, 1); continue
       }
     }
@@ -7844,6 +8075,13 @@ function updateMissileArr(arr: HomingMissile[], dt: number, onExpire: (m: Homing
       if (spaceAsteroids) hits.push(..._missileRaycaster.intersectObject(spaceAsteroids, false))
       if (spaceZoneGroups.length > 0) hits.push(..._missileRaycaster.intersectObjects(spaceZoneGroups, true))
       if (hits.length > 0) {
+        onExpire(m); scene.remove(m.mesh); if (m.light) scene.remove(m.light!); arr.splice(i, 1); continue
+      }
+    }
+    if (currentMap === 'original' && originalMapCollisionMeshes.length > 0) {
+      _originalCollisionRaycaster.set(m.mesh.position, m.vel.clone().normalize())
+      _originalCollisionRaycaster.far = m.vel.length() * dt * 2 + 8
+      if (isBlockedByOriginalFlightGeometry(_originalCollisionRaycaster)) {
         onExpire(m); scene.remove(m.mesh); if (m.light) scene.remove(m.light!); arr.splice(i, 1); continue
       }
     }
@@ -8359,7 +8597,9 @@ const respawnOverlay = document.getElementById('respawn-overlay') as HTMLDivElem
 const supplyIndicator = document.getElementById('supply-indicator') as HTMLDivElement
 const warningEl  = document.getElementById('warning') as HTMLDivElement
 const boundaryWarningEl = document.getElementById('boundary-warning') as HTMLDivElement
+const lockStatusEl = document.getElementById('lock-status') as HTMLDivElement
 const reticleEl  = document.getElementById('reticle') as HTMLDivElement
+const missileReticleEl = document.getElementById('missile-reticle') as HTMLDivElement
 const gunLeadReticleEl = document.getElementById('gun-lead-reticle') as HTMLDivElement
 const boostFill  = document.getElementById('boost-fill') as HTMLDivElement
 const missilePips = document.getElementById('missile-pips')!
@@ -8405,19 +8645,18 @@ function updateReticle() {
     gunLeadReticleEl.style.display = 'none'
     return
   }
-
-  // 通常のロックオンレティクル（敵本体位置）
-  const pos = lockedTarget.group.position.clone()
-  if (pos.clone().sub(camera.position).dot(_fwd.clone().applyQuaternion(camera.quaternion)) < 0) {
+  _sv1.copy(_fwd).applyQuaternion(camera.quaternion)
+  _sv2.copy(lockedTarget.group.position).sub(camera.position)
+  if (_sv2.dot(_sv1) < 0) {
     reticleEl.style.display = 'none'
     gunLeadReticleEl.style.display = 'none'
     return
   }
-  pos.project(camera)
+  _sv2.copy(lockedTarget.group.position).project(camera)
   const { w: rW, h: rH } = getEffectiveSize()
   reticleEl.style.display = 'block'
-  reticleEl.style.left = ((pos.x + 1) / 2 * rW) + 'px'
-  reticleEl.style.top = ((-pos.y + 1) / 2 * rH) + 'px'
+  reticleEl.style.left = ((_sv2.x + 1) / 2 * rW) + 'px'
+  reticleEl.style.top = ((-_sv2.y + 1) / 2 * rH) + 'px'
 
   // マシンガン予測照準レティクル
   // 予測機能を一旦無効化（2026-05-12）
@@ -8439,6 +8678,32 @@ function updateReticle() {
   }
   */
   gunLeadReticleEl.style.display = 'none'
+}
+
+function updateMissileReticle() {
+  if (!trackedPlayerMissile || !playerMissiles.includes(trackedPlayerMissile)) {
+    trackedPlayerMissile = null
+    missileReticleEl.style.display = 'none'
+    return
+  }
+
+  _sv1.copy(_fwd).applyQuaternion(camera.quaternion)
+  _sv2.copy(trackedPlayerMissile.mesh.position).sub(camera.position)
+  if (_sv2.dot(_sv1) < 0) {
+    missileReticleEl.style.display = 'none'
+    return
+  }
+
+  _sv2.copy(trackedPlayerMissile.mesh.position).project(camera)
+  if (Math.abs(_sv2.x) > 1.05 || Math.abs(_sv2.y) > 1.05) {
+    missileReticleEl.style.display = 'none'
+    return
+  }
+
+  const { w, h } = getEffectiveSize()
+  missileReticleEl.style.display = 'block'
+  missileReticleEl.style.left = `${(_sv2.x + 1) / 2 * w}px`
+  missileReticleEl.style.top = `${(-_sv2.y + 1) / 2 * h}px`
 }
 
 function updateWarning() {
@@ -8463,6 +8728,18 @@ function updateBoundaryWarning(dt: number) {
   } else {
     boundaryWarningEl.style.display = 'none'
   }
+}
+
+function updateLockStatus(dt: number) {
+  lockStatusTimer = Math.max(0, lockStatusTimer - dt)
+  if (lockStatusTimer <= 0) {
+    lockStatusEl.style.display = 'none'
+    return
+  }
+
+  lockStatusEl.textContent = lockStatusText
+  lockStatusEl.style.display = 'block'
+  lockStatusEl.style.opacity = Math.min(1, 0.35 + lockStatusTimer * 1.6).toString()
 }
 
 function enforceMapBounds() {
@@ -9521,6 +9798,8 @@ function loop() {
 
   // オリジナルMAPの建物との衝突
   if (currentMap === 'original') {
+    resolveOriginalSegmentCollisions(collisionRadius)
+
     for (const obj of tokyoObjects) {
       const dx = player.position.x - obj.position.x
       const dz = player.position.z - obj.position.z
@@ -9752,8 +10031,10 @@ function loop() {
   altEl.textContent = Math.round(player.position.y).toString()
   boostFill.style.width = `${Math.min(100, (speed / 550) * 100)}%`  // 最高速550m/sで100%
   updateReticle()
+  updateMissileReticle()
   updateWarning()
   updateBoundaryWarning(dt)
+  updateLockStatus(dt)
   drawEnemyBrackets()
   updateGunLeadIndicator()
   // レーダー描画を3フレームに1回に制限（パフォーマンス改善）
