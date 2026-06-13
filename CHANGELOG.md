@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [7.12.0] - 2026-06-13
+
+### Changed
+
+- 正式版のバージョン基準を **v7.12.0** に統一
+- アプリ内表示、パッケージメタデータ、関連ドキュメントの表記ゆれを解消
+
+### Added
+
+- `v7.00.0` 以降の進行を踏まえた現行リリース概要を `README.md` に追記
+
+### Notes
+
+- 現在のHEADには、`v7.10.0` のリリースコミットに加えて以下の更新が含まれています
+  - gameplay effects system の統合
+  - vegetation の GLB モデル移行
+  - underground cave system の GLB migration (Phase 2)
+- これらはコミット履歴に基づく現況整理です。詳細な作業ログは `.steering/` 配下を参照してください。
+
 ## [7.00.0] - 2026-06-12
 
 ### 🎉 Phase 16完全達成: BotW級の完璧な静的構造
