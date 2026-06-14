@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [7.20.0] - 2026-06-14
+
+### Added
+
+- 全MAPの主役導線・戦闘アンカー・ナビゲーションビーコンを束ねる `MAP_DESIGN_PROFILES` を追加
+- Original / Tokyo / Space の主役導線を示す控えめなフライト導線投影レイヤーを追加
+- 全MAP共通で、近い主役導線をHUDに表示するナビゲーション表示を追加
+- MAPクラフトの100点基準をまとめた `docs/8_map-craft-quality-standard.md` を追加
+
+### Changed
+
+- Space MAP のフライトゲートと船体トンネルを、球状ハザードではなく見た目の部材ベースの衝突対象へ変更
+- Space MAP のゲート中心・トンネル内部は、見た目通り飛行可能になるよう衝突信頼を改善
+- 既存の敵AI戦闘アンカーをMAP設計プロファイル由来に変更し、配置・HUD・戦闘の思想を統一
+
+### Notes
+
+- 今回のリリースは、MAP単体の完成度を100点ラインへ寄せるための「配置・美術・衝突・導線」統合パス
+
+---
+
 ## [7.19.0] - 2026-06-14
 
 ### Added

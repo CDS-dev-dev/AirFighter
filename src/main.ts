@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.19.0'
+const VERSION = '7.20.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -1268,6 +1268,11 @@ function buildWorldStructures() {
     }
     console.log('✅ Ancient Ruins loaded (5 locations)')
   })
+
+  if (currentMap === 'original') {
+    createNavigationBeacons('original')
+    createMapDesignCohesionLayer('original')
+  }
 }
 
 function addMountainCave() {
@@ -2843,26 +2848,69 @@ const MULTI_LOCK_CONE_DOT = Math.cos(THREE.MathUtils.degToRad(36))
 const originalMapCollisionMeshes: THREE.Object3D[] = []
 
 type CombatAnchorSpec = { x: number; y: number; z: number; radius: number; pull: number }
+type MapNavigationBeaconSpec = { x: number; y: number; z: number; name: string; color: number }
+type MapDesignProfile = {
+  primaryLoop: string
+  qualityRule: string
+  combatAnchors: CombatAnchorSpec[]
+  navigationBeacons: MapNavigationBeaconSpec[]
+}
+
+const MAP_DESIGN_PROFILES: Record<GameMap, MapDesignProfile> = {
+  original: {
+    primaryLoop: '巨大骨格の内側と峡谷を交互に抜ける、自然地形型の空戦回廊',
+    qualityRule: '見える巨岩・骨・橋は衝突し、半透明の案内だけが通過可能',
+    combatAnchors: [
+      { x: -420, y: 160, z: 520, radius: 780, pull: 0.22 },
+      { x: -80, y: 190, z: 190, radius: 740, pull: 0.25 },
+      { x: 260, y: 220, z: -170, radius: 720, pull: 0.24 },
+      { x: 580, y: 250, z: -470, radius: 760, pull: 0.22 },
+    ],
+    navigationBeacons: [
+      { x: -420, y: 160, z: 520, name: '骨格回廊・西端', color: 0xd9cfbc },
+      { x: -80, y: 190, z: 190, name: '骨格回廊・胸郭', color: 0xd9cfbc },
+      { x: 260, y: 220, z: -170, name: '骨格回廊・中央', color: 0xd9cfbc },
+      { x: 580, y: 250, z: -470, name: '骨格回廊・東端', color: 0xd9cfbc },
+    ],
+  },
+  tokyo: {
+    primaryLoop: '地表都市、巨大ゲート、山手線チューブ、湾岸上昇路をつなぐ立体都市戦',
+    qualityRule: 'ビル・ランドマーク・チューブ外壁は衝突し、入口だけが通過可能',
+    combatAnchors: [
+      { x: 520, y: 560, z: -360, radius: 880, pull: 0.24 },
+      { x: 940, y: 620, z: 520, radius: 920, pull: 0.22 },
+      { x: 1340, y: 720, z: 1120, radius: 860, pull: 0.20 },
+      { x: -460, y: 520, z: 1740, radius: 840, pull: 0.20 },
+    ],
+    navigationBeacons: [
+      { x: 520, y: 560, z: -360, name: '丸の内フライトゲート', color: 0xff58b6 },
+      { x: 940, y: 620, z: 520, name: '山手チューブ接続部', color: 0x76eaff },
+      { x: 1340, y: 720, z: 1120, name: '湾岸上昇ルート', color: 0xffb468 },
+      { x: -460, y: 520, z: 1740, name: '副都心戦闘空域', color: 0x76eaff },
+    ],
+  },
+  space: {
+    primaryLoop: '重力スパインを軸に、要塞・採掘深部・軌道リングを3Dで往復する空間戦',
+    qualityRule: '小惑星・残骸・ゾーン構造物は見た目どおり衝突し、ゲート中心は通行可能',
+    combatAnchors: [
+      { x: -980, y: -220, z: -740, radius: 960, pull: 0.26 },
+      { x: -360, y: 90, z: -420, radius: 900, pull: 0.24 },
+      { x: 260, y: 310, z: 180, radius: 940, pull: 0.24 },
+      { x: 920, y: 520, z: 760, radius: 980, pull: 0.22 },
+    ],
+    navigationBeacons: [
+      { x: -980, y: -220, z: -740, name: '重力スパイン下層', color: 0x66d8ff },
+      { x: -360, y: 90, z: -420, name: '重力スパイン中継', color: 0xb05cff },
+      { x: 260, y: 310, z: 180, name: '中央補給導線', color: 0x66d8ff },
+      { x: 920, y: 520, z: 760, name: '船墓場立体回廊', color: 0xffb468 },
+    ],
+  },
+}
 
 const COMBAT_ANCHORS: Record<GameMap, CombatAnchorSpec[]> = {
-  original: [
-    { x: -420, y: 160, z: 520, radius: 780, pull: 0.22 },
-    { x: -80, y: 190, z: 190, radius: 740, pull: 0.25 },
-    { x: 260, y: 220, z: -170, radius: 720, pull: 0.24 },
-    { x: 580, y: 250, z: -470, radius: 760, pull: 0.22 },
-  ],
-  tokyo: [
-    { x: 520, y: 560, z: -360, radius: 880, pull: 0.24 },
-    { x: 940, y: 620, z: 520, radius: 920, pull: 0.22 },
-    { x: 1340, y: 720, z: 1120, radius: 860, pull: 0.20 },
-    { x: -460, y: 520, z: 1740, radius: 840, pull: 0.20 },
-  ],
-  space: [
-    { x: -980, y: -220, z: -740, radius: 960, pull: 0.26 },
-    { x: -360, y: 90, z: -420, radius: 900, pull: 0.24 },
-    { x: 260, y: 310, z: 180, radius: 940, pull: 0.24 },
-    { x: 920, y: 520, z: 760, radius: 980, pull: 0.22 },
-  ],
+  original: MAP_DESIGN_PROFILES.original.combatAnchors,
+  tokyo: MAP_DESIGN_PROFILES.tokyo.combatAnchors,
+  space: MAP_DESIGN_PROFILES.space.combatAnchors,
 }
 
 function showLockStatus(text: string, duration = 1.05) {
@@ -4917,6 +4965,7 @@ interface SpaceZone {
 const spaceZones: SpaceZone[] = []
 const spaceBeacons: THREE.Group[] = []
 const navigationBeacons: THREE.Group[] = []  // 全MAP共通のナビゲーションビーコン
+let mapDesignCohesionGroup: THREE.Group | null = null
 let spaceSpawnPoints: { enemy: Array<{ zone: string; offset: { x: number; y: number; z: number } }>; ally: Array<{ zone: string; offset: { x: number; y: number; z: number } }> } | null = null
 let spaceNavigationRoutes: Array<{ from: string; to: string; distance: number; direction: { x: number; y: number; z: number } }> = []
 const ZONE_COLORS: Record<string, number> = {
@@ -4967,6 +5016,7 @@ const GRID_CONFIG: Record<GameMap, GridConfig> = {
 }
 
 function clearSpaceMap() {
+  clearMapDesignCohesionLayer()
   if (!spaceMapGroup) return
   scene.remove(spaceMapGroup)
   spaceMapGroup.traverse(child => {
@@ -5328,33 +5378,7 @@ function createNavigationBeacons(map: GameMap) {
   })
   navigationBeacons.length = 0
 
-  interface BeaconDef {
-    x: number
-    y: number
-    z: number
-    name: string
-    color: number
-  }
-
-  let beacons: BeaconDef[] = []
-
-  if (map === 'original') {
-    // Original MAP: 岩柱・アーチにビーコン
-    beacons = [
-      { x: 0, y: 0, z: -2800, name: '北部岩柱群', color: 0x88ff44 },
-      { x: 2800, y: 0, z: 0, name: '東部アーチ', color: 0x88ff44 },
-      { x: -2800, y: 0, z: 0, name: '西部タワー', color: 0x88ff44 },
-      { x: 0, y: 0, z: 2800, name: '南部平原', color: 0x88ff44 }
-    ]
-  } else if (map === 'tokyo') {
-    // Tokyo MAP: ランドマークにビーコン
-    beacons = [
-      { x: 0, y: 400, z: 0, name: '東京タワー', color: 0xff4488 },
-      { x: 1200, y: 650, z: 800, name: 'スカイツリー', color: 0xff4488 },
-      { x: -800, y: 320, z: -600, name: '新宿副都心', color: 0xff4488 },
-      { x: 800, y: 180, z: -1200, name: '渋谷', color: 0xff4488 }
-    ]
-  }
+  const beacons = MAP_DESIGN_PROFILES[map].navigationBeacons
 
   // ビーコン生成
   beacons.forEach(def => {
@@ -5364,7 +5388,7 @@ function createNavigationBeacons(map: GameMap) {
     // Y座標を地形高度に合わせる（地上MAPのみ）
     let y = def.y
     if (map === 'original') {
-      y = terrainH(def.x, def.z) + 180  // 地形＋180m上空
+      y = terrainH(def.x, def.z) + def.y
     } else if (map === 'tokyo') {
       y = def.y  // Tokyoは既に絶対高度
     }
@@ -5424,6 +5448,70 @@ function createNavigationBeacons(map: GameMap) {
   if (import.meta.env.DEV && beacons.length > 0) {
     console.log(`🎯 ${map.toUpperCase()}: ${beacons.length}個のナビゲーションビーコンを配置`)
   }
+}
+
+function clearMapDesignCohesionLayer() {
+  if (!mapDesignCohesionGroup) return
+  scene.remove(mapDesignCohesionGroup)
+  mapDesignCohesionGroup.traverse(child => {
+    if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+      child.geometry?.dispose()
+      const mat = child.material
+      if (Array.isArray(mat)) mat.forEach(m => m.dispose())
+      else mat?.dispose()
+    }
+  })
+  mapDesignCohesionGroup = null
+}
+
+function createMapDesignCohesionLayer(map: GameMap) {
+  clearMapDesignCohesionLayer()
+
+  const profile = MAP_DESIGN_PROFILES[map]
+  const anchors = profile.navigationBeacons
+  if (anchors.length < 2) return
+
+  const group = new THREE.Group()
+  group.name = `MapDesignCohesion_${map}`
+
+  const color = map === 'original' ? 0xd9cfbc : map === 'tokyo' ? 0x76eaff : 0x66d8ff
+  const lineMat = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: map === 'tokyo' ? 0.20 : 0.16,
+    depthWrite: false,
+  })
+  const ringMat = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: map === 'tokyo' ? 0.22 : 0.18,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  })
+
+  const points = anchors.map(anchor => {
+    const y = map === 'original' ? terrainH(anchor.x, anchor.z) + anchor.y : anchor.y
+    return new THREE.Vector3(anchor.x, y, anchor.z)
+  })
+  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.35)
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getSpacedPoints(80)), lineMat)
+  line.name = `MapDesignPrimaryLoop_${map}`
+  group.add(line)
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const point = points[i]
+    const tangent = curve.getTangent(i / (points.length - 1)).normalize()
+    const radius = map === 'tokyo' ? 118 : map === 'space' ? 132 : 96
+    const tube = map === 'tokyo' ? 2.8 : 2.2
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, tube, 8, 48), ringMat)
+    ring.position.copy(point)
+    ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent)
+    ring.name = `MapDesignRouteProjection_${map}`
+    group.add(ring)
+  }
+
+  scene.add(group)
+  mapDesignCohesionGroup = group
 }
 
 // 宇宙MAP総力戦モード用の戦艦を生成
@@ -5699,8 +5787,7 @@ async function buildSpaceMap() {
     depth: number,
     orientation: THREE.Vector3,
     material: THREE.Material,
-    _glowMaterial: THREE.Material,
-    addHazard = true
+    _glowMaterial: THREE.Material
   ) => {
     const gate = new THREE.Group()
     const ringSegments = 10
@@ -5720,7 +5807,7 @@ async function buildSpaceMap() {
     gate.position.copy(center)
     gate.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), orientation.clone().normalize())
     space.add(gate)
-    if (addHazard) spaceHazards.push({ pos: center.clone(), radius: Math.max(radiusX, radiusY) + 10 })
+    spaceZoneGroups.push(gate)
     return gate
   }
 
@@ -5758,7 +5845,7 @@ async function buildSpaceMap() {
     hull.position.copy(center)
     hull.rotation.set(tiltX, orientationY, 0)
     space.add(hull)
-    spaceHazards.push({ pos: center.clone(), radius: Math.max(length * 0.45, openingWidth * 0.7) })
+    spaceZoneGroups.push(hull)
     return hull
   }
 
@@ -7459,6 +7546,7 @@ async function switchMap(map: GameMap) {
 
     // MAP境界格子を生成
     createMapBoundary('space')
+    createMapDesignCohesionLayer('space')
 
     // Space MAPはゾーンビーコンがあるので追加ナビゲーションビーコン不要
 
@@ -7611,6 +7699,7 @@ async function switchMap(map: GameMap) {
 
     // ナビゲーションビーコンを生成
     createNavigationBeacons('tokyo')
+    createMapDesignCohesionLayer('tokyo')
 
     if (import.meta.env.DEV) console.log('✅ 東京MAP切り替え完了')
 
@@ -7700,6 +7789,7 @@ async function switchMap(map: GameMap) {
 
     // ナビゲーションビーコンを生成
     createNavigationBeacons('original')
+    createMapDesignCohesionLayer('original')
 
     if (import.meta.env.DEV) console.log('✅ オリジナルMAP切り替え完了')
   }
@@ -9247,7 +9337,31 @@ function syncFlightReadouts() {
 
 // ===== SPACE NAVIGATION HUD更新 =====
 function updateSpaceNavigationHUD() {
-  if (currentMap !== 'space' || spaceZones.length === 0) {
+  if (currentMap !== 'space') {
+    const beacons = MAP_DESIGN_PROFILES[currentMap].navigationBeacons
+    if (!currentMode || beacons.length === 0) {
+      landmarksHudEl.style.display = 'none'
+      return
+    }
+
+    landmarksHudEl.style.display = 'block'
+    const nearest = beacons
+      .map(beacon => {
+        const y = currentMap === 'original' ? terrainH(beacon.x, beacon.z) + beacon.y : beacon.y
+        const distance = player.position.distanceTo(new THREE.Vector3(beacon.x, y, beacon.z))
+        return { beacon, distance }
+      })
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 3)
+
+    landmarkListEl.innerHTML = nearest.map(({ beacon, distance }) => {
+      const distKm = (distance / 1000).toFixed(1)
+      return `<div class="lm-item">${beacon.name} ${distKm}km</div>`
+    }).join('')
+    return
+  }
+
+  if (spaceZones.length === 0) {
     landmarksHudEl.style.display = 'none'
     return
   }
@@ -10083,9 +10197,9 @@ function loop() {
   // レーダー描画を3フレームに1回に制限（パフォーマンス改善）
   if (++radarFrame % 3 === 0) drawRadar()
 
-  // 宇宙MAPナビゲーション更新
+  // MAPナビゲーション更新
+  updateSpaceNavigationHUD()
   if (currentMap === 'space') {
-    updateSpaceNavigationHUD()
     updateSpaceBeacons()
     updateZoneProximityLabels()
   }
