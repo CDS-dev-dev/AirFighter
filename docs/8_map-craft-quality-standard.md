@@ -12,6 +12,7 @@ AirFighter の MAP は、単なる背景ではなく、飛行機戦闘ゲーム�
    - 主役構造物は見た目だけにしない。
    - 敵AI、スポーン、HUD、補給、遮蔽、ミサイルの通り方が主役導線と噛み合うこと。
    - 主役導線には、飛ぶ理由になる通過報酬・速度変化・スコアなどのゲーム的反応を持たせる。
+   - 主役導線上には、探索・制圧・迎撃が発生するホットスポットを置き、場所そのものに意味を持たせる。
 
 3. **見た目と衝突が一致する**
    - 物理構造として見えるものは、原則として弾・ミサイル・プレイヤーに対して衝突対象にする。
@@ -44,7 +45,9 @@ AirFighter の MAP は、単なる背景ではなく、飛行機戦闘ゲーム�
 - 敵AIとスポーンは `MAP_DESIGN_PROFILES[map].combatAnchors` を参照する。
 - HUDと航路投影は `MAP_DESIGN_PROFILES[map].navigationBeacons` を参照する。
 - 主役導線の報酬ゲートは `createMapDesignCohesionLayer` と `updateMapRouteChallenge` で、MAPごとの正本ルートから生成する。
+- 制圧/探索ホットスポットは `createMapHotspotMarker` と `updateMapHotspots` で生成・更新し、HUD・報酬・敵AIへ接続する。
 - 戦闘時の立体位置取りは `applyMapTacticalTerrainUse` で、MAP別の主役導線に沿って補正する。
+- ホットスポット周辺の戦闘誘導は `applyHotspotCombatPressure` で補正する。
 - Blender GLB を正本にする構造物は `blender/asset-registry.json` に登録し、`npm run assets:audit` で確認する。
 
 ## 現行MAP別の正本

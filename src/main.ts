@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.22.0'
+const VERSION = '7.23.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -3083,6 +3083,44 @@ function applyMapTacticalTerrainUse(idealPos: THREE.Vector3, target: THREE.Objec
   idealPos.lerp(tacticalPos, (0.18 + anchorSpec.pull * 0.35) * influence)
 }
 
+function applyHotspotCombatPressure(idealPos: THREE.Vector3, target: THREE.Object3D, enemy: Enemy, enemyIndex: number): void {
+  if (mapHotspots.length === 0) return
+
+  let best: MapHotspot | null = null
+  let bestScore = Infinity
+  for (const hotspot of mapHotspots) {
+    const d = target.position.distanceTo(hotspot.position)
+    const score = d / hotspot.radius + (hotspot.completed ? 0.22 : 0)
+    if (score < bestScore) {
+      bestScore = score
+      best = hotspot
+    }
+  }
+  if (!best) return
+
+  const influence = 1 - clamp01(bestScore / 3.2)
+  if (influence <= 0.03) return
+
+  const phase = enemy.group.id * 0.31 + enemyIndex * 1.7
+  const orbit = new THREE.Vector3(Math.cos(phase), Math.sin(phase * 0.7) * 0.42, Math.sin(phase)).normalize()
+  const radius = best.radius * (enemy.tacticType === 3 ? 0.58 : 0.86)
+  const vertical = currentMap === 'space' ? 150 : currentMap === 'tokyo' ? 95 : 55
+  const tactical = best.position.clone()
+    .addScaledVector(orbit, radius)
+  tactical.y += Math.sin(phase + performance.now() * 0.00045) * vertical
+
+  if (currentMap === 'original') {
+    tactical.y = Math.max(tactical.y, terrainH(tactical.x, tactical.z) + 65)
+  } else if (currentMap === 'tokyo') {
+    tactical.y = Math.max(tactical.y, 360)
+  } else {
+    const yBounds = getMapYBounds('space') ?? { minY: -2400, maxY: 2400 }
+    tactical.y = THREE.MathUtils.clamp(tactical.y, yBounds.minY + 140, yBounds.maxY - 140)
+  }
+
+  idealPos.lerp(tactical, 0.16 * influence)
+}
+
 // ===== LOCK-ON =====
 function cycleLock() {
   const candidates = getConeLockCandidates()
@@ -3101,9 +3139,11 @@ function cycleLock() {
 }
 
 // ===== ENEMIES =====
-function spawnEnemyAt(sx: number, sz: number) {
+function spawnEnemyAt(sx: number, sz: number, sy?: number) {
   const group = createAircraft(0xcc2222, 0x661111)
-  const spawnY = currentMap === 'space'
+  const spawnY = typeof sy === 'number'
+    ? sy
+    : currentMap === 'space'
     ? THREE.MathUtils.clamp(player.position.y + (Math.random() - 0.5) * 360, -520, 620)
     : currentMap === 'tokyo'
     ? Math.max(terrainH(sx, sz) + 240, 520 + Math.random() * 260)
@@ -3180,7 +3220,7 @@ function spawnEnemy() {
       if (zone) {
         const sx = zone.position.x + spawnDef.offset.x + (Math.random() - 0.5) * 80
         const sz = zone.position.z + spawnDef.offset.z + (Math.random() - 0.5) * 80
-        spawnEnemyAt(sx, sz)
+        spawnEnemyAt(sx, sz, zone.position.y + spawnDef.offset.y + (Math.random() - 0.5) * 180)
         return
       }
     }
@@ -3196,12 +3236,18 @@ function spawnEnemy() {
   if (currentMap === 'tokyo') {
     const anchors = COMBAT_ANCHORS.tokyo
     const p = anchors[Math.floor(Math.random() * anchors.length)]
-    spawnEnemyAt(p.x + (Math.random() - 0.5) * 520, p.z + (Math.random() - 0.5) * 520)
+    spawnEnemyAt(
+      p.x + (Math.random() - 0.5) * 520,
+      p.z + (Math.random() - 0.5) * 520,
+      p.y + (Math.random() - 0.5) * 220,
+    )
     return
   }
   const anchors = COMBAT_ANCHORS.original
   const p = anchors[Math.floor(Math.random() * anchors.length)]
-  spawnEnemyAt(p.x + (Math.random() - 0.5) * 420, p.z + (Math.random() - 0.5) * 420)
+  const sx = p.x + (Math.random() - 0.5) * 420
+  const sz = p.z + (Math.random() - 0.5) * 420
+  spawnEnemyAt(sx, sz, terrainH(sx, sz) + p.y + (Math.random() - 0.5) * 90)
 }
 
 function spawnAlly(sx: number, sz: number) {
@@ -4420,13 +4466,23 @@ async function startGame(mode: GameMode) {
       for (let i = 0; i < initialEnemies; i++) {
         if (spaceDogfightSpawn) {
           const p = COMBAT_ANCHORS.space[i % COMBAT_ANCHORS.space.length]
-          spawnEnemyAt(p.x + (Math.random() - 0.5) * 420, p.z + (Math.random() - 0.5) * 420)
+          spawnEnemyAt(
+            p.x + (Math.random() - 0.5) * 420,
+            p.z + (Math.random() - 0.5) * 420,
+            p.y + (Math.random() - 0.5) * 360,
+          )
         } else if (tokyoDogfightSpawn) {
           const p = COMBAT_ANCHORS.tokyo[i % COMBAT_ANCHORS.tokyo.length]
-          spawnEnemyAt(p.x + (Math.random() - 0.5) * 420, p.z + (Math.random() - 0.5) * 420)
+          spawnEnemyAt(
+            p.x + (Math.random() - 0.5) * 420,
+            p.z + (Math.random() - 0.5) * 420,
+            p.y + (Math.random() - 0.5) * 180,
+          )
         } else {
           const p = COMBAT_ANCHORS.original[i % COMBAT_ANCHORS.original.length]
-          spawnEnemyAt(p.x + (Math.random() - 0.5) * 360, p.z + (Math.random() - 0.5) * 360)
+          const sx = p.x + (Math.random() - 0.5) * 360
+          const sz = p.z + (Math.random() - 0.5) * 360
+          spawnEnemyAt(sx, sz, terrainH(sx, sz) + p.y + (Math.random() - 0.5) * 80)
         }
       }
       if (import.meta.env.DEV) console.log(`Spawning ${dfAllyCount} allies`)
@@ -5075,7 +5131,16 @@ let zoneDisplayTimer = 0  // ゾーン名表示タイマー
 // MAP境界の格子表示（戦闘エリアの外周）- 全MAP共通
 let mapBoundaryMesh: THREE.LineSegments | null = null
 type MapRouteGate = { position: THREE.Vector3; radius: number; mesh: THREE.Mesh; visited: boolean }
+type MapHotspot = {
+  name: string
+  position: THREE.Vector3
+  radius: number
+  group: THREE.Group
+  completed: boolean
+  cooldown: number
+}
 const mapRouteGates: MapRouteGate[] = []
+const mapHotspots: MapHotspot[] = []
 
 // MAP別の格子設定
 interface GridConfig {
@@ -5232,6 +5297,7 @@ async function loadSpaceZones(parentGroup: THREE.Group) {
           })
 
           parentGroup.add(zoneGroup)
+          markMapObjectRole(zoneGroup, 'solid')
           spaceZoneGroups.push(zoneGroup)
 
           // デバッグ: バウンディングボックス情報
@@ -5281,6 +5347,7 @@ async function loadSpaceZones(parentGroup: THREE.Group) {
           fallbackGroup.scale.setScalar(zone.scale)
 
           parentGroup.add(fallbackGroup)
+          markMapObjectRole(fallbackGroup, 'solid')
           spaceZoneGroups.push(fallbackGroup)
 
           if (import.meta.env.DEV) {
@@ -5521,6 +5588,7 @@ function createNavigationBeacons(map: GameMap) {
 
 function clearMapDesignCohesionLayer() {
   mapRouteGates.length = 0
+  mapHotspots.length = 0
   if (!mapDesignCohesionGroup) return
   scene.remove(mapDesignCohesionGroup)
   mapDesignCohesionGroup.traverse(child => {
@@ -5532,6 +5600,49 @@ function clearMapDesignCohesionLayer() {
     }
   })
   mapDesignCohesionGroup = null
+}
+
+function createMapHotspotMarker(map: GameMap, point: THREE.Vector3, name: string, radius: number, color: number): MapHotspot {
+  const group = new THREE.Group()
+  group.name = `MapHotspot_${map}_${name}`
+  group.position.copy(point)
+
+  const haloMat = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: map === 'tokyo' ? 0.18 : 0.14,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  })
+  const coreMat = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.42,
+    depthWrite: false,
+  })
+
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(radius, 2.4, 8, 64), haloMat)
+  halo.rotation.x = Math.PI / 2
+  halo.name = 'HotspotCombatVolume'
+  group.add(halo)
+
+  const vertical = new THREE.Mesh(new THREE.TorusGeometry(radius * 0.72, 1.7, 8, 48), haloMat.clone())
+  vertical.rotation.y = Math.PI / 2
+  vertical.name = 'HotspotVerticalVolume'
+  group.add(vertical)
+
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(10, 1), coreMat)
+  core.name = 'HotspotCore'
+  group.add(core)
+
+  return {
+    name,
+    position: point.clone(),
+    radius,
+    group,
+    completed: false,
+    cooldown: 0,
+  }
 }
 
 function createMapDesignCohesionLayer(map: GameMap) {
@@ -5586,6 +5697,15 @@ function createMapDesignCohesionLayer(map: GameMap) {
     mapRouteGates.push({ position: point.clone(), radius, mesh: ring, visited: false })
   }
 
+  for (let i = 0; i < points.length; i++) {
+    const point = points[i]
+    const anchor = anchors[i]
+    const hotspotRadius = map === 'space' ? 260 : map === 'tokyo' ? 230 : 185
+    const hotspot = createMapHotspotMarker(map, point, anchor.name, hotspotRadius, anchor.color)
+    group.add(hotspot.group)
+    mapHotspots.push(hotspot)
+  }
+
   scene.add(group)
   markMapObjectRole(group, 'guide')
   mapDesignCohesionGroup = group
@@ -5618,6 +5738,77 @@ function updateMapRouteChallenge() {
     }
     showLockStatus('ルート一周 +OPEN WORLD', 1.2)
   }
+}
+
+function awardMapHotspot(hotspot: MapHotspot) {
+  hotspot.completed = true
+  hotspot.cooldown = 28
+  score += currentMode === 'free' ? 3 : 2
+  scoreEl.textContent = score.toString()
+  missileAmmo = Math.min(6, missileAmmo + 1)
+  flareAmmo = Math.min(3, flareAmmo + 1)
+  missileEl.textContent = missileAmmo.toString()
+  flareEl.textContent = flareAmmo.toString()
+  updatePips(missilePips, missileAmmo, 'on')
+  updatePips(flarePips, flareAmmo, 'flare-on')
+  updateMobileAmmo()
+  speed = Math.max(speed, Math.min(speed + 58, 460))
+  wheelSpeedTarget = Math.min(wheelSpeedTarget + 35, 250)
+  showLockStatus(`${hotspot.name} 制圧 +SUPPLY`, 1.2)
+
+  hotspot.group.traverse(child => {
+    if (child instanceof THREE.Mesh) {
+      const material = child.material
+      const mats = Array.isArray(material) ? material : [material]
+      for (const mat of mats) {
+        if ('opacity' in mat) mat.opacity = Math.min(0.55, (mat.opacity ?? 0.2) + 0.22)
+        if ('color' in mat && mat.color instanceof THREE.Color) mat.color.setHex(0xffd166)
+      }
+    }
+  })
+}
+
+function spawnHotspotInterceptors(hotspot: MapHotspot) {
+  if (currentMode === 'free' || enemies.length > DOGFIGHT_INITIAL_ENEMIES[currentMap] + 3) return
+  const count = currentMap === 'space' ? 2 : 1
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 + Math.random() * 0.7
+    const dist = hotspot.radius + 160 + Math.random() * 150
+    const sx = hotspot.position.x + Math.cos(angle) * dist
+    const sz = hotspot.position.z + Math.sin(angle) * dist
+    const sy = currentMap === 'space'
+      ? hotspot.position.y + (Math.random() - 0.5) * 220
+      : currentMap === 'tokyo'
+      ? Math.max(hotspot.position.y + 80, 520)
+      : terrainH(sx, sz) + 160 + Math.random() * 70
+    spawnEnemyAt(sx, sz, sy)
+  }
+}
+
+function updateMapHotspots(dt: number) {
+  if (!currentMode || mapHotspots.length === 0) return
+
+  for (const hotspot of mapHotspots) {
+    hotspot.cooldown = Math.max(0, hotspot.cooldown - dt)
+    hotspot.group.rotation.y += dt * 0.18
+    const dist = player.position.distanceTo(hotspot.position)
+    if (dist > hotspot.radius) continue
+
+    if (!hotspot.completed) {
+      awardMapHotspot(hotspot)
+      spawnHotspotInterceptors(hotspot)
+    } else if (hotspot.cooldown <= 0 && currentMode !== 'free') {
+      hotspot.cooldown = 22
+      spawnHotspotInterceptors(hotspot)
+      showLockStatus(`${hotspot.name} 再交戦`, 0.9)
+    }
+  }
+}
+
+function getMapProgressSummary() {
+  const routeDone = mapRouteGates.filter(gate => gate.visited).length
+  const hotspotDone = mapHotspots.filter(hotspot => hotspot.completed).length
+  return { routeDone, routeTotal: mapRouteGates.length, hotspotDone, hotspotTotal: mapHotspots.length }
 }
 
 // 宇宙MAP総力戦モード用の戦艦を生成
@@ -8486,6 +8677,7 @@ function updateEnemies(dt: number) {
       const idealPos = target.position.clone().add(idealOffset)
       blendCombatAnchorIntoIdealPosition(idealPos, target, enemy)
       applyMapTacticalTerrainUse(idealPos, target, enemy, i)
+      applyHotspotCombatPressure(idealPos, target, enemy, i)
       desiredDirection.copy(idealPos).sub(enemy.group.position).normalize()
     }
 
@@ -9466,7 +9658,7 @@ function updateSpaceNavigationHUD() {
     landmarkListEl.innerHTML = nearest.map(({ beacon, distance }) => {
       const distKm = (distance / 1000).toFixed(1)
       return `<div class="lm-item">${beacon.name} ${distKm}km</div>`
-    }).join('')
+    }).join('') + getHotspotHudRows()
     return
   }
 
@@ -9506,7 +9698,20 @@ function updateSpaceNavigationHUD() {
     }
   }
 
-  landmarkListEl.innerHTML = html
+  landmarkListEl.innerHTML = html + getHotspotHudRows()
+}
+
+function getHotspotHudRows() {
+  if (!currentMode || mapHotspots.length === 0) return ''
+  const nearest = mapHotspots
+    .map(hotspot => ({ hotspot, distance: player.position.distanceTo(hotspot.position) }))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 2)
+  return nearest.map(({ hotspot, distance }) => {
+    const done = hotspot.completed ? '✓' : '◆'
+    const distKm = (distance / 1000).toFixed(1)
+    return `<div class="lm-item" style="color:${hotspot.completed ? '#ffd166' : '#9ff'}">${done} ${hotspot.name} ${distKm}km</div>`
+  }).join('')
 }
 
 // ビーコンの可視性とフェード処理
@@ -10162,6 +10367,7 @@ function loop() {
   }
 
   updateMapRouteChallenge()
+  updateMapHotspots(dt)
 
   // Engine glow follows player
   engineLight.position.copy(player.position).add(new THREE.Vector3(0, 0, 2).applyQuaternion(player.quaternion))
@@ -10214,12 +10420,20 @@ function loop() {
   // HUD更新
   syncFlightReadouts()
 
-  if (currentMode === 'dogfight') setObjective(`敵機を撃墜せよ — SCORE: ${score}`)
+  if (currentMode === 'dogfight') {
+    const p = getMapProgressSummary()
+    setObjective(`敵機を撃墜せよ — HOTSPOT ${p.hotspotDone}/${p.hotspotTotal} — SCORE: ${score}`)
+  }
+  if (currentMode === 'free') {
+    const p = getMapProgressSummary()
+    setObjective(`フリーフライト — ROUTE ${p.routeDone}/${p.routeTotal} — HOTSPOT ${p.hotspotDone}/${p.hotspotTotal}`)
+  }
   if (currentMode === 'souryokusen') {
+    const p = getMapProgressSummary()
     if (currentMap === 'space') {
-      setObjective(`宙域制圧作戦 — 敵艦隊を殲滅せよ ${modeObjectiveKilled} / ${modeObjectiveTotal} — SCORE: ${score}`)
+      setObjective(`宙域制圧作戦 — 敵艦隊 ${modeObjectiveKilled}/${modeObjectiveTotal} — HOTSPOT ${p.hotspotDone}/${p.hotspotTotal} — SCORE: ${score}`)
     } else {
-      setObjective(`地上目標を破壊 ${modeObjectiveKilled} / ${modeObjectiveTotal} — SCORE: ${score}`)
+      setObjective(`地上目標 ${modeObjectiveKilled}/${modeObjectiveTotal} — HOTSPOT ${p.hotspotDone}/${p.hotspotTotal} — SCORE: ${score}`)
     }
   }
 
