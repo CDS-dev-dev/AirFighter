@@ -1,8 +1,8 @@
-# AirFighter v7.23.0
+# AirFighter v7.24.0
 
 **BotW級の完璧なオープンワールド3Dアクションゲーム**
 
-[![Version](https://img.shields.io/badge/version-7.23.0-blue.svg)](https://github.com/cds-dev-dev/AirFighter)
+[![Version](https://img.shields.io/badge/version-7.24.0-blue.svg)](https://github.com/cds-dev-dev/AirFighter)
 [![Built with Three.js](https://img.shields.io/badge/Built%20with-Three.js-000000.svg)](https://threejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178c6.svg)](https://www.typescriptlang.org/)
 
@@ -10,7 +10,7 @@
 
 ## 🎮 概要
 
-AirFighterは、Three.jsで作られた本格的な3D空中戦闘ゲームです。v7.23.0時点では、**v7.00.0で到達したBotW級の手作り感と探索価値**を土台に、Original/Tokyo/Space の主役飛行導線を Blender 正本へ寄せ、MAP設計プロファイルから敵AI・HUD・導線・衝突信頼・探索報酬・戦闘ホットスポットを一貫運用しています。
+AirFighterは、Three.jsで作られた本格的な3D空中戦闘ゲームです。v7.24.0時点では、**v7.00.0で到達したBotW級の手作り感と探索価値**を土台に、Original/Tokyo/Space の主役飛行導線を Blender 正本へ寄せ、MAP設計プロファイルから敵AI・HUD・導線・衝突信頼・探索報酬・戦闘ホットスポット・再訪イベントを一貫運用しています。
 
 ### 主な特徴
 
@@ -22,11 +22,11 @@ AirFighterは、Three.jsで作られた本格的な3D空中戦闘ゲームです
 
 ---
 
-## 🚀 v7.23.0 現行リリース概要（2026-06-14）
+## 🚀 v7.24.0 現行リリース概要（2026-06-14）
 
 ### 現在の正式版について
 
-このリポジトリの正式な現行バージョンは **v7.23.0** です。  
+このリポジトリの正式な現行バージョンは **v7.24.0** です。  
 直近の開発では、以下の内容が `v7.00.0` の基盤に積み上がっています。
 
 - **ゲームプレイ演出の統合**: `gameplayEffectsSystem` をゲームループへ統合
@@ -38,6 +38,7 @@ AirFighterは、Three.jsで作られた本格的な3D空中戦闘ゲームです
 - **私基準100点パス**: 全MAPの境界格子をオレンジへ統一し、敵AIの地形利用とMAPオブジェクト役割分類を追加
 - **3Dアクション化の追加パス**: 全MAPにY方向を含む飛行ボリューム境界を導入し、主役導線ゲートを通過報酬付きのゲーム要素へ変更
 - **オープンワールド100点パス**: 全MAPに制圧/探索ホットスポットを追加し、HUD・報酬・敵AI・迎撃スポーンをMAPの見せ場へ接続
+- **AAAギャップ改善パス**: ホットスポットを資源/危険/発見/イベントへ分化し、再訪クールダウン、環境粒子レイヤー、衝突ロール監査を追加
 - **戦闘UI/操作改善**: 前方コーン型ロックオン、候補なし通知、プレイヤーミサイル追跡HUD
 - **コリジョン整合改善**: Original / Tokyo / Space の主要構造物について、見た目と当たり判定のズレを縮小
 - **探索/環境密度の継続改善**: 既存の手作り配置思想を維持したまま拡張

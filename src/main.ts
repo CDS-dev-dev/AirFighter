@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.23.0'
+const VERSION = '7.24.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -3571,6 +3571,34 @@ function isBlockedByMapGeometry(raycaster: THREE.Raycaster): boolean {
   return raycaster.intersectObject(ground, false).length > 0
 }
 
+function auditMapCollisionTrust(map: GameMap) {
+  if (!import.meta.env.DEV) return
+
+  const roleCounts: Record<MapObjectRole | 'unclassified', number> = {
+    solid: 0,
+    guide: 0,
+    decorative: 0,
+    unclassified: 0,
+  }
+  scene.traverse(obj => {
+    if (!(obj instanceof THREE.Mesh || obj instanceof THREE.Line || obj instanceof THREE.Points || obj instanceof THREE.InstancedMesh)) return
+    const role = obj.userData.mapObjectRole as MapObjectRole | undefined
+    if (role === 'solid' || role === 'guide' || role === 'decorative') roleCounts[role] += 1
+    else roleCounts.unclassified += 1
+  })
+
+  const collisionCount = map === 'original'
+    ? originalMapCollisionMeshes.length
+    : map === 'tokyo'
+    ? neoTokyoMapSystem?.getCollisionObjects().length ?? 0
+    : (spaceZoneGroups.length + spaceIndividualAsteroids.length + (spaceAsteroids ? 1 : 0))
+
+  console.log(
+    `[MAP QA] ${map}: collisionTargets=${collisionCount}, roles=` +
+    `solid:${roleCounts.solid} guide:${roleCounts.guide} decorative:${roleCounts.decorative} unclassified:${roleCounts.unclassified}`,
+  )
+}
+
 function handleRightLock() {
   if (!currentMode || missionComplete) return
   if (lockedTarget) { lockedTarget = null; return }
@@ -5131,13 +5159,17 @@ let zoneDisplayTimer = 0  // ゾーン名表示タイマー
 // MAP境界の格子表示（戦闘エリアの外周）- 全MAP共通
 let mapBoundaryMesh: THREE.LineSegments | null = null
 type MapRouteGate = { position: THREE.Vector3; radius: number; mesh: THREE.Mesh; visited: boolean }
+type MapHotspotKind = 'discovery' | 'resource' | 'danger' | 'event'
 type MapHotspot = {
   name: string
+  kind: MapHotspotKind
   position: THREE.Vector3
   radius: number
   group: THREE.Group
   completed: boolean
   cooldown: number
+  revisitCount: number
+  eventTimer: number
 }
 const mapRouteGates: MapRouteGate[] = []
 const mapHotspots: MapHotspot[] = []
@@ -5602,9 +5634,121 @@ function clearMapDesignCohesionLayer() {
   mapDesignCohesionGroup = null
 }
 
-function createMapHotspotMarker(map: GameMap, point: THREE.Vector3, name: string, radius: number, color: number): MapHotspot {
+function createHotspotSetPiece(kind: MapHotspotKind, radius: number, color: number): THREE.Group {
   const group = new THREE.Group()
-  group.name = `MapHotspot_${map}_${name}`
+  group.name = `HotspotSetPiece_${kind}`
+
+  const emissive = new THREE.Color(color)
+  const metal = new THREE.MeshPhysicalMaterial({
+    color: emissive.clone().multiplyScalar(0.55),
+    emissive,
+    emissiveIntensity: kind === 'danger' ? 0.72 : 0.46,
+    roughness: 0.28,
+    metalness: 0.72,
+    clearcoat: 0.45,
+    transparent: true,
+    opacity: 0.74,
+  })
+  const glass = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.16,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  })
+
+  const core = new THREE.Mesh(
+    kind === 'resource'
+      ? new THREE.OctahedronGeometry(18, 1)
+      : kind === 'danger'
+      ? new THREE.ConeGeometry(16, 54, 6)
+      : kind === 'event'
+      ? new THREE.TorusKnotGeometry(14, 3.5, 56, 8)
+      : new THREE.IcosahedronGeometry(17, 1),
+    metal,
+  )
+  core.name = `HotspotCore_${kind}`
+  core.position.y = kind === 'danger' ? 22 : 0
+  group.add(core)
+
+  const shardCount = kind === 'danger' ? 5 : 4
+  for (let i = 0; i < shardCount; i++) {
+    const a = (i / shardCount) * Math.PI * 2
+    const shard = new THREE.Mesh(new THREE.BoxGeometry(7, 24, 3), metal.clone())
+    shard.position.set(Math.cos(a) * radius * 0.23, Math.sin(i * 1.7) * 16, Math.sin(a) * radius * 0.23)
+    shard.rotation.set(0.35 + i * 0.2, a, 0.4)
+    shard.name = `HotspotOrbitShard_${kind}`
+    group.add(shard)
+  }
+
+  const scanDisc = new THREE.Mesh(new THREE.RingGeometry(radius * 0.32, radius * 0.36, 48), glass)
+  scanDisc.rotation.x = Math.PI / 2
+  scanDisc.name = 'HotspotReadableGuide'
+  group.add(scanDisc)
+
+  markMapObjectRole(group, 'guide')
+  return group
+}
+
+function getHotspotKind(map: GameMap, index: number): MapHotspotKind {
+  const order: Record<GameMap, MapHotspotKind[]> = {
+    original: ['discovery', 'danger', 'resource', 'event'],
+    tokyo: ['event', 'resource', 'danger', 'discovery'],
+    space: ['danger', 'resource', 'event', 'discovery'],
+  }
+  return order[map][index % order[map].length]
+}
+
+function createRouteAtmosphereLayer(map: GameMap, curve: THREE.CatmullRomCurve3, color: number): THREE.Points {
+  const count = isMobileDevice ? 90 : 180
+  const positions = new Float32Array(count * 3)
+  const colors = new Float32Array(count * 3)
+  const base = new THREE.Color(color)
+  const spread = map === 'space' ? 420 : map === 'tokyo' ? 300 : 210
+
+  for (let i = 0; i < count; i++) {
+    const t = (i / count + hash2(i * 17.13, i * 3.91) * 0.08) % 1
+    const p = curve.getPoint(t)
+    const tangent = curve.getTangent(t).normalize()
+    const side = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), tangent)
+    if (side.lengthSq() < 0.001) side.set(1, 0, 0)
+    side.normalize()
+    const vertical = new THREE.Vector3(0, 1, 0)
+    const sideOffset = (hash2(i * 2.1, i * 5.7) - 0.5) * spread
+    const yOffset = (hash2(i * 7.3, i * 11.1) - 0.5) * spread * (map === 'space' ? 0.9 : 0.45)
+    const forwardOffset = (hash2(i * 13.7, i * 19.3) - 0.5) * 180
+    p.addScaledVector(side, sideOffset)
+      .addScaledVector(vertical, yOffset)
+      .addScaledVector(tangent, forwardOffset)
+    positions[i * 3] = p.x
+    positions[i * 3 + 1] = p.y
+    positions[i * 3 + 2] = p.z
+    const c = base.clone().lerp(new THREE.Color(map === 'tokyo' ? 0xff58b6 : map === 'space' ? 0xb05cff : 0xffd166), hash2(i * 29.1, i * 31.3) * 0.45)
+    colors[i * 3] = c.r
+    colors[i * 3 + 1] = c.g
+    colors[i * 3 + 2] = c.b
+  }
+
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  const mat = new THREE.PointsMaterial({
+    size: map === 'space' ? 4.4 : 3.2,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  })
+  const points = new THREE.Points(geo, mat)
+  points.name = `RouteAtmosphere_${map}`
+  markMapObjectRole(points, 'decorative')
+  return points
+}
+
+function createMapHotspotMarker(map: GameMap, point: THREE.Vector3, name: string, radius: number, color: number, kind: MapHotspotKind): MapHotspot {
+  const group = new THREE.Group()
+  group.name = `MapHotspot_${map}_${kind}_${name}`
   group.position.copy(point)
 
   const haloMat = new THREE.MeshBasicMaterial({
@@ -5614,13 +5758,6 @@ function createMapHotspotMarker(map: GameMap, point: THREE.Vector3, name: string
     depthWrite: false,
     side: THREE.DoubleSide,
   })
-  const coreMat = new THREE.MeshBasicMaterial({
-    color,
-    transparent: true,
-    opacity: 0.42,
-    depthWrite: false,
-  })
-
   const halo = new THREE.Mesh(new THREE.TorusGeometry(radius, 2.4, 8, 64), haloMat)
   halo.rotation.x = Math.PI / 2
   halo.name = 'HotspotCombatVolume'
@@ -5631,17 +5768,20 @@ function createMapHotspotMarker(map: GameMap, point: THREE.Vector3, name: string
   vertical.name = 'HotspotVerticalVolume'
   group.add(vertical)
 
-  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(10, 1), coreMat)
-  core.name = 'HotspotCore'
-  group.add(core)
+  const setPiece = createHotspotSetPiece(kind, radius, color)
+  group.add(setPiece)
+  markMapObjectRole(group, 'guide')
 
   return {
     name,
+    kind,
     position: point.clone(),
     radius,
     group,
     completed: false,
     cooldown: 0,
+    revisitCount: 0,
+    eventTimer: 2 + (radius % 5),
   }
 }
 
@@ -5680,7 +5820,9 @@ function createMapDesignCohesionLayer(map: GameMap) {
   const curve = new THREE.CatmullRomCurve3(points, closedRoute, 'catmullrom', 0.35)
   const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getSpacedPoints(closedRoute ? 120 : 90)), lineMat)
   line.name = `MapDesignPrimaryLoop_${map}`
+  markMapObjectRole(line, 'guide')
   group.add(line)
+  group.add(createRouteAtmosphereLayer(map, curve, color))
 
   const gateCount = map === 'tokyo' ? 10 : map === 'space' ? 9 : 8
   for (let i = 0; i < gateCount; i++) {
@@ -5693,6 +5835,7 @@ function createMapDesignCohesionLayer(map: GameMap) {
     ring.position.copy(point)
     ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent)
     ring.name = `MapRouteRewardGate_${map}_${i + 1}`
+    markMapObjectRole(ring, 'guide')
     group.add(ring)
     mapRouteGates.push({ position: point.clone(), radius, mesh: ring, visited: false })
   }
@@ -5701,13 +5844,13 @@ function createMapDesignCohesionLayer(map: GameMap) {
     const point = points[i]
     const anchor = anchors[i]
     const hotspotRadius = map === 'space' ? 260 : map === 'tokyo' ? 230 : 185
-    const hotspot = createMapHotspotMarker(map, point, anchor.name, hotspotRadius, anchor.color)
+    const hotspot = createMapHotspotMarker(map, point, anchor.name, hotspotRadius, anchor.color, getHotspotKind(map, i))
     group.add(hotspot.group)
     mapHotspots.push(hotspot)
   }
 
   scene.add(group)
-  markMapObjectRole(group, 'guide')
+  group.userData.mapObjectRole = 'guide'
   mapDesignCohesionGroup = group
 }
 
@@ -5742,11 +5885,13 @@ function updateMapRouteChallenge() {
 
 function awardMapHotspot(hotspot: MapHotspot) {
   hotspot.completed = true
-  hotspot.cooldown = 28
-  score += currentMode === 'free' ? 3 : 2
+  hotspot.revisitCount += 1
+  hotspot.cooldown = hotspot.kind === 'resource' ? 18 : hotspot.kind === 'danger' ? 24 : 34
+  const scoreGain = hotspot.kind === 'discovery' ? 5 : hotspot.kind === 'event' ? 4 : hotspot.kind === 'danger' ? 3 : 2
+  score += currentMode === 'free' ? scoreGain : Math.max(2, scoreGain - 1)
   scoreEl.textContent = score.toString()
-  missileAmmo = Math.min(6, missileAmmo + 1)
-  flareAmmo = Math.min(3, flareAmmo + 1)
+  missileAmmo = Math.min(6, missileAmmo + (hotspot.kind === 'resource' ? 3 : 1))
+  flareAmmo = Math.min(3, flareAmmo + (hotspot.kind === 'danger' ? 2 : 1))
   missileEl.textContent = missileAmmo.toString()
   flareEl.textContent = flareAmmo.toString()
   updatePips(missilePips, missileAmmo, 'on')
@@ -5754,7 +5899,14 @@ function awardMapHotspot(hotspot: MapHotspot) {
   updateMobileAmmo()
   speed = Math.max(speed, Math.min(speed + 58, 460))
   wheelSpeedTarget = Math.min(wheelSpeedTarget + 35, 250)
-  showLockStatus(`${hotspot.name} 制圧 +SUPPLY`, 1.2)
+  const label = hotspot.kind === 'resource'
+    ? '資源回収'
+    : hotspot.kind === 'danger'
+    ? '危険空域制圧'
+    : hotspot.kind === 'event'
+    ? '動的イベント発生'
+    : '発見'
+  showLockStatus(`${hotspot.name} ${label}`, 1.25)
 
   hotspot.group.traverse(child => {
     if (child instanceof THREE.Mesh) {
@@ -5770,7 +5922,11 @@ function awardMapHotspot(hotspot: MapHotspot) {
 
 function spawnHotspotInterceptors(hotspot: MapHotspot) {
   if (currentMode === 'free' || enemies.length > DOGFIGHT_INITIAL_ENEMIES[currentMap] + 3) return
-  const count = currentMap === 'space' ? 2 : 1
+  const count = hotspot.kind === 'danger'
+    ? (currentMap === 'space' ? 3 : 2)
+    : hotspot.kind === 'event'
+    ? 2
+    : currentMap === 'space' ? 2 : 1
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2 + Math.random() * 0.7
     const dist = hotspot.radius + 160 + Math.random() * 150
@@ -5790,7 +5946,19 @@ function updateMapHotspots(dt: number) {
 
   for (const hotspot of mapHotspots) {
     hotspot.cooldown = Math.max(0, hotspot.cooldown - dt)
-    hotspot.group.rotation.y += dt * 0.18
+    hotspot.eventTimer = Math.max(0, hotspot.eventTimer - dt)
+    hotspot.group.rotation.y += dt * (hotspot.kind === 'danger' ? 0.28 : 0.18)
+
+    if (hotspot.eventTimer <= 0) {
+      hotspot.eventTimer = hotspot.kind === 'resource' ? 10 : hotspot.kind === 'danger' ? 7 : 13
+      const pulseScale = hotspot.kind === 'danger' ? 1.08 : 1.04
+      hotspot.group.scale.setScalar(pulseScale)
+      setTimeout(() => hotspot.group.scale.setScalar(1), 180)
+      if (hotspot.kind === 'event' && currentMode && !hotspot.completed) {
+        showLockStatus(`${hotspot.name} で反応`, 0.65)
+      }
+    }
+
     const dist = player.position.distanceTo(hotspot.position)
     if (dist > hotspot.radius) continue
 
@@ -5798,9 +5966,20 @@ function updateMapHotspots(dt: number) {
       awardMapHotspot(hotspot)
       spawnHotspotInterceptors(hotspot)
     } else if (hotspot.cooldown <= 0 && currentMode !== 'free') {
-      hotspot.cooldown = 22
+      hotspot.revisitCount += 1
+      hotspot.cooldown = hotspot.kind === 'danger' ? 18 : 26
       spawnHotspotInterceptors(hotspot)
-      showLockStatus(`${hotspot.name} 再交戦`, 0.9)
+      showLockStatus(`${hotspot.name} 再訪イベント`, 0.95)
+    } else if (hotspot.cooldown <= 0 && currentMode === 'free' && hotspot.kind === 'resource') {
+      hotspot.cooldown = 30
+      missileAmmo = Math.min(6, missileAmmo + 1)
+      flareAmmo = Math.min(3, flareAmmo + 1)
+      missileEl.textContent = missileAmmo.toString()
+      flareEl.textContent = flareAmmo.toString()
+      updatePips(missilePips, missileAmmo, 'on')
+      updatePips(flarePips, flareAmmo, 'flare-on')
+      updateMobileAmmo()
+      showLockStatus(`${hotspot.name} 再補給`, 0.9)
     }
   }
 }
@@ -8146,6 +8325,7 @@ async function switchMapAndTrack(mapType: GameMap) {
   mapSwitchPromise = pendingSwitch
   try {
     await pendingSwitch
+    auditMapCollisionTrust(mapType)
     if (import.meta.env.DEV) console.log(`✅ switchMap()完了`)
   } finally {
     if (mapSwitchPromise === pendingSwitch) mapSwitchPromise = null
@@ -8174,6 +8354,7 @@ async function handleMapSwitch(mapType: GameMap) {
   currentMap = mapType
   if (import.meta.env.DEV) console.log(`🗺️ switchMap()呼び出し: ${currentMap}`)
   await switchMap(currentMap)
+  auditMapCollisionTrust(mapType)
   if (import.meta.env.DEV) console.log(`✅ switchMap()完了`)
 
   // コレクティブルシステムを初期化
@@ -9707,10 +9888,17 @@ function getHotspotHudRows() {
     .map(hotspot => ({ hotspot, distance: player.position.distanceTo(hotspot.position) }))
     .sort((a, b) => a.distance - b.distance)
     .slice(0, 2)
+  const kindLabel: Record<MapHotspotKind, string> = {
+    discovery: '発見',
+    resource: '資源',
+    danger: '危険',
+    event: 'イベント',
+  }
   return nearest.map(({ hotspot, distance }) => {
     const done = hotspot.completed ? '✓' : '◆'
     const distKm = (distance / 1000).toFixed(1)
-    return `<div class="lm-item" style="color:${hotspot.completed ? '#ffd166' : '#9ff'}">${done} ${hotspot.name} ${distKm}km</div>`
+    const cooldown = hotspot.completed && hotspot.cooldown > 0 ? ` / ${Math.ceil(hotspot.cooldown)}s` : ''
+    return `<div class="lm-item" style="color:${hotspot.completed ? '#ffd166' : hotspot.kind === 'danger' ? '#ff9a7a' : '#9ff'}">${done} ${kindLabel[hotspot.kind]} ${hotspot.name} ${distKm}km${cooldown}</div>`
   }).join('')
 }
 
