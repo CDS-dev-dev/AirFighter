@@ -366,7 +366,12 @@ export class NeoTokyoMapSystem {
   // InstancedMesh excluded: Box3.setFromObject(instancedMesh) returns a box covering
   // ALL instances (the entire city), causing false collision hits in building gaps.
   getCollisionObjects(): THREE.Object3D[] {
-    return [...this.landmarks, ...this.buildingColliders]
+    const objects = [...this.landmarks, ...this.buildingColliders]
+    for (const obj of objects) {
+      obj.userData.mapObjectRole = 'solid'
+      obj.traverse(child => { child.userData.mapObjectRole = 'solid' })
+    }
+    return objects
   }
 
   getTubeCorridors(): TubeCorridor[] {

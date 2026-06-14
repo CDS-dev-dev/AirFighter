@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.20.0'
+const VERSION = '7.21.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -2842,6 +2842,7 @@ const allyMissileMat  = new THREE.MeshStandardMaterial({ color: 0x44ff88, emissi
 const _fwd = new THREE.Vector3(0, 0, -1)
 const _lockRaycaster = new THREE.Raycaster()
 const _originalCollisionRaycaster = new THREE.Raycaster()
+const _aiTerrainRaycaster = new THREE.Raycaster()
 const AIR_LOCK_CONE_DOT = Math.cos(THREE.MathUtils.degToRad(30))
 const GROUND_LOCK_CONE_DOT = Math.cos(THREE.MathUtils.degToRad(42))
 const MULTI_LOCK_CONE_DOT = Math.cos(THREE.MathUtils.degToRad(36))
@@ -2849,11 +2850,18 @@ const originalMapCollisionMeshes: THREE.Object3D[] = []
 
 type CombatAnchorSpec = { x: number; y: number; z: number; radius: number; pull: number }
 type MapNavigationBeaconSpec = { x: number; y: number; z: number; name: string; color: number }
+type MapObjectRole = 'solid' | 'guide' | 'decorative'
 type MapDesignProfile = {
   primaryLoop: string
   qualityRule: string
   combatAnchors: CombatAnchorSpec[]
   navigationBeacons: MapNavigationBeaconSpec[]
+}
+
+function markMapObjectRole(obj: THREE.Object3D, role: MapObjectRole): THREE.Object3D {
+  obj.userData.mapObjectRole = role
+  obj.traverse(child => { child.userData.mapObjectRole = role })
+  return obj
 }
 
 const MAP_DESIGN_PROFILES: Record<GameMap, MapDesignProfile> = {
@@ -2989,6 +2997,90 @@ function blendCombatAnchorIntoIdealPosition(idealPos: THREE.Vector3, target: THR
 
   if (influence <= 0.04) return
   idealPos.lerp(anchor, pull * influence)
+}
+
+function getMapProfilePoint(map: GameMap, beacon: MapNavigationBeaconSpec): THREE.Vector3 {
+  const y = map === 'original' ? terrainH(beacon.x, beacon.z) + beacon.y : beacon.y
+  return new THREE.Vector3(beacon.x, y, beacon.z)
+}
+
+function getNearestProfileRouteIndex(map: GameMap, position: THREE.Vector3): number {
+  const beacons = MAP_DESIGN_PROFILES[map].navigationBeacons
+  let bestIndex = 0
+  let bestDist = Infinity
+  for (let i = 0; i < beacons.length; i++) {
+    const p = getMapProfilePoint(map, beacons[i])
+    const d = p.distanceToSquared(position)
+    if (d < bestDist) {
+      bestDist = d
+      bestIndex = i
+    }
+  }
+  return bestIndex
+}
+
+function applyMapTacticalTerrainUse(idealPos: THREE.Vector3, target: THREE.Object3D, enemy: Enemy, enemyIndex: number): void {
+  const profile = MAP_DESIGN_PROFILES[currentMap]
+  if (profile.navigationBeacons.length < 2) return
+
+  const anchorSpec = getCombatAnchorSpecFor(target.position)
+  if (!anchorSpec) return
+
+  const anchor = new THREE.Vector3(anchorSpec.x, anchorSpec.y, anchorSpec.z)
+  if (currentMap === 'original') anchor.y = terrainH(anchorSpec.x, anchorSpec.z) + anchorSpec.y
+
+  const distToAnchor = enemy.group.position.distanceTo(anchor)
+  const influence = 1 - clamp01(distToAnchor / (anchorSpec.radius * 1.35))
+  if (influence <= 0.02) return
+
+  const routeIndex = getNearestProfileRouteIndex(currentMap, anchor)
+  const beacons = profile.navigationBeacons
+  const prev = getMapProfilePoint(currentMap, beacons[Math.max(0, routeIndex - 1)])
+  const next = getMapProfilePoint(currentMap, beacons[Math.min(beacons.length - 1, routeIndex + 1)])
+  const tangent = next.sub(prev)
+  if (tangent.lengthSq() < 0.001) tangent.set(0, 0, -1)
+  tangent.normalize()
+
+  const up = new THREE.Vector3(0, 1, 0)
+  const side = new THREE.Vector3().crossVectors(up, tangent)
+  if (side.lengthSq() < 0.001) side.set(1, 0, 0)
+  side.normalize()
+
+  const sideSign = ((enemyIndex + enemy.tacticType) % 2 === 0) ? 1 : -1
+  const mapVertical = currentMap === 'space' ? 260 : currentMap === 'tokyo' ? 130 : 70
+  const mapSide = currentMap === 'space' ? 260 : currentMap === 'tokyo' ? 210 : 150
+  const orbitPhase = enemy.group.id * 0.73 + enemyIndex * 0.41
+  const verticalOffset = Math.sin(performance.now() * 0.00035 + orbitPhase) * mapVertical
+  const sideOffset = sideSign * (mapSide + enemy.tacticType * 28)
+  const forwardOffset = (enemy.tacticType === 3 ? 120 : -60) + Math.cos(orbitPhase) * 55
+
+  const tacticalPos = anchor.clone()
+    .addScaledVector(side, sideOffset)
+    .addScaledVector(tangent, forwardOffset)
+  tacticalPos.y += verticalOffset
+
+  if (currentMap === 'original') {
+    tacticalPos.y = Math.max(tacticalPos.y, terrainH(tacticalPos.x, tacticalPos.z) + 55)
+  } else if (currentMap === 'tokyo') {
+    tacticalPos.y = Math.max(tacticalPos.y, 360)
+  } else {
+    const yBounds = getMapYBounds('space') ?? { minY: -2400, maxY: 2400 }
+    tacticalPos.y = THREE.MathUtils.clamp(tacticalPos.y, yBounds.minY + 120, yBounds.maxY - 120)
+  }
+
+  _sv2.copy(target.position).sub(enemy.group.position)
+  const targetDistance = _sv2.length()
+  if (targetDistance > 40) {
+    _sv2.multiplyScalar(1 / targetDistance)
+    _aiTerrainRaycaster.set(enemy.group.position, _sv2)
+    _aiTerrainRaycaster.far = targetDistance - 12
+    if (isBlockedByMapGeometry(_aiTerrainRaycaster)) {
+      tacticalPos.addScaledVector(side, sideSign * (currentMap === 'space' ? 140 : 85))
+      tacticalPos.y += currentMap === 'space' ? 180 : 95
+    }
+  }
+
+  idealPos.lerp(tacticalPos, (0.18 + anchorSpec.pull * 0.35) * influence)
 }
 
 // ===== LOCK-ON =====
@@ -4926,6 +5018,7 @@ function clearOriginalMapFlightColliders() {
 }
 
 function registerOriginalMapCollider(mesh: THREE.Object3D) {
+  markMapObjectRole(mesh, 'solid')
   originalMapCollisionMeshes.push(mesh)
 }
 
@@ -4994,21 +5087,21 @@ interface GridConfig {
 const GRID_CONFIG: Record<GameMap, GridConfig> = {
   original: {
     spacing: 300,
-    color: 0x88ff44,  // 緑
-    opacity: 0.6,
+    color: 0xff6600,
+    opacity: 0.7,
     fadeInDistance: 500,
     fadeEndDistance: 150
   },
   tokyo: {
     spacing: 400,
-    color: 0xff4488,  // ピンク
-    opacity: 0.6,
+    color: 0xff6600,
+    opacity: 0.7,
     fadeInDistance: 700,
     fadeEndDistance: 200
   },
   space: {
     spacing: 200,
-    color: 0xff6600,  // オレンジ
+    color: 0xff6600,
     opacity: 0.7,
     fadeInDistance: 300,
     fadeEndDistance: 100
@@ -5441,6 +5534,7 @@ function createNavigationBeacons(map: GameMap) {
     const ring = new THREE.Mesh(ringGeo, ringMat)
     beaconGroup.add(ring)
 
+    markMapObjectRole(beaconGroup, 'guide')
     scene.add(beaconGroup)
     navigationBeacons.push(beaconGroup)
   })
@@ -5473,6 +5567,8 @@ function createMapDesignCohesionLayer(map: GameMap) {
 
   const group = new THREE.Group()
   group.name = `MapDesignCohesion_${map}`
+  group.userData.mapPrimaryLoop = profile.primaryLoop
+  group.userData.mapQualityRule = profile.qualityRule
 
   const color = map === 'original' ? 0xd9cfbc : map === 'tokyo' ? 0x76eaff : 0x66d8ff
   const lineMat = new THREE.LineBasicMaterial({
@@ -5511,6 +5607,7 @@ function createMapDesignCohesionLayer(map: GameMap) {
   }
 
   scene.add(group)
+  markMapObjectRole(group, 'guide')
   mapDesignCohesionGroup = group
 }
 
@@ -5806,6 +5903,7 @@ async function buildSpaceMap() {
     }
     gate.position.copy(center)
     gate.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), orientation.clone().normalize())
+    markMapObjectRole(gate, 'solid')
     space.add(gate)
     spaceZoneGroups.push(gate)
     return gate
@@ -5844,6 +5942,7 @@ async function buildSpaceMap() {
 
     hull.position.copy(center)
     hull.rotation.set(tiltX, orientationY, 0)
+    markMapObjectRole(hull, 'solid')
     space.add(hull)
     spaceZoneGroups.push(hull)
     return hull
@@ -8377,6 +8476,7 @@ function updateEnemies(dt: number) {
       // 理想位置へのベクトル
       const idealPos = target.position.clone().add(idealOffset)
       blendCombatAnchorIntoIdealPosition(idealPos, target, enemy)
+      applyMapTacticalTerrainUse(idealPos, target, enemy, i)
       desiredDirection.copy(idealPos).sub(enemy.group.position).normalize()
     }
 

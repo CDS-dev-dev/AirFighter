@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [7.21.0] - 2026-06-14
+
+### Added
+
+- 敵AIが主役導線周辺で上下左右に散り、構造物・地形を使う `applyMapTacticalTerrainUse` を追加
+- MAPオブジェクトに `solid` / `guide` / `decorative` の役割を付ける内部分類を追加
+
+### Changed
+
+- 全MAPの境界格子をオレンジへ統一
+- 敵AIが単に主役構造物へ寄るだけでなく、視線遮蔽やアンカー周辺の立体位置取りを使うよう改善
+- Original / Tokyo / Space の衝突対象とガイド表示の役割を明示し、見た目と当たり判定の信用感を改善
+
+### Notes
+
+- 今回のリリースは、前回残した「私基準の100点」に足りない項目を実装で潰すためのMAPクラフト最終QAパス
+
+---
+
 ## [7.20.0] - 2026-06-14
 
 ### Added

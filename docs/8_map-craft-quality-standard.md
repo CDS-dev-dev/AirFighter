@@ -16,6 +16,7 @@ AirFighter の MAP は、単なる背景ではなく、飛行機戦闘ゲーム�
    - 物理構造として見えるものは、原則として弾・ミサイル・プレイヤーに対して衝突対象にする。
    - 航路投影、ビーコン、薄いガイド線など、通過可能なものは半透明・発光・細線など「通れる」と分かる見た目に限定する。
    - ゲートやトンネルの中心空間は、見た目通り通れること。
+   - 実装上は `solid` / `guide` / `decorative` の役割を `userData.mapObjectRole` に持たせる。
 
 4. **密度が飛行体験を邪魔しない**
    - オブジェクト数を増やすだけで密度を作らない。
@@ -30,11 +31,17 @@ AirFighter の MAP は、単なる背景ではなく、飛行機戦闘ゲーム�
    - MAPごとの色、素材、構造物の形状、導線表現を統一する。
    - 迷った場合は `MAP_DESIGN_PROFILES` の `primaryLoop` と `qualityRule` を優先する。
 
+7. **敵AIがMAPを使う**
+   - 敵は単にプレイヤーへ直進しない。
+   - 主役導線周辺で上下左右に散り、遮蔽・高低差・構造物の周囲を使って戦闘する。
+   - ミサイル回避や追跡時に、MAPの見せ場へ戦闘が自然に戻ること。
+
 ## 実装ルール
 
 - MAPの主役ルート、戦闘アンカー、ナビゲーションビーコンは `src/main.ts` の `MAP_DESIGN_PROFILES` に集約する。
 - 敵AIとスポーンは `MAP_DESIGN_PROFILES[map].combatAnchors` を参照する。
 - HUDと航路投影は `MAP_DESIGN_PROFILES[map].navigationBeacons` を参照する。
+- 戦闘時の立体位置取りは `applyMapTacticalTerrainUse` で、MAP別の主役導線に沿って補正する。
 - Blender GLB を正本にする構造物は `blender/asset-registry.json` に登録し、`npm run assets:audit` で確認する。
 
 ## 現行MAP別の正本
