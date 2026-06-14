@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [7.19.0] - 2026-06-14
+
+### Added
+
+- Original / Tokyo / Space それぞれに、敵戦闘を主役構造物へ寄せる `COMBAT_ANCHORS` を追加
+
+### Changed
+
+- 敵AIの理想位置取りを、プレイヤー追跡だけでなくMAP固有の戦闘導線へ自然にブレンド
+- Dogfight の初期敵配置と復帰スポーンを、全MAPで主役構造物周辺へ寄るよう調整
+
+### Notes
+
+- 今回のリリースは、主役構造物が「見た目」だけで終わらず、空戦がそこで起きるようにするための全MAP最終体験パス
+
+---
+
 ## [7.18.0] - 2026-06-14
 
 ### Added

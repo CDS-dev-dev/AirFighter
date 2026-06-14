@@ -1,8 +1,8 @@
-# AirFighter v7.18.0
+# AirFighter v7.19.0
 
 **BotW級の完璧なオープンワールド3Dアクションゲーム**
 
-[![Version](https://img.shields.io/badge/version-7.18.0-blue.svg)](https://github.com/cds-dev-dev/AirFighter)
+[![Version](https://img.shields.io/badge/version-7.19.0-blue.svg)](https://github.com/cds-dev-dev/AirFighter)
 [![Built with Three.js](https://img.shields.io/badge/Built%20with-Three.js-000000.svg)](https://threejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178c6.svg)](https://www.typescriptlang.org/)
 
@@ -10,7 +10,7 @@
 
 ## 🎮 概要
 
-AirFighterは、Three.jsで作られた本格的な3D空中戦闘ゲームです。v7.18.0時点では、**v7.00.0で到達したBotW級の手作り感と探索価値**を土台に、Original/Tokyo/Space の主役飛行導線を Blender 正本へ寄せるところまで進んでいます。
+AirFighterは、Three.jsで作られた本格的な3D空中戦闘ゲームです。v7.19.0時点では、**v7.00.0で到達したBotW級の手作り感と探索価値**を土台に、Original/Tokyo/Space の主役飛行導線を Blender 正本へ寄せ、敵AIの戦闘導線も全MAPの主役構造物へ接続しています。
 
 ### 主な特徴
 
@@ -22,17 +22,18 @@ AirFighterは、Three.jsで作られた本格的な3D空中戦闘ゲームです
 
 ---
 
-## 🚀 v7.18.0 現行リリース概要（2026-06-14）
+## 🚀 v7.19.0 現行リリース概要（2026-06-14）
 
 ### 現在の正式版について
 
-このリポジトリの正式な現行バージョンは **v7.18.0** です。  
+このリポジトリの正式な現行バージョンは **v7.19.0** です。  
 直近の開発では、以下の内容が `v7.00.0` の基盤に積み上がっています。
 
 - **ゲームプレイ演出の統合**: `gameplayEffectsSystem` をゲームループへ統合
 - **GLBアセット移行の進行**: 植生モデル、地下洞窟システムをGLB化
 - **宇宙MAP再設計**: 飛行可能Yレンジの統一、3D小惑星分布、立体導線の追加、初期視界の圧迫軽減
 - **Original MAP飛行導線強化**: 巨大な背骨・肋骨による回廊型フライトギミックを追加
+- **全MAP戦闘導線強化**: 敵AIが各MAPの主役構造物周辺へ自然に寄る戦闘アンカーを追加
 - **戦闘UI/操作改善**: 前方コーン型ロックオン、候補なし通知、プレイヤーミサイル追跡HUD
 - **コリジョン整合改善**: Original / Tokyo / Space の主要構造物について、見た目と当たり判定のズレを縮小
 - **探索/環境密度の継続改善**: 既存の手作り配置思想を維持したまま拡張

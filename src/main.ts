@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.18.0'
+const VERSION = '7.19.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -2842,6 +2842,29 @@ const GROUND_LOCK_CONE_DOT = Math.cos(THREE.MathUtils.degToRad(42))
 const MULTI_LOCK_CONE_DOT = Math.cos(THREE.MathUtils.degToRad(36))
 const originalMapCollisionMeshes: THREE.Object3D[] = []
 
+type CombatAnchorSpec = { x: number; y: number; z: number; radius: number; pull: number }
+
+const COMBAT_ANCHORS: Record<GameMap, CombatAnchorSpec[]> = {
+  original: [
+    { x: -420, y: 160, z: 520, radius: 780, pull: 0.22 },
+    { x: -80, y: 190, z: 190, radius: 740, pull: 0.25 },
+    { x: 260, y: 220, z: -170, radius: 720, pull: 0.24 },
+    { x: 580, y: 250, z: -470, radius: 760, pull: 0.22 },
+  ],
+  tokyo: [
+    { x: 520, y: 560, z: -360, radius: 880, pull: 0.24 },
+    { x: 940, y: 620, z: 520, radius: 920, pull: 0.22 },
+    { x: 1340, y: 720, z: 1120, radius: 860, pull: 0.20 },
+    { x: -460, y: 520, z: 1740, radius: 840, pull: 0.20 },
+  ],
+  space: [
+    { x: -980, y: -220, z: -740, radius: 960, pull: 0.26 },
+    { x: -360, y: 90, z: -420, radius: 900, pull: 0.24 },
+    { x: 260, y: 310, z: 180, radius: 940, pull: 0.24 },
+    { x: 920, y: 520, z: 760, radius: 980, pull: 0.22 },
+  ],
+}
+
 function showLockStatus(text: string, duration = 1.05) {
   lockStatusText = text
   lockStatusTimer = Math.max(lockStatusTimer, duration)
@@ -2882,6 +2905,42 @@ function getConeLockCandidates(multi = false): Array<{ target: LockableTarget; s
 
   candidates.sort((a, b) => b.score - a.score)
   return candidates
+}
+
+function getCombatAnchorSpecFor(position: THREE.Vector3): CombatAnchorSpec | null {
+  const anchors = COMBAT_ANCHORS[currentMap]
+  if (!anchors.length) return null
+
+  let best: CombatAnchorSpec | null = null
+  let bestScore = Infinity
+  for (const anchor of anchors) {
+    const dx = position.x - anchor.x
+    const dy = currentMap === 'space' ? position.y - anchor.y : 0
+    const dz = position.z - anchor.z
+    const d = Math.hypot(dx, dy, dz)
+    const score = d / anchor.radius
+    if (score < bestScore) {
+      bestScore = score
+      best = anchor
+    }
+  }
+
+  return best
+}
+
+function blendCombatAnchorIntoIdealPosition(idealPos: THREE.Vector3, target: THREE.Object3D, enemy: Enemy): void {
+  const anchorSpec = getCombatAnchorSpecFor(target.position)
+  if (!anchorSpec) return
+  const anchor = new THREE.Vector3(anchorSpec.x, anchorSpec.y, anchorSpec.z)
+  if (currentMap === 'original') anchor.y = terrainH(anchorSpec.x, anchorSpec.z) + anchorSpec.y
+
+  const pull = anchorSpec.pull
+  const targetDistToAnchor = target.position.distanceTo(anchor)
+  const enemyDistToAnchor = enemy.group.position.distanceTo(anchor)
+  const influence = clamp01(Math.max(targetDistToAnchor, enemyDistToAnchor) / anchorSpec.radius)
+
+  if (influence <= 0.04) return
+  idealPos.lerp(anchor, pull * influence)
 }
 
 // ===== LOCK-ON =====
@@ -2995,18 +3054,14 @@ function spawnEnemy() {
     return
   }
   if (currentMap === 'tokyo') {
-    const anchors = [
-      { x: 520, z: -360 },
-      { x: 940, z: 520 },
-      { x: 1760, z: 1540 },
-      { x: -460, z: 1740 },
-    ]
+    const anchors = COMBAT_ANCHORS.tokyo
     const p = anchors[Math.floor(Math.random() * anchors.length)]
     spawnEnemyAt(p.x + (Math.random() - 0.5) * 520, p.z + (Math.random() - 0.5) * 520)
     return
   }
-  const angle = Math.random() * Math.PI * 2
-  spawnEnemyAt(Math.cos(angle) * (220 + Math.random() * 220), Math.sin(angle) * (220 + Math.random() * 220))
+  const anchors = COMBAT_ANCHORS.original
+  const p = anchors[Math.floor(Math.random() * anchors.length)]
+  spawnEnemyAt(p.x + (Math.random() - 0.5) * 420, p.z + (Math.random() - 0.5) * 420)
 }
 
 function spawnAlly(sx: number, sz: number) {
@@ -4224,22 +4279,14 @@ async function startGame(mode: GameMode) {
       // 敵は南側、味方・プレイヤーは北側にスポーン
       for (let i = 0; i < initialEnemies; i++) {
         if (spaceDogfightSpawn) {
-          const a = Math.PI + (Math.random() - 0.5) * 1.4
-          const r = 520 + Math.random() * 420
-          spawnEnemyAt(Math.cos(a) * r, -260 + Math.sin(a) * r)
+          const p = COMBAT_ANCHORS.space[i % COMBAT_ANCHORS.space.length]
+          spawnEnemyAt(p.x + (Math.random() - 0.5) * 420, p.z + (Math.random() - 0.5) * 420)
         } else if (tokyoDogfightSpawn) {
-          const anchors = [
-            { x: 520, z: -360 },
-            { x: 940, z: 520 },
-            { x: 1760, z: 1540 },
-            { x: -460, z: 1740 },
-          ]
-          const p = anchors[i % anchors.length]
+          const p = COMBAT_ANCHORS.tokyo[i % COMBAT_ANCHORS.tokyo.length]
           spawnEnemyAt(p.x + (Math.random() - 0.5) * 420, p.z + (Math.random() - 0.5) * 420)
         } else {
-          const a = Math.PI + (Math.random() - 0.5) * 1.2
-          const r = 550 + Math.random() * 350
-          spawnEnemyAt(Math.cos(a) * r, Math.sin(a) * r)
+          const p = COMBAT_ANCHORS.original[i % COMBAT_ANCHORS.original.length]
+          spawnEnemyAt(p.x + (Math.random() - 0.5) * 360, p.z + (Math.random() - 0.5) * 360)
         }
       }
       if (import.meta.env.DEV) console.log(`Spawning ${dfAllyCount} allies`)
@@ -8239,6 +8286,7 @@ function updateEnemies(dt: number) {
 
       // 理想位置へのベクトル
       const idealPos = target.position.clone().add(idealOffset)
+      blendCombatAnchorIntoIdealPosition(idealPos, target, enemy)
       desiredDirection.copy(idealPos).sub(enemy.group.position).normalize()
     }
 
