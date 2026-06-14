@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.21.0'
+const VERSION = '7.22.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -177,8 +177,8 @@ interface MapBounds {
 }
 
 const MAP_BOUNDS: Record<GameMap, MapBounds> = {
-  original: { minX: -8600, maxX: 8600, minZ: -8600, maxZ: 8600, warningMargin: 1100 },
-  tokyo: { minX: -8600, maxX: 8600, minZ: -8600, maxZ: 8600, warningMargin: 1100 },
+  original: { minX: -8600, maxX: 8600, minZ: -8600, maxZ: 8600, minY: 8, maxY: 1850, warningMargin: 1100 },
+  tokyo: { minX: -8600, maxX: 8600, minZ: -8600, maxZ: 8600, minY: 80, maxY: 2100, warningMargin: 1100 },
   space: { minX: -6000, maxX: 6000, minZ: -6000, maxZ: 6000, minY: -2400, maxY: 2400, warningMargin: 800 },
 }
 
@@ -5074,6 +5074,8 @@ let zoneDisplayTimer = 0  // ゾーン名表示タイマー
 
 // MAP境界の格子表示（戦闘エリアの外周）- 全MAP共通
 let mapBoundaryMesh: THREE.LineSegments | null = null
+type MapRouteGate = { position: THREE.Vector3; radius: number; mesh: THREE.Mesh; visited: boolean }
+const mapRouteGates: MapRouteGate[] = []
 
 // MAP別の格子設定
 interface GridConfig {
@@ -5313,64 +5315,37 @@ function createMapBoundary(map: GameMap) {
   const vertices: number[] = []
   const { minX, maxX, minZ, maxZ } = bounds
 
-  // 地上MAPは2D境界（上下なし）、宇宙MAPは3D境界
-  if (map === 'space') {
-    const yBounds = getMapYBounds(map)
-    const minY = yBounds?.minY ?? -2400
-    const maxY = yBounds?.maxY ?? 2400
+  const yBounds = getMapYBounds(map)
+  const minY = yBounds?.minY ?? 0
+  const maxY = yBounds?.maxY ?? (map === 'tokyo' ? 2100 : 1850)
 
-    // XZ平面の格子（上下2枚）
-    for (let y of [minY, maxY]) {
-      for (let z = minZ; z <= maxZ; z += gridSpacing) {
-        vertices.push(minX, y, z, maxX, y, z)
-      }
-      for (let x = minX; x <= maxX; x += gridSpacing) {
-        vertices.push(x, y, minZ, x, y, maxZ)
-      }
+  // XZ平面の格子（上下2枚）
+  for (const y of [minY, maxY]) {
+    for (let z = minZ; z <= maxZ; z += gridSpacing) {
+      vertices.push(minX, y, z, maxX, y, z)
     }
-
-    // XY平面の格子（前後2枚）
-    for (let z of [minZ, maxZ]) {
-      for (let y = minY; y <= maxY; y += gridSpacing) {
-        vertices.push(minX, y, z, maxX, y, z)
-      }
-      for (let x = minX; x <= maxX; x += gridSpacing) {
-        vertices.push(x, minY, z, x, maxY, z)
-      }
+    for (let x = minX; x <= maxX; x += gridSpacing) {
+      vertices.push(x, y, minZ, x, y, maxZ)
     }
+  }
 
-    // YZ平面の格子（左右2枚）
-    for (let x of [minX, maxX]) {
-      for (let y = minY; y <= maxY; y += gridSpacing) {
-        vertices.push(x, y, minZ, x, y, maxZ)
-      }
-      for (let z = minZ; z <= maxZ; z += gridSpacing) {
-        vertices.push(x, minY, z, x, maxY, z)
-      }
+  // XY平面の格子（前後2枚）
+  for (const z of [minZ, maxZ]) {
+    for (let y = minY; y <= maxY; y += gridSpacing) {
+      vertices.push(minX, y, z, maxX, y, z)
     }
-  } else {
-    // 地上MAP: 垂直の壁（4面）のみ
-    const groundY = map === 'tokyo' ? 0 : 0
-    const wallHeight = 1500  // 1.5km高さの壁
-
-    // 前後の壁
-    for (let z of [minZ, maxZ]) {
-      for (let y = groundY; y <= groundY + wallHeight; y += gridSpacing) {
-        vertices.push(minX, y, z, maxX, y, z)
-      }
-      for (let x = minX; x <= maxX; x += gridSpacing) {
-        vertices.push(x, groundY, z, x, groundY + wallHeight, z)
-      }
+    for (let x = minX; x <= maxX; x += gridSpacing) {
+      vertices.push(x, minY, z, x, maxY, z)
     }
+  }
 
-    // 左右の壁
-    for (let x of [minX, maxX]) {
-      for (let y = groundY; y <= groundY + wallHeight; y += gridSpacing) {
-        vertices.push(x, y, minZ, x, y, maxZ)
-      }
-      for (let z = minZ; z <= maxZ; z += gridSpacing) {
-        vertices.push(x, groundY, z, x, groundY + wallHeight, z)
-      }
+  // YZ平面の格子（左右2枚）
+  for (const x of [minX, maxX]) {
+    for (let y = minY; y <= maxY; y += gridSpacing) {
+      vertices.push(x, y, minZ, x, y, maxZ)
+    }
+    for (let z = minZ; z <= maxZ; z += gridSpacing) {
+      vertices.push(x, minY, z, x, maxY, z)
     }
   }
 
@@ -5545,6 +5520,7 @@ function createNavigationBeacons(map: GameMap) {
 }
 
 function clearMapDesignCohesionLayer() {
+  mapRouteGates.length = 0
   if (!mapDesignCohesionGroup) return
   scene.remove(mapDesignCohesionGroup)
   mapDesignCohesionGroup.traverse(child => {
@@ -5589,26 +5565,59 @@ function createMapDesignCohesionLayer(map: GameMap) {
     const y = map === 'original' ? terrainH(anchor.x, anchor.z) + anchor.y : anchor.y
     return new THREE.Vector3(anchor.x, y, anchor.z)
   })
-  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.35)
-  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getSpacedPoints(80)), lineMat)
+  const closedRoute = map === 'tokyo'
+  const curve = new THREE.CatmullRomCurve3(points, closedRoute, 'catmullrom', 0.35)
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getSpacedPoints(closedRoute ? 120 : 90)), lineMat)
   line.name = `MapDesignPrimaryLoop_${map}`
   group.add(line)
 
-  for (let i = 1; i < points.length - 1; i++) {
-    const point = points[i]
-    const tangent = curve.getTangent(i / (points.length - 1)).normalize()
+  const gateCount = map === 'tokyo' ? 10 : map === 'space' ? 9 : 8
+  for (let i = 0; i < gateCount; i++) {
+    const t = closedRoute ? i / gateCount : (i + 1) / (gateCount + 1)
+    const point = curve.getPoint(t)
+    const tangent = curve.getTangent(t).normalize()
     const radius = map === 'tokyo' ? 118 : map === 'space' ? 132 : 96
     const tube = map === 'tokyo' ? 2.8 : 2.2
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, tube, 8, 48), ringMat)
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, tube, 8, 48), ringMat.clone())
     ring.position.copy(point)
     ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent)
-    ring.name = `MapDesignRouteProjection_${map}`
+    ring.name = `MapRouteRewardGate_${map}_${i + 1}`
     group.add(ring)
+    mapRouteGates.push({ position: point.clone(), radius, mesh: ring, visited: false })
   }
 
   scene.add(group)
   markMapObjectRole(group, 'guide')
   mapDesignCohesionGroup = group
+}
+
+function updateMapRouteChallenge() {
+  if (!currentMode || mapRouteGates.length === 0) return
+
+  for (const gate of mapRouteGates) {
+    if (gate.visited) continue
+    if (player.position.distanceTo(gate.position) > gate.radius * 0.78) continue
+
+    gate.visited = true
+    const mat = gate.mesh.material as THREE.MeshBasicMaterial
+    mat.opacity = 0.34
+    mat.color.setHex(0xffb468)
+    score += 1
+    scoreEl.textContent = score.toString()
+    speed = Math.max(speed, Math.min(speed + 42, 430))
+    wheelSpeedTarget = Math.min(wheelSpeedTarget + 24, 230)
+    showLockStatus('ルート通過 +BOOST', 0.9)
+  }
+
+  if (mapRouteGates.every(gate => gate.visited)) {
+    for (const gate of mapRouteGates) {
+      gate.visited = false
+      const mat = gate.mesh.material as THREE.MeshBasicMaterial
+      mat.opacity = currentMap === 'tokyo' ? 0.22 : 0.18
+      mat.color.setHex(currentMap === 'original' ? 0xd9cfbc : currentMap === 'tokyo' ? 0x76eaff : 0x66d8ff)
+    }
+    showLockStatus('ルート一周 +OPEN WORLD', 1.2)
+  }
 }
 
 // 宇宙MAP総力戦モード用の戦艦を生成
@@ -10151,6 +10160,8 @@ function loop() {
       }
     }
   }
+
+  updateMapRouteChallenge()
 
   // Engine glow follows player
   engineLight.position.copy(player.position).add(new THREE.Vector3(0, 0, 2).applyQuaternion(player.quaternion))
