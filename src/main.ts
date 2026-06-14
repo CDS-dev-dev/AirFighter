@@ -18,7 +18,7 @@ import {
 } from './gameplayEffectsSystem'
 
 // ===== VERSION =====
-const VERSION = '7.17.0'
+const VERSION = '7.18.0'
 const APP_URL = 'https://cds-dev-dev.github.io/AirFighter/'
 if (import.meta.env.DEV) {
   console.log(`%cAirFighter v${VERSION}`, 'font-size: 18px; font-weight: bold; color: #4af;')
@@ -5717,6 +5717,21 @@ async function buildSpaceMap() {
 
   // GLBゾーンを読み込み
   await loadSpaceZones(space)
+  await new Promise<void>((resolve) => {
+    gltfLoader.load(import.meta.env.BASE_URL + 'models/space_gravity_spine.glb', (gltf) => {
+      const spine = gltf.scene
+      spine.name = 'SpaceGravitySpine'
+      spine.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.castShadow = !isMobileDevice
+          child.receiveShadow = !isMobileDevice
+        }
+      })
+      space.add(spine)
+      spaceZoneGroups.push(spine)
+      resolve()
+    }, undefined, () => resolve())
+  })
 
   const starCount = isMobileDevice ? 1200 : 2600
   const starPos = new Float32Array(starCount * 3)

@@ -46,6 +46,15 @@
       "publicPath": "public/space_orbital_ring.glb",
       "sourceScript": "blender/generate_orbital_ring.py",
       "collisionPolicy": "visible-mesh"
+    },
+    {
+      "id": "space.flight.gravity_spine",
+      "map": "space",
+      "category": "hero_structure",
+      "status": "implemented_glb",
+      "publicPath": "public/models/space_gravity_spine.glb",
+      "sourceScript": "blender/gen_space_gravity_spine.py",
+      "collisionPolicy": "visible-mesh"
     }
   ]
 }

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [7.18.0] - 2026-06-14
+
+### Added
+
+- Space MAP のゾーン間を立体的につなぐ `space_gravity_spine.glb` を Blender 生成で追加
+- `blender/gen_space_gravity_spine.py` を追加
+
+### Changed
+
+- Space MAP 初期化時に `space_gravity_spine.glb` を読み込み、衝突対象にも登録
+- Original / Tokyo / Space の主役飛行導線がすべて Blender 正本の運用対象になるよう資産台帳を更新
+
+### Notes
+
+- 今回のリリースは、全MAPを100点ラインへ寄せるための最終品質パス。Space の「広いが導線が弱い」課題に対して、ゾーン間を抜ける大構造を追加した
+
 ## [7.17.0] - 2026-06-14
 
 ### Added
