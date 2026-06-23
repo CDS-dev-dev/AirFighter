@@ -7984,6 +7984,12 @@ async function switchMap(map: GameMap) {
       // 宇宙MAPグループは保護（既にクリア済み）
       if (obj.name === 'SpaceSectorMap') continue
 
+      // 東京MAPオブジェクトを強制削除
+      if (obj.name?.includes('Tokyo') || obj.name?.includes('Neo') || obj.name?.includes('Mega') || obj.name?.includes('Skyway') || obj.name?.includes('Hologram')) {
+        to_remove.push(obj)
+        continue
+      }
+
       // 地形らしきMeshは強制削除（名前やジオメトリで判定）
       if (obj instanceof THREE.Mesh) {
         const name = obj.name.toLowerCase()
