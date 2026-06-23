@@ -45,7 +45,7 @@ const PERF_CONFIG = {
   shadowEnabled: !isMobileDevice,
   skyEnabled: !isMobileDevice,
   glbZonesEnabled: !isMobileDevice,
-  pixelRatio: Math.min(window.devicePixelRatio, isMobileDevice ? 1.5 : 2),
+  pixelRatio: Math.min(window.devicePixelRatio, isMobileDevice ? 1.5 : 1.5),
   waterSegments: isMobileDevice ? 10 : 80,
   shadowMapSize: isMobileDevice ? 512 : 512,  // 両方512で統一済み
 }
@@ -7579,9 +7579,18 @@ async function buildSpaceMap() {
   const containerMat = new THREE.MeshLambertMaterial({ color: 0x4a4a5a })
   const smallSatMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.5, metalness: 0.6 })
 
-  // 小型デブリ2000個（1m以下）- 決定的配置
+  // 小型デブリ（1m以下）- InstancedMeshで最適化
   const smallDebrisCount = isMobileDevice ? 220 : 520
-  for (let i = 0; i < smallDebrisCount; i++) {
+  const smallDebrisGeo = new THREE.DodecahedronGeometry(0.5, 0)
+  const smallDebrisIM = new THREE.InstancedMesh(smallDebrisGeo, smallDebrisMat, smallDebrisCount)
+  const _smallDebrisMat = new THREE.Matrix4()
+  const _smallDebrisPos = new THREE.Vector3()
+  const _smallDebrisRot = new THREE.Euler()
+  const _smallDebrisQuat = new THREE.Quaternion()
+  const _smallDebrisScale = new THREE.Vector3()
+
+  let smallDebrisIdx = 0
+  for (let i = 0; i < smallDebrisCount && smallDebrisIdx < smallDebrisCount; i++) {
     const seed = i + 800000
     const dx = (deterministicRandom(seed) - 0.5) * 11000
     const dy = spaceYMin + deterministicRandom(seed + 1) * spaceYSpan
@@ -7590,18 +7599,23 @@ async function buildSpaceMap() {
     const debrisPos = new THREE.Vector3(dx, dy, dz)
     if (Math.hypot(dx, dz) < HUB_CLEAR_RADIUS + 180) continue
     if (isInsideSpaceRoute(debrisPos, 44)) continue
-    const debris = new THREE.Mesh(
-      new THREE.DodecahedronGeometry(0.3 + deterministicRandom(seed + 3) * 0.7, 0),
-      smallDebrisMat
-    )
-    debris.position.copy(debrisPos)
-    debris.rotation.set(
+
+    _smallDebrisPos.copy(debrisPos)
+    _smallDebrisRot.set(
       deterministicRandom(seed + 4) * Math.PI,
       deterministicRandom(seed + 5) * Math.PI,
       deterministicRandom(seed + 6) * Math.PI
     )
-    space.add(debris)
+    _smallDebrisQuat.setFromEuler(_smallDebrisRot)
+    const scale = 0.6 + deterministicRandom(seed + 3) * 1.4
+    _smallDebrisScale.set(scale, scale, scale)
+    _smallDebrisMat.compose(_smallDebrisPos, _smallDebrisQuat, _smallDebrisScale)
+    smallDebrisIM.setMatrixAt(smallDebrisIdx, _smallDebrisMat)
+    smallDebrisIdx++
   }
+  smallDebrisIM.count = smallDebrisIdx
+  smallDebrisIM.instanceMatrix.needsUpdate = true
+  space.add(smallDebrisIM)
 
   // 浮遊ケーブル300本 - 決定的配置
   const cableCount = isMobileDevice ? 40 : 90
@@ -7787,13 +7801,14 @@ async function buildSpaceMap() {
     }
   }
 
-  // デブリベルト（半径4000-6000m、高密度）
+  // デブリベルト（半径4000-6000m、高密度）- InstancedMeshで最適化
   const DEBRIS_BELT = {
     innerRadius: 4000,
     outerRadius: 6000,
     count: isMobileDevice ? 800 : 2000,
   }
 
+  const debrisBeltGeo = new THREE.DodecahedronGeometry(5, 0)
   const debrisBeltMat = new THREE.MeshStandardMaterial({
     color: 0x6a6a6a,
     roughness: 0.95,
@@ -7801,21 +7816,35 @@ async function buildSpaceMap() {
     flatShading: true
   })
 
+  const debrisBeltIM = new THREE.InstancedMesh(debrisBeltGeo, debrisBeltMat, DEBRIS_BELT.count)
+  const _debrisMat = new THREE.Matrix4()
+  const _debrisPos = new THREE.Vector3()
+  const _debrisRot = new THREE.Euler()
+  const _debrisQuat = new THREE.Quaternion()
+  const _debrisScale = new THREE.Vector3()
+
+  function debrisRandom(seed: number): number {
+    const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453
+    return x - Math.floor(x)
+  }
+
   for (let i = 0; i < DEBRIS_BELT.count; i++) {
-    const angle = Math.random() * Math.PI * 2
-    const r = DEBRIS_BELT.innerRadius + Math.random() * (DEBRIS_BELT.outerRadius - DEBRIS_BELT.innerRadius)
+    const angle = debrisRandom(i * 2.7) * Math.PI * 2
+    const r = DEBRIS_BELT.innerRadius + debrisRandom(i * 3.1) * (DEBRIS_BELT.outerRadius - DEBRIS_BELT.innerRadius)
     const dx = Math.cos(angle) * r
     const dz = Math.sin(angle) * r
-    const dy = (Math.random() - 0.5) * 1000
+    const dy = (debrisRandom(i * 4.3) - 0.5) * 1000
 
-    const debris = new THREE.Mesh(
-      new THREE.DodecahedronGeometry(2 + Math.random() * 8, 0),
-      debrisBeltMat
-    )
-    debris.position.set(dx, dy, dz)
-    debris.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
-    space.add(debris)
+    _debrisPos.set(dx, dy, dz)
+    _debrisRot.set(debrisRandom(i * 5.7) * Math.PI, debrisRandom(i * 6.1) * Math.PI, debrisRandom(i * 7.9) * Math.PI)
+    _debrisQuat.setFromEuler(_debrisRot)
+    const scale = 0.4 + debrisRandom(i * 8.3) * 1.2
+    _debrisScale.set(scale, scale, scale)
+    _debrisMat.compose(_debrisPos, _debrisQuat, _debrisScale)
+    debrisBeltIM.setMatrixAt(i, _debrisMat)
   }
+  debrisBeltIM.instanceMatrix.needsUpdate = true
+  space.add(debrisBeltIM)
 
   // 廃棄ステーション群×4
   const ABANDONED_STATIONS = [
